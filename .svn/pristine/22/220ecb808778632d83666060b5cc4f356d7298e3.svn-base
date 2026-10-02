@@ -1,0 +1,205 @@
+package com.car.jl.controller;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import javax.servlet.http.HttpServletRequest;
+
+import org.apache.tomcat.util.codec.binary.Base64;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import com.car.jl.mapper.LoginMapper;
+import com.car.jl.mapper.UserMapper;
+import com.car.jl.util.CommonUtil;
+import com.car.jl.util.CreatrQrCode;
+import com.car.jl.vo.DataResult;
+import com.car.jl.vo.User;
+import com.itextpdf.text.pdf.PdfStructTreeController.returnType;
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
+
+@Api(description = "登陆注册模块")
+@CrossOrigin
+@RestController
+@RequestMapping(value="/")
+public class LoginController {
+
+	protected final static String QRCODE_URL_PREX = "http://jmc.smarthooters.com/index.html?id=";
+//	protected final static String VISIT_QRCODE_URL_PREX = "http://image.smarthooters.com/jl/qrcode/";
+//	protected final static String DESTPATH = "/account_projects/pingan_bbs/bbs_upload_images/jl/qrcode";
+	protected final static String VISIT_QRCODE_URL_PREX = "http://jmc.smarthooters.com/qrcode/";
+	protected final static String DESTPATH = "/account_projects/jmc_website/qrcode";
+	
+	@Autowired
+	private LoginMapper loginMapper;
+	
+	@Autowired
+	private UserMapper userMapper;
+
+	@ApiOperation(value = "注册", notes = "注册" ,response=DataResult.class,httpMethod = "POST")
+	@PostMapping("/regist")
+	public DataResult<User> regist(
+			@RequestParam(value = "name", required = true) @ApiParam(value = "用户名",required = true) String name,
+			@RequestParam(value = "phone", required = true) @ApiParam(value = "电话",required = true) String phone,
+			@RequestParam(value = "password", required = false) @ApiParam(value = "密码",required = false) String password,
+			@RequestParam(value = "province",required = false) @ApiParam(value = "省份",required = false) String province,
+			@RequestParam(value = "city",required = false) @ApiParam(value = "市",required = false) String city,
+			@RequestParam(value = "industry",required = false) @ApiParam(value = "所属行业",required = false) String industry,
+			@RequestParam(value = "have_car_type",required = true) @ApiParam(value = "现有车型",required = true) String have_car_type,
+			@RequestParam(value = "source",required = false) @ApiParam(value = "报名渠道",required = false) String source,
+			@RequestParam(value = "source_code",required = false) @ApiParam(value = "报名渠道是朋友推荐时的好友邀请码",required = false) String source_code,
+			@RequestParam(value = "drive_img_url",required = true) @ApiParam(value = "行驶证照片上传后的url",required = true) String drive_img_url,
+			HttpServletRequest request) {
+		DataResult<User> result = new DataResult<User>();
+		try {
+			List<String> phoneList = loginMapper.checkPhoneExist();
+			if(phoneList.contains(phone)) {
+				result.setCode("500");
+				result.setMessage("手机号已注册请更换注册或直接登陆");
+				result.setSuccess(false);
+				return result;
+			}
+			List<String> codeList = loginMapper.getInvitationCodes();
+			boolean flag = false;
+			String code = CommonUtil.generateShortUuid(4);
+			while(true) {
+				if(!codeList.contains(code)) {
+					flag = true;
+				}else {
+					code = CommonUtil.generateShortUuid(4);
+				}
+				if(flag) {
+					break;
+				}
+			}
+			User user = new User();
+			user.setCity(city);
+			user.setDrive_img_url(drive_img_url);
+			user.setHave_car_type(have_car_type);
+			user.setInvitation_code(code);
+			user.setName(name);
+			user.setIndustry(industry);
+//			user.setPassword(encodeBase64(password));
+			user.setPhone(phone);
+			user.setProvince(province);
+			user.setSource(source);
+			user.setSource_code(source_code);
+			loginMapper.saveUser(user);
+			//先创建个用户，再更新他的二维码图片
+			//注册的时候 ，多了一个二维码； 2020-10-14
+			String qrcodeName = CreatrQrCode.encode(QRCODE_URL_PREX+user.getId()+"&invitation_code="+user.getInvitation_code(),"", DESTPATH, true);
+			user.setQrcode_name(qrcodeName);
+			loginMapper.updateUserQrcode(user);
+			user.setQrcode_name(VISIT_QRCODE_URL_PREX+qrcodeName);
+			
+			if(user.getId()>0) {
+				//注册给0.5红包
+				Map<String, Object> m = new HashMap<String,Object>();
+				m.put("id",user.getId());
+				m.put("money",0.5);
+				m.put("type",3);
+				userMapper.saveUserMoney(m);
+			}
+			//邀请人封面头像获得10个赞
+			if(null!=source_code && source_code.length()>0) {
+				User u2 = loginMapper.getUserByCode(source_code);
+				if(null!=u2 && u2.getId()>0) {
+					userMapper.addFavoriteByInvitateUser(u2.getId());
+				}
+			}
+			
+			result.setCode("200");
+			result.setData(user);
+			result.setMessage("成功");
+			result.setSuccess(true);
+		}catch(Exception e) {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage("参数错误保存失败");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+	
+	
+	@ApiOperation(value = "更新行业", notes = "更新行业" ,response=DataResult.class,httpMethod = "POST")
+	@PostMapping("/upIndu")
+	public DataResult<User> upIndu(
+			@RequestParam(value = "id", required = true) @ApiParam(value = "用户id",required = true) Long id,
+			@RequestParam(value = "industry", required = true) @ApiParam(value = "所属行业",required = true) String industry){
+		DataResult<User> result = new DataResult<User>();
+		
+		if(null!=id && null!=industry) {
+			User u = new User();
+			u.setId(id);
+			u.setIndustry(industry);
+			loginMapper.updateIndustry(u);
+			u = loginMapper.getUserById(id);
+			result.setCode("200");
+			result.setData(u);
+			result.setMessage("成功");
+			result.setSuccess(true);
+		}else {
+			result.setCode("500");
+			result.setMessage("用户id或参数有误");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+	
+	
+	@ApiOperation(value = "登陆", notes = "登陆" ,response=DataResult.class,httpMethod = "POST")
+	@PostMapping("/login")
+	public DataResult<Map<String,Object>> login(
+			@RequestParam(value = "phone", required = true) @ApiParam(value = "电话",required = true) String phone,
+			@RequestParam(value = "password", required = false) @ApiParam(value = "密码",required = false) String password){
+		Map<String,Object> map = new HashMap<String,Object>();
+		DataResult<Map<String,Object>> result = new DataResult<Map<String,Object>>();
+		map.put("phone", phone);
+//		map.put("password",encodeBase64(password));
+		User u = loginMapper.getUserByPhone(map);
+		if(null!=u && u.getId()>0) {
+			Map<String,Object> dataMap = new HashMap<String,Object>();
+			u.setQrcode_name(VISIT_QRCODE_URL_PREX+u.getQrcode_name());
+			dataMap.put("user",u);
+			List<Map<String,Object>> medias = userMapper.getUserMainPage(u.getId());
+			List<Map<String,Object>> mediasHead = userMapper.getUserHead(u.getId());			//增加返回用户头像
+			if(null != mediasHead && mediasHead.size() != 0 )
+			{
+				String head = ((Map<String,Object>)mediasHead.get(0)).get("url").toString();			//用户头像
+				dataMap.put("head",head);
+			}
+			
+			dataMap.put("medias",medias);
+			result.setCode("200");
+			result.setData(dataMap);
+			result.setMessage("成功");
+			result.setSuccess(true);
+		}else {
+			if(!"".equals(u.getIs_delete()) && "1".equals(u.getIs_delete()))
+			{
+				result.setMessage("此活动仅对江铃轻卡车主开放，请上传有效行驶证照片并重新注册");
+			}else {
+				result.setMessage("电话不存在，请更换或注册");
+			}
+			result.setCode("500");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+	
+	//对密码加密
+	private String encodeBase64(String content) {
+		byte[] bytes = Base64.encodeBase64(content.getBytes());
+		return new String(bytes);
+	}
+	
+}

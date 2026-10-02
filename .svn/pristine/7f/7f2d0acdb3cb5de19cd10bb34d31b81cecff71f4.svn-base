@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.car.jl.mapper.UserMapper" >
+
+	<select id="getUserMainPage" resultType="Map" parameterType="Long">
+		select * from(
+			SELECT p.*, CASE
+					WHEN @rowtotal = p.favorite_count THEN @rownum
+					WHEN @rowtotal := p.favorite_count THEN @rownum :=@rownum + 1
+					WHEN @rowtotal = 0 THEN @rownum :=@rownum + 1
+					END AS rownum
+			FROM user_media p,
+			(SELECT @rownum := 0,@rowtotal := NULL) q
+		ORDER BY p.favorite_count desc) a where a.user_id=#{id} and type=2
+	</select>
+	
+	<select id="getUserHead" resultType="Map" parameterType="Long">
+		select * from(
+			SELECT p.*, CASE
+					WHEN @rowtotal = p.favorite_count THEN @rownum
+					WHEN @rowtotal := p.favorite_count THEN @rownum :=@rownum + 1
+					WHEN @rowtotal = 0 THEN @rownum :=@rownum + 1
+					END AS rownum
+			FROM user_media p,
+			(SELECT @rownum := 0,@rowtotal := NULL) q
+		ORDER BY p.favorite_count desc) a where a.user_id=#{id} and type=3
+	</select>
+	
+	<!-- 复制 你上面的，然后查的是全部视频  -->
+	<select id="getMoreVideosFromUser" resultType="Map" parameterType="Long">
+		select * from(
+			SELECT p.*, CASE
+					WHEN @rowtotal = p.favorite_count THEN @rownum
+					WHEN @rowtotal := p.favorite_count THEN @rownum :=@rownum + 1
+					WHEN @rowtotal = 0 THEN @rownum :=@rownum + 1
+					END AS rownum
+			FROM user_media p,
+			(SELECT @rownum := 0,@rowtotal := NULL) q
+		ORDER BY p.favorite_count desc) a
+	</select>
+	
+	<select id="getUserMoneyRecord" resultType="Map" parameterType="Long">
+		select *,DATE_FORMAT(create_time,'%Y-%m-%d') date from user_money
+		where user_id=#{uid} and type=1 order by date desc
+	</select>
+	<insert id="saveUserMoney" parameterType="Map">
+		insert into user_money (user_id,money,create_time,type) values (#{id},#{money},now(),#{type})
+	</insert>
+	<select id="getTotalMoney" parameterType="Long" resultType="Double">
+		select sum(money) from user_money where user_id=#{id}
+	</select>
+	<select id="getRankByIndustry" resultType="Map" parameterType="Map">
+		<!-- 查不同行业的所有视频 
+				select * from (select t.*, u.industry, u.`name` from  (
+			 select f.id, f.user_id,f.media_id,count(f.media_id) as total from favcount f 
+			 group by f.media_id order by total desc) t 
+			 left join user u 
+			 on u.id = t.user_id 
+			 order by industry 
+			 )t1 where t1.industry = #{industry} 
+			 -->
+			
+			select um.user_id,um.id as media_id, sum(um.favorite_count) as total ,u.industry,u.name
+			from user_media um left join user u on u.id=um.user_id 
+			where u.industry=#{industry} 
+			group by um.user_id
+			order by total desc
+			 
+	</select>
+	
+	<select id="getRank" resultType="Map">
+	<!-- 	select a.total,a.id,a.name,  
+			CASE
+			WHEN @rowtotal = a.total THEN @rownum
+			WHEN @rowtotal := a.total THEN @rownum :=@rownum + 1
+			WHEN @rowtotal = 0 THEN @rownum :=@rownum + 1
+			END AS rownum
+		from ( select IFNULL(sum(um.money),0) total,u.id,u.name
+				 from user u left join  user_money um on u.id=um.user_id 
+				 group by u.id) a,
+       		(SELECT @rownum := 0,@rowtotal := NULL) b 
+		order by a.total desc -->
+		<!-- 根据点赞量进行的排名 -->
+<!-- 				select a.total,a.id,a.name, a.favorite_count, 
+			CASE
+			WHEN @rowtotal = a.total THEN @rownum
+			WHEN @rowtotal := a.total THEN @rownum :=@rownum + 1
+			WHEN @rowtotal = 0 THEN @rownum :=@rownum + 1
+			END AS rownum
+		from (		select IFNULL(sum(um.money),0) total,u.id,u.name,m.favorite_count  favorite_count 
+				 from user u left join user_money um  on u.id=um.user_id 
+				 left join user_media m  on  m.user_id = u.id 
+				 group by u.id) a,
+       		(SELECT @rownum := 0,@rowtotal := NULL) b 
+		order by a.favorite_count desc -->
+		
+		<!-- 按视频的不同行业排序 
+			 select t.*, u.industry, u.`name` from  (
+			 select f.id, f.user_id,f.media_id,count(f.media_id) as total from favcount f 
+			 group by f.media_id order by total desc) t 
+			 left join user u 
+			 on u.id = t.user_id 
+			 order by industry 
+			 -->
+			select um.user_id,um.id as media_id, sum(um.favorite_count) as total ,u.industry,u.name
+			from user_media um left join user u on u.id=um.user_id 
+			group by um.user_id
+			order by total desc
+
+			 
+		
+	</select>
+	<select id="getUserMediaById" resultType="Map" parameterType="Long">
+		select * from user_media where user_id=#{id} and type in (3,4)
+	</select>
+	<update id="addFavorite" parameterType="Long">
+		update user_media set favorite_count=favorite_count+1 where id=#{id}
+	</update>
+	<update id="addFavoriteByInvitateUser" parameterType="Long">
+		update user_media set favorite_count=favorite_count+10 
+		where id =
+		(select * from 
+			(select id from user_media where user_id=#{uid} and type=3 
+			order by create_time desc limit 1) 
+		as tmp)
+	</update>
+	<update id="addFavoriteBy10" parameterType="Long">
+		update user_media set favorite_count=favorite_count+10 where user_id=#{uid} and type=3
+	</update>
+	
+	<!-- 每个用户每个视频最多点10个赞 -->
+	<select id="getFavCountByUMid" resultType="Long" parameterType="Map">
+		select count(1)  from favcount
+		where user_id=#{uid} and media_id=#{vid} and 
+		DATE_FORMAT(create_time,'%Y-%m-%d')=DATE_FORMAT(NOW(),'%Y-%m-%d')
+	</select>
+	<insert id="saveFavCount" parameterType="Map">
+		insert into favcount (user_id,media_id,create_time) values (#{uid},#{vid},now())
+	</insert>
+	<select id="getMediaById" resultType="Map" parameterType="Long">
+		select *  from user_media where id=#{vid}
+	</select>
+</mapper> 

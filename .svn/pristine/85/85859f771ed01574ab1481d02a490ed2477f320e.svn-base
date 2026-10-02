@@ -1,0 +1,55 @@
+package com.car.jl.vo;
+
+public class UserMedia {
+
+	public Long id;
+	public Long user_id;
+	public String url;
+	public int type;
+	public String cover;
+	public int favorite_count;
+	public String create_time;
+	public Long getId() {
+		return id;
+	}
+	public void setId(Long id) {
+		this.id = id;
+	}
+	public Long getUser_id() {
+		return user_id;
+	}
+	public void setUser_id(Long user_id) {
+		this.user_id = user_id;
+	}
+	public String getUrl() {
+		return url;
+	}
+	public void setUrl(String url) {
+		this.url = url;
+	}
+	public int getType() {
+		return type;
+	}
+	public void setType(int type) {
+		this.type = type;
+	}
+	public String getCreate_time() {
+		return create_time;
+	}
+	public void setCreate_time(String create_time) {
+		this.create_time = create_time;
+	}
+	public int getFavorite_count() {
+		return favorite_count;
+	}
+	public void setFavorite_count(int favorite_count) {
+		this.favorite_count = favorite_count;
+	}
+	public String getCover() {
+		return cover;
+	}
+	public void setCover(String cover) {
+		this.cover = cover;
+	}
+	
+}

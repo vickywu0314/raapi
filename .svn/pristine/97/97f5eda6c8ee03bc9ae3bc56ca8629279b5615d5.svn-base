@@ -1,0 +1,71 @@
+package com.car.jl.util;
+
+
+import com.alibaba.fastjson.JSONObject;
+
+import java.util.Map;
+
+import com.car.jl.util.WeiXinConstant;
+
+public class WeinXinUtil  {
+	
+    public static WinXinEntity getWinXinEntity(String url) {
+        WinXinEntity wx = new WinXinEntity();
+        String accessToken = getAccessToken();
+        String ticket = getTicket(accessToken);
+        Map<String, String> ret = Sign.sign(ticket, url);
+        wx.setTicket(ret.get("jsapi_ticket"));
+        wx.setSignature(ret.get("signature"));
+        wx.setNoncestr(ret.get("nonceStr"));
+        wx.setTimestamp(ret.get("timestamp"));
+        wx.setAppId(WeiXinConstant.WX_APP_ID);
+        return wx;
+    }
+
+    //��ȡtoken
+    private static String getAccessToken() {
+        String accessToken = "";
+
+        //���url���ӵ�ַ�Ͳ����Բ��ܱ�
+        StringBuilder sb = new StringBuilder(WeiXinConstant.WX_SHARE_TOKEN_URL);
+        sb.append("grant_type=client_credential");
+        sb.append("&appid=");
+        sb.append(WeiXinConstant.WX_APP_ID);
+        sb.append("&secret=");
+        sb.append(WeiXinConstant.WX_APP_SECRET);
+
+        try {
+            String result = HttpClientUtils.get(sb.toString(), "UTF-8");
+            JSONObject demoJson = JSONObject.parseObject(result);
+            accessToken = demoJson.getString("access_token");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return accessToken;
+    }
+
+    //��ȡticket
+    private static String getTicket(String accessToken) {
+        String ticket = null;
+
+        StringBuilder sb = new StringBuilder(WeiXinConstant.WX_SHARE_TICKET_URL);
+        sb.append("access_token=");
+        sb.append(accessToken);
+        sb.append("&type=jsapi");
+        try {
+            String result = HttpClientUtils.get(sb.toString(), "UTF-8");
+            JSONObject demoJson = JSONObject.parseObject(result);
+            ticket = demoJson.getString("ticket");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return ticket;
+    }
+
+//    public static void main(String[] args) {
+//        System.out.println(System.currentTimeMillis());
+//        WinXinEntity entity = getWinXinEntity("http://h5-stg.chaingeworld.com/BTCactive/share.html?famid=5SBI");
+//        System.out.println(entity);
+//        System.out.println(System.currentTimeMillis());
+//    }
+}

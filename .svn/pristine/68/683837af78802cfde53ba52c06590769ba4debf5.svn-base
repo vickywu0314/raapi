@@ -1,0 +1,32 @@
+package com.car.jl.mapper;
+
+import java.util.List;
+import java.util.Map;
+
+import org.apache.ibatis.annotations.Mapper;
+
+import com.car.jl.vo.User;
+import com.car.jl.vo.UserMedia;
+
+@Mapper
+public interface UserMapper {
+
+	List<Map<String, Object>> getRankByIndustry(Map<String, Object> map);
+	List<Map<String, Object>> getUserMainPage(Long id);
+	List<Map<String, Object>> getUserHead(Long id);
+	List<Map<String, Object>> getMoreVideosFromUser(Long id);
+	double getTotalMoney(Long id);
+	void saveUserMoney(Map<String, Object> map);
+	List<Map<String, Object>> getRank();
+	List<Map<String, Object>> getUserMediaById(Long id);
+	void addFavorite(Long id);
+	int addFavoriteByInvitateUser(Long uid);
+	List<Map<String, Object>> getUserMoneyRecord(Long uid);
+	void addFavoriteBy10(Long uid);
+	Long getFavCountByUMid(Map<String, Object> map);
+	void saveFavCount(Map<String, Object> map);
+	Map<String, Object> getMediaById(Long vid);
+	
+	List<Map<String, Object>> getUserDriverPhotoInfo();
+	void updateUserIsDelete(Long uid);
+}

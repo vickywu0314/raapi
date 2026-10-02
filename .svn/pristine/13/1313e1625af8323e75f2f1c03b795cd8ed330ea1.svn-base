@@ -1,0 +1,17 @@
+package com.car.jl;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.servlet.ServletComponentScan;
+
+
+@SpringBootApplication
+@ServletComponentScan(basePackages = "com.pa.fy.filter")
+public class JlApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(JlApplication.class, args);
+	}
+	
+}

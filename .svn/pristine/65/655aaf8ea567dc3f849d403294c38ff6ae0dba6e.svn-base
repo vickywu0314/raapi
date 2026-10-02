@@ -1,0 +1,113 @@
+package com.car.jl.util;
+
+import java.util.List;
+import net.sf.json.JSONObject;
+
+public class PageResult {
+
+	private Boolean success;
+	private String code;
+	private String message;
+	private Object data;
+	private Object params;
+	
+
+	public Object getParams() {
+		return params;
+	}
+
+
+	public void setParams(Object params) {
+		this.params = params;
+	}
+
+
+	public Boolean getSuccess() {
+		return success;
+	}
+
+
+	public void setSuccess(Boolean success) {
+		this.success = success;
+	}
+
+
+	public String getCode() {
+		return code;
+	}
+
+
+	public void setCode(String code) {
+		this.code = code;
+	}
+
+
+	public String getMessage() {
+		return message;
+	}
+
+
+	public void setMessage(String message) {
+		this.message = message;
+	}
+
+
+//	public void setPage(Pagination pagination) {
+//		NewPage  page = new NewPage();
+//		page.currPageIndex = pagination.getCurrPageIndex()+1;
+//		page.pageSize = pagination.getPageSize();
+//		page.recordCount = pagination.getRecordCount();
+//		page.pageCount = pagination.getPageCount();
+//		this.page = page;
+//	}
+
+
+
+	public Object getData() {
+		return data;
+	}
+
+
+	public void setData(Object data) {
+		this.data = data;
+	}
+
+
+	public class NewPage{
+		
+		private int currPageIndex;
+		private int pageSize;
+		private int recordCount;
+		private int pageCount;
+		
+		public int getCurrPageIndex() {
+			return currPageIndex;
+		}
+		public void setCurrPageIndex(int currPageIndex) {
+			this.currPageIndex = currPageIndex;
+		}
+		public int getPageSize() {
+			return pageSize;
+		}
+		public void setPageSize(int pageSize) {
+			this.pageSize = pageSize;
+		}
+		public int getRecordCount() {
+			return recordCount;
+		}
+		public void setRecordCount(int recordCount) {
+			this.recordCount = recordCount;
+		}
+		public int getPageCount() {
+			return pageCount;
+		}
+		public void setPageCount(int pageCount) {
+			this.pageCount = pageCount;
+		}
+		
+	}
+	
+	public String toJsonString() {
+		return JSONObject.fromObject(this).toString();
+	}
+}

@@ -1,0 +1,40 @@
+package com.car.jl.util;
+
+public class WeiXinConstant {
+
+    /** ����ƽ̨ ΢��AppId */
+    public static final String WX_APP_ID = "wxbe08d5dc9534b1ba";			//平安公众号
+//	 public static final String WX_APP_ID = "wxb765798bbf504991";
+
+    /** ΢��secret */
+    public static final String WX_APP_SECRET = "0f29922fdd8f65c3dcce615ed1de04de";   
+//    public static final String WX_APP_SECRET = "8780d37acdfe71d4623ca67c4c634d39";
+    
+
+    /** ����ƽ̨ ΢��WEB ID */
+    public static final String WX_WEB_ID = "wx870c932ba5aba764";
+
+    /** ΢��WEB SECRET */
+    public static final String WX_WEB_SECRET = "24157bd4e54b032db3a1309f301264e6";
+
+    /** ��ȡtoken�����ַ */
+    public static final String WX_SHARE_TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token?";
+
+    /** ��ȡticket�����ַ */
+    public static final String WX_SHARE_TICKET_URL = "https://api.weixin.qq.com/cgi-bin/ticket/getticket?";
+
+    /** ����΢�ŵ�¼ */
+    public static final String WX_QR_CONNECT_URL = "https://open.weixin.qq.com/connect/qrconnect?";
+
+    /** ͨ��code��ȡaccess_token */
+    public static final String WX_ACCESS_TOKEN_URL = "https://api.weixin.qq.com/sns/oauth2/access_token?";
+
+    /** ��ȡ�û�������Ϣ��UnionID���ƣ� */
+    public static final String WX_USER_INFO = "https://api.weixin.qq.com/sns/userinfo?";
+
+    public static final String WEIXIN_SIGNAL = "weixin";
+
+    public static final int APP_TYPE = 1;
+
+    public static final int WEB_TYPE = 2;
+}

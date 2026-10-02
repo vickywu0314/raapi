@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="doraemon.gaoke.mapper.NameCardMapper" >
+
+
+	<insert id="saveNameCard" parameterType="doraemon.gaoke.vo.NameCardVo">
+      <selectKey keyProperty="id" resultType="long" order="AFTER">
+            SELECT LAST_INSERT_ID() AS id
+        </selectKey>
+		insert into namecard
+		(headUrl,name,phone,company,address,email,experience,baodanjianshu,baozhang,maxfee,year1,month1,chengjiu11,chengjiu12,chengjiu13,year2,month2,chengjiu21,chengjiu22,chengjiu23,year3,month3,chengjiu31,chengjiu32,chengjiu33,ncType,createDate,shenheStatus,reason)
+		values
+		(#{headUrl},#{name},#{phone},#{company},#{address},#{email},#{experience},#{baoDanJianShu},#{baoZhang},#{maxFee},#{year1},#{month1},#{chengJiu11},#{chengJiu12},#{chengJiu13},#{year2},#{month2},#{chengJiu21},#{chengJiu22},#{chengJiu23},#{year3},#{month3},#{chengJiu31},#{chengJiu32},#{chengJiu33},#{ncType},now(),#{shenheStatus},#{reason})
+    </insert> 
+    
+
+	<select id="queryNamecard" resultType="Map" parameterType="Map">
+		select * from namecard where phone=#{phone} 
+		<if test="ncType != null and ncType != ''">
+    	  and ncType=#{ncType} 
+    	</if>
+	</select>
+	
+	<select id="queryNcState" resultType="Map" parameterType="Map">
+		select id,name,ncType,shenheStatus,reason from namecard where phone=#{phone} 
+	</select>
+	
+	  <update id="updateNameCard" parameterType="doraemon.gaoke.vo.NameCardVo">
+    	update namecard set  createDate= now() 
+    	<if test="headUrl != null and headUrl != ''">
+    	, headUrl=#{headUrl} 
+    	</if>
+    	<if test="name != null and name != ''">
+    	 , name=#{name} 
+    	</if>
+    	<if test="phone != null and phone != ''">
+    	,  phone=#{phone} 
+    	</if>
+    	<if test="company != null and company != ''">
+    	,  company=#{company} 
+    	</if>
+    	<if test="address != null and address != ''">
+    	,  address=#{address} 
+    	</if>
+    	<if test="email != null and email != ''">
+    	,  email=#{email} 
+    	</if>
+    	<if test="experience != null and experience != ''">
+    	 , experience=#{experience} 
+    	</if>
+    	<if test="baoDanJianShu != null and baoDanJianShu != ''">
+    	,  baodanjianshu=#{baoDanJianShu} 
+    	</if> 
+    	<if test="baoZhang != null and baoZhang != ''">
+    	,  baozhang=#{baoZhang} 
+    	</if>
+    	<if test="maxFee != null and maxFee != ''">
+    	,  maxfee=#{maxFee} 
+    	</if>
+    	<if test="year1 != null">
+    	,  year1=#{year1} 
+    	</if>
+    	<if test="month1 != null">
+    	,  month1=#{month1} 
+    	</if>
+    	 , chengjiu11=#{chengJiu11} 
+    	<if test="chengJiu12 != null and chengJiu12 != ''">
+    	,  chengjiu12=#{chengJiu12} 
+    	</if>
+    	<if test="chengJiu13 != null and chengJiu13 != ''">
+    	,  chengjiu13=#{chengJiu13} 
+    	</if>
+    	<if test="year2 != null">
+    	,  year2=#{year2} 
+    	</if>
+    	<if test="month2 != null">
+    	,  month2=#{month2} 
+    	</if>
+    	,  chengjiu21=#{chengJiu21} 
+    	<if test="chengJiu22 != null">
+    	 , chengjiu22=#{chengJiu22} 
+    	</if>
+    	<if test="chengJiu23 != null and chengJiu23 != ''">
+    	,  chengjiu23=#{chengJiu23} 
+    	</if>
+    	<if test="year3 != null">
+    	,  year3=#{year3} 
+    	</if>
+    	<if test="month3 != null">
+    	,  month3=#{month3} 
+    	</if>
+    	,  chengjiu31=#{chengJiu31} 
+    	<if test="chengJiu32 != null and chengJiu32 != ''">
+    	,  chengjiu32=#{chengJiu32} 
+    	</if>
+    	<if test="chengJiu33 != null and chengJiu33 != ''">
+    	,  chengjiu33=#{chengJiu33} 
+    	</if>
+    	<if test="ncType != null and ncType != ''">
+    	,  ncType=#{ncType} 
+    	</if>
+    	<if test="shenheStatus != null and shenheStatus != ''">
+    	,  shenheStatus=#{shenheStatus} 
+    	</if>
+    	<if test="reason != null and reason != ''">
+    	,  reason=#{reason} 
+    	</if>
+    	where id=#{id}
+    </update>
+	
+	 <!--
+	<select id="getUserById" resultType="com.car.jl.vo.User" parameterType="Long">
+		select * from user where id=#{id} and is_delete = 0
+	</select>
+	<select id="getUserByCode" resultType="com.car.jl.vo.User" parameterType="String">
+		select * from user where invitation_code=#{code} and is_delete = 0
+	</select>
+	<insert id="saveUserMedia" parameterType="List">
+		insert into user_media (user_id,url,type,cover,create_time) values
+		<foreach item="item" collection="list" separator="," close=";"> 
+        	(#{item.user_id},#{item.url},#{item.type},#{item.cover},now())   
+        </foreach>
+    </insert>
+    <delete id="delUserMedia" parameterType="com.car.jl.vo.UserMedia">
+    	delete from user_media where user_id=#{user_id} and url=#{url}
+    </delete>
+    <update id="updateIndustry" parameterType="com.car.jl.vo.User">
+    	update user set industry=#{industry} where id=#{id}
+    </update>
+     <update id="updateUserQrcode" parameterType="com.car.jl.vo.User">
+    	update user set qrcode_name=#{qrcode_name} where id=#{id}
+    </update> -->
+</mapper>

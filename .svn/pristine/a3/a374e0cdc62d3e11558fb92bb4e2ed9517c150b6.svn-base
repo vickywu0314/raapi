@@ -1,0 +1,124 @@
+package com.car.jl.util;
+
+
+import java.io.Serializable;
+
+public class HttpResponse<T> implements Serializable {
+
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+
+	private Integer status;
+
+    private int errcode;
+    
+    //private int code = 1;
+
+    private String msg = "";
+
+    private T data;
+    
+    private boolean success=true;
+    
+    public HttpResponse() {
+        super();
+    }
+
+    public HttpResponse(Integer status, Object data, String msg) {
+        this.status = status;
+        this.data = (T) data;
+        this.msg = msg;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
+    }
+    
+	public int getErrcode() {
+		return errcode;
+	}
+
+	public void setErrcode(int errcode) {
+		this.errcode = errcode;
+	}
+
+	public boolean isSuccess() {
+		return success;
+	}
+
+	public void setSuccess(boolean success) {
+		this.success = success;
+	}
+
+	public String getMsg() {
+        return msg;
+    }
+
+    public void setMsg(String msg) {
+        this.msg = msg;
+    }
+
+	public T getData() {
+		return data;
+	}
+
+	public void setData(T data) {
+		this.data = data;
+	}
+
+	public static HttpResponse success(Object data){
+		HttpResponse ret=	new HttpResponse();
+		ret.setData(data);
+		return ret;	
+	}
+	public static HttpResponse success(int errorCode,String msg,Object data){
+		HttpResponse ret=	new HttpResponse();
+		ret.setErrcode(errorCode);
+		ret.setData(data);
+		ret.setMsg(msg);
+		ret.setSuccess(true);
+		return ret;	
+	}
+	public static HttpResponse fail(int errorCode,String msg,Object data){
+		HttpResponse ret=	new HttpResponse();
+		ret.setErrcode(errorCode);
+		ret.setData(data);
+		ret.setMsg(msg);
+		ret.setSuccess(false);
+		return ret;	
+	}
+	public static HttpResponse fail(String msg){
+		HttpResponse ret=	new HttpResponse();
+		ret.setSuccess(false);
+		ret.setMsg(msg);
+		return ret;	
+	}
+	
+	public static HttpResponse fail(String msg,int errorCode){
+		HttpResponse ret=	new HttpResponse();
+		ret.setErrcode(errorCode);
+		ret.setMsg(msg);
+		ret.setSuccess(false);
+        ret.setStatus(0);
+		return ret;	
+	}
+	
+	public static HttpResponse successSetMsg(String msg){
+		HttpResponse ret=	new HttpResponse();
+		ret.setSuccess(true);
+		ret.setMsg(msg);
+        ret.setStatus(1);
+		return ret;	
+	}
+	
+	public static HttpResponse success(){
+		return successSetMsg("");	
+	}
+	
+}
