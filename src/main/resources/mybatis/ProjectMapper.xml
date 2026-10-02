@@ -17,7 +17,7 @@
 		缺失：M_DAS28 / M_BASELINE_LAB / M_COMORBIDITY / M_MEDICATION
 		逻辑冲突：L_DATE_ORDER / L_ASSESSMENT
 		异常值、随访缺失为二期规则，不在此处。
-		数据补齐后规则不再命中 = 自动关闭；被标记为已处理（ra_qc_issue_handle.handle_status = 1）的不计入。
+		全部从业务表实时计算：数据补齐后规则不再命中，问题即自动关闭。
 		数据质控页请复用此片段，保证两页数字一致。
 	-->
 	<sql id="pendingQcIssues">
@@ -63,8 +63,6 @@
 			                        OR IFNULL(COALESCE(p.drink_count_by_day, p.drinkCountByDay), 0) &gt; 0))
 			   OR COALESCE(p.acr_eular_score, p.acrEularScore) NOT BETWEEN 0 AND 10
 		) q
-		WHERE NOT EXISTS (SELECT 1 FROM ra_qc_issue_handle h
-		                  WHERE h.patient_id = q.patient_id AND h.rule_code = q.rule_code AND h.handle_status = 1)
 	</sql>
 
 	<!-- 已入组患者：研究库全部患者（含已脱落），与医生无关 -->
