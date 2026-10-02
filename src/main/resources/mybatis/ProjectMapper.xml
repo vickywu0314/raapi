@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<!--
+	RA 项目总览（projectsData）相关查询
+	表：patient_basic_info 患者 / patient_follow_up_history 随诊 / patient_relation_doctor 医生患者关系
+	说明：老表里同一字段有下划线和驼峰两份（如 happen_date / happenDate），这里统一用 COALESCE 取有值的那一份。
+-->
+<mapper namespace="com.wenwen.mapper.ProjectMapper" >
+
+	<!-- 有效患者（未脱落）：没有任何一条医患关系被标记为脱落 miss=1 -->
+	<sql id="activePatientCond">
+		NOT EXISTS (SELECT 1 FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1)
+	</sql>
+
+	<!--
+		待处理质控问题（一期规则）：每行 = 一个患者命中的一条规则
+		缺失：M_DAS28 / M_BASELINE_LAB / M_COMORBIDITY / M_MEDICATION
+		逻辑冲突：L_DATE_ORDER / L_ASSESSMENT
+		异常值、随访缺失为二期规则，不在此处。
+		数据补齐后规则不再命中 = 自动关闭；被标记为已处理（ra_qc_issue_handle.handle_status = 1）的不计入。
+		数据质控页请复用此片段，保证两页数字一致。
+	-->
+	<sql id="pendingQcIssues">
+		SELECT q.patient_id, q.rule_code FROM (
+			<!-- 缺 DAS28 评分：所有随访的病情评估里都没有 DAS28 -->
+			SELECT p.id AS patient_id, 'M_DAS28' AS rule_code FROM patient_basic_info p
+			WHERE NOT EXISTS (SELECT 1 FROM patient_follow_up_history f
+			                  WHERE f.patient_basic_info_id = p.id AND f.bqpg LIKE '%DAS28%')
+			UNION ALL
+			<!-- 缺基线检验：首次随访的辅助检查为空（没有随访也算缺） -->
+			SELECT p.id, 'M_BASELINE_LAB' FROM patient_basic_info p
+			WHERE NOT EXISTS (
+				SELECT 1 FROM patient_follow_up_history f
+				WHERE f.patient_basic_info_id = p.id
+				  AND COALESCE(f.follow_up_date, f.followUpDate) = (
+				      SELECT MIN(COALESCE(f2.follow_up_date, f2.followUpDate))
+				      FROM patient_follow_up_history f2 WHERE f2.patient_basic_info_id = p.id)
+				  AND IFNULL(TRIM(f.fzjc), '') NOT IN ('', '{}', '[]', 'null'))
+			UNION ALL
+			<!-- 缺合并疾病记录：既往史为空 -->
+			SELECT p.id, 'M_COMORBIDITY' FROM patient_basic_info p
+			WHERE IFNULL(TRIM(p.jws), '') IN ('', '{}', '[]', 'null')
+			UNION ALL
+			<!-- 缺用药史：所有随访的治疗方案都为空 -->
+			SELECT p.id, 'M_MEDICATION' FROM patient_basic_info p
+			WHERE NOT EXISTS (SELECT 1 FROM patient_follow_up_history f
+			                  WHERE f.patient_basic_info_id = p.id
+			                    AND IFNULL(TRIM(f.zlfa), '') NOT IN ('', '{}', '[]', 'null'))
+			UNION ALL
+			<!-- 日期先后矛盾：发病晚于确诊；随访早于发病；随访日期在未来 -->
+			SELECT p.id, 'L_DATE_ORDER' FROM patient_basic_info p
+			WHERE COALESCE(p.happen_date, p.happenDate) &gt; COALESCE(p.confirm_date, p.confirmDate)
+			   OR EXISTS (SELECT 1 FROM patient_follow_up_history f
+			              WHERE f.patient_basic_info_id = p.id
+			                AND (COALESCE(f.follow_up_date, f.followUpDate) &lt; COALESCE(p.happen_date, p.happenDate)
+			                     OR COALESCE(f.follow_up_date, f.followUpDate) &gt; NOW()))
+			UNION ALL
+			<!-- 评估项矛盾：不吸烟却有吸烟年数/支数；不饮酒却有饮酒年数/量；ACR/EULAR 评分超出 0~10 -->
+			SELECT p.id, 'L_ASSESSMENT' FROM patient_basic_info p
+			WHERE (p.smoke = 0 AND (IFNULL(COALESCE(p.smoke_years, p.smokeYears), 0) &gt; 0
+			                        OR IFNULL(COALESCE(p.smoke_count_by_day, p.smokeCountByDay), 0) &gt; 0))
+			   OR (p.drink = 0 AND (IFNULL(COALESCE(p.drink_years, p.drinkYears), 0) &gt; 0
+			                        OR IFNULL(COALESCE(p.drink_count_by_day, p.drinkCountByDay), 0) &gt; 0))
+			   OR COALESCE(p.acr_eular_score, p.acrEularScore) NOT BETWEEN 0 AND 10
+		) q
+		WHERE NOT EXISTS (SELECT 1 FROM ra_qc_issue_handle h
+		                  WHERE h.patient_id = q.patient_id AND h.rule_code = q.rule_code AND h.handle_status = 1)
+	</sql>
+
+	<!-- 已入组患者：研究库全部患者（含已脱落），与医生无关 -->
+	<select id="countAllPatients" resultType="int">
+		SELECT COUNT(*) FROM patient_basic_info
+	</select>
+
+	<!-- 跟踪患者分子：目前仍有效（未脱落）的患者 -->
+	<select id="countActivePatients" resultType="int">
+		SELECT COUNT(*) FROM patient_basic_info p WHERE <include refid="activePatientCond"/>
+	</select>
+
+	<!--
+		计划随访完成率：最近一个随访周期 [NOW()-cycleDays, NOW()] 内
+		dueCount  = 应随访：有效且在窗口开始前已入组的患者
+		doneCount = 已随访：其中窗口内至少有一次随访记录的患者
+	-->
+	<select id="countFollowUpPlan" resultType="Map" parameterType="Map">
+		SELECT COUNT(*) AS dueCount,
+		       IFNULL(SUM(CASE WHEN EXISTS (
+		           SELECT 1 FROM patient_follow_up_history f
+		           WHERE f.patient_basic_info_id = p.id
+		             AND COALESCE(f.follow_up_date, f.followUpDate) &gt;= DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+		             AND COALESCE(f.follow_up_date, f.followUpDate) &lt;= NOW()
+		       ) THEN 1 ELSE 0 END), 0) AS doneCount
+		FROM patient_basic_info p
+		WHERE <include refid="activePatientCond"/>
+		  AND COALESCE(p.create_date, p.createDate) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+	</select>
+
+	<!-- 待随访患者：有效患者中，最后一次随访（无随访则取入组日期）距今已超过一个随访周期 -->
+	<select id="countPendingFollowUp" resultType="int" parameterType="Map">
+		SELECT COUNT(*) FROM patient_basic_info p
+		WHERE <include refid="activePatientCond"/>
+		  AND COALESCE(
+		        (SELECT MAX(COALESCE(f.follow_up_date, f.followUpDate)) FROM patient_follow_up_history f
+		         WHERE f.patient_basic_info_id = p.id),
+		        COALESCE(p.create_date, p.createDate)
+		      ) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+	</select>
+
+	<!-- 待处理质控问题：issueCount = 问题条数；patientCount = 有待处理问题的患者数（去重） -->
+	<select id="countPendingQc" resultType="Map">
+		SELECT COUNT(*) AS issueCount, COUNT(DISTINCT t.patient_id) AS patientCount
+		FROM (<include refid="pendingQcIssues"/>) t
+	</select>
+
+	<!-- 研究级可用记录：随访日期、病情评估、辅助检查、治疗方案均不缺失的随访记录条数 -->
+	<select id="countUsableRecords" resultType="int">
+		SELECT COUNT(*) FROM patient_follow_up_history f
+		WHERE COALESCE(f.follow_up_date, f.followUpDate) IS NOT NULL
+		  AND IFNULL(TRIM(f.bqpg), '') NOT IN ('', '{}', '[]', 'null')
+		  AND IFNULL(TRIM(f.fzjc), '') NOT IN ('', '{}', '[]', 'null')
+		  AND IFNULL(TRIM(f.zlfa), '') NOT IN ('', '{}', '[]', 'null')
+	</select>
+
+</mapper>
