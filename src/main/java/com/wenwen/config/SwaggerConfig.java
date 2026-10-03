@@ -13,7 +13,7 @@ import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
 /**
  * Swagger 接口文档
- * 页面：http://localhost:8065/gk/swagger-ui.html
+ * 页面：http://localhost:8065/swagger-ui.html
  */
 @Configuration
 @EnableSwagger2

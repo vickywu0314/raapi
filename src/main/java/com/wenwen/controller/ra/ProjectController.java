@@ -20,11 +20,8 @@ import io.swagger.annotations.ApiParam;
 @Api(description = "项目总览")
 @CrossOrigin
 @RestController
-@RequestMapping(value = "/project")
+@RequestMapping(value = "/api/ra/project")
 public class ProjectController {
-
-	/** 病种：RA 类风湿 */
-	private static final int DISEASE_RA = 1;
 
 	@Autowired
 	private ProjectService projectService;
@@ -32,16 +29,9 @@ public class ProjectController {
 	@ApiOperation(value = "项目总览数据", notes = "项目总览页顶部指标与研究执行概览", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/projectsData")
 	public DataResult<ProjectsDataVo> projectsData(
-			@RequestParam(value = "ra", required = true) @ApiParam(value = "病种，1=RA类风湿", required = true) Integer ra,
 			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID（总览为项目级统计，不按医生过滤）", required = true) Long doctorId,
 			HttpServletRequest request) {
 		DataResult<ProjectsDataVo> result = new DataResult<ProjectsDataVo>();
-		if (ra == null || ra != DISEASE_RA) {
-			result.setCode("500");
-			result.setMessage("暂不支持该病种");
-			result.setSuccess(false);
-			return result;
-		}
 		try {
 			result.setCode("200");
 			result.setData(projectService.getProjectsData());

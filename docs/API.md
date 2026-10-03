@@ -4,9 +4,10 @@
 
 | 项 | 值 |
 |---|---|
-| 本地地址 | `http://localhost:8065/gk` （端口 `server.port`，前缀 `server.servlet.context-path`） |
+| 本地地址 | `http://localhost:8065`（端口 `server.port`） |
+| 路径规则 | `/api/<病种>/<业务>/<接口名>`，如 `/api/ra/project/projectsData` |
 | 请求方式 | 所有接口均为 `POST`，参数放在 URL 查询串或 `application/x-www-form-urlencoded` 表单里 |
-| 在线文档 | 启动后访问 `http://localhost:8065/gk/swagger-ui.html`，可直接在页面上调接口 |
+| 在线文档 | 启动后访问 `http://localhost:8065/swagger-ui.html`，可直接在页面上调接口 |
 
 ### 统一返回结构 `DataResult`
 
@@ -15,7 +16,7 @@
 | 字段 | 类型 | 中文含义 |
 |---|---|---|
 | `success` | Boolean | 是否成功：`true` 成功，`false` 失败 |
-| `code` | String | 状态码：`"200"` 成功，`"500"` 失败 |
+| `code` | String | 状态码：`"200"` 成功，`"400"` 参数错误，`"500"` 服务端错误 |
 | `message` | String | 提示信息，失败时是原因，前端可直接展示 |
 | `data` | Object | 业务数据（单个对象），各接口不同，见下文 |
 | `dataList` | Array | 业务数据（列表），列表类接口使用；不用时为 `null` |
@@ -34,20 +35,19 @@
 | 项 | 值 |
 |---|---|
 | 页面 | 项目总览 |
-| 地址 | `POST /gk/project/projectsData` |
+| 地址 | `POST /api/ra/project/projectsData` |
 | 代码 | `ProjectController.projectsData` → `ProjectServiceImpl.getProjectsData` → `ProjectMapper.xml` |
 
 #### 入参
 
 | 参数 | 类型 | 必填 | 中文含义 | 示例 |
 |---|---|---|---|---|
-| `ra` | Integer | 是 | 病种。`1` = RA 类风湿；目前只支持 1，传其它值返回“暂不支持该病种” | `1` |
 | `doctorId` | Long | 是 | 当前登录医生 ID。总览是项目级统计，**目前不按医生过滤**，仅作接收 | `5065` |
 
 #### 调用示例
 
 ```bash
-curl -X POST "http://localhost:8065/gk/project/projectsData?ra=1&doctorId=5065"
+curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 ```
 
 #### 出参（`data` 字段）
@@ -121,8 +121,130 @@ curl -X POST "http://localhost:8065/gk/project/projectsData?ra=1&doctorId=5065"
 
 | 场景 | `code` | `message` |
 |---|---|---|
-| `ra` 不是 1 | `500` | 暂不支持该病种 |
 | 数据库查询出错 | `500` | 获取项目总览数据失败（详细错误看后台日志） |
+
+---
+
+## 二、患者列表页
+
+### 2.1 患者列表
+
+列表、模糊查询、筛选、分页、页头汇总是同一个接口。**只返回该医生名下的患者**（`patient_relation_doctor.doctor_id`）。
+
+| 项 | 值 |
+|---|---|
+| 页面 | 患者管理 → 患者列表（`patients.html`） |
+| 地址 | `POST /api/ra/patient/patientsList` |
+| 代码 | `PatientController.patientsList` → `PatientServiceImpl.listPatients` → `PatientMapper.xml` |
+| 依赖 | 先执行 `sql/20261003_patient_list.sql`、`sql/20261003_backfill_study_no.sql` |
+
+#### 入参
+
+| 参数 | 类型 | 必填 | 中文含义 | 示例 |
+|---|---|---|---|---|
+| `doctorId` | Long | 是 | 当前登录医生 ID，只返回其名下患者 | `5065` |
+| `keyword` | String | 否 | 模糊查询：姓名 / ID号 / 研究编号，包含匹配，不区分大小写 | `林` |
+| `followStatus` | String | 否 | 随访状态：`active` 随访中 / `soon` 近期需随访 / `overdue` 随访逾期 / `pending_first` 待首次随访 / `withdrawn` 已脱落；不传 = 全部 | `soon` |
+| `completeness` | String | 否 | 数据完整性：`complete` 数据完整 / `missing` 数据缺失；不传 = 全部 | `missing` |
+| `page` | int | 否 | 页码，从 1 开始，默认 1 | `1` |
+| `size` | int | 否 | 每页条数，默认 20，最大 200；页面下拉 8 / 16 / 32 | `8` |
+
+排序：最近随访日期倒序，无随访的排最后。
+
+#### 调用示例
+
+```bash
+curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
+  --data-urlencode doctorId=5065 --data-urlencode keyword=林 --data-urlencode page=1 --data-urlencode size=8
+```
+
+#### 出参（`data` 字段）
+
+**页头 / 分页**
+
+| 字段 | 类型 | 页面位置 / 中文含义 | 计算口径 |
+|---|---|---|---|
+| `totalPatients` | int | 页头「共 N 位患者已建档」 | 该医生名下患者数（含已脱落），不受筛选影响 |
+| `incompleteCount` | int | 页头「N 位资料待补全」 | `incomplete = true` 的人数，不受筛选影响；点击后按 `completeness=missing` 筛选 |
+| `total` | int | 「共 N 条」与分页 | 符合当前筛选条件的条数 |
+| `page` / `size` | int | 当前页码 / 每页条数 | — |
+| `items` | Array | 当前页患者，字段见下表 | — |
+
+**`items[]` 每一行**
+
+| 字段 | 类型 | 页面列 / 中文含义 | 计算口径 |
+|---|---|---|---|
+| `patientId` | Long | 患者信息 · ID号 | `patient_basic_info.id` |
+| `name` | String | 患者信息 · 姓名 | `name` |
+| `gender` | Integer | 性别编码 | `gender`：1 男 / 2 女 |
+| `sex` | String | 患者信息 · 性别 | 男 / 女；其它值为 `null` |
+| `birthYear` | Integer | 患者信息 · 出生年份 | 表中无出生日期：建档年份（`create_date`）− 建档时年龄（`age`）；`age` 为空则 `null` |
+| `age` | Integer | 患者信息 · （xx 岁） | 今年 − `birthYear` |
+| `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
+| `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
+| `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
+| `subtype` | String | 疾病资料 · 分型 | 一期无结构化数据，固定 `null`（显示「分型未提供」） |
+| `latestDas28` | number | 疾病资料 · DAS28-CRP | 一期无结构化数据，固定 `null`（显示「DAS28-CRP 未提供」） |
+| `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
+| `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
+| `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
+| `comorbidities[].status` / `coreItems` / `treatment` | — | 弹窗：当前情况 / 核心指标 / 治疗 | 一期无数据来源，`null` |
+| `comorbidities[].linkedStudyReady` | boolean | 对应病种库是否已接入 | 一期均为 `false` |
+| `lastVisitDate` | String | 最近随访 · 日期 | 随访记录最大 `follow_up_date`，`yyyy-MM-dd`；无则 `null`（显示「暂无访视」） |
+| `nextDueDate` | String | 下次应随访日期 | `lastVisitDate` + `followCycle` 个月；已脱落或无随访为 `null` |
+| `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（任一医患关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于今天 → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
+| `followStatusLabel` | String | 随访状态 · 标签文字 | 随访中 / 近期需随访 / 随访逾期 / 待首次随访 / 已脱落 |
+| `incomplete` | boolean | 患者信息 ·「待补全」标签 | 命中任一「缺失」类质控规则（`M_DAS28` / `M_BASELINE_LAB` / `M_COMORBIDITY` / `M_MEDICATION`，与项目总览同一套） |
+| `missingItems` | String[] | 缺失项 | 如 `["缺 DAS28 评分", "缺用药史"]` |
+
+#### 返回示例
+
+```json
+{
+    "success": true,
+    "code": "200",
+    "message": "成功",
+    "data": {
+        "totalPatients": 5,
+        "incompleteCount": 2,
+        "total": 5,
+        "page": 1,
+        "size": 8,
+        "items": [
+            {
+                "patientId": 1,
+                "studyNo": "RA-20240301-00001",
+                "name": "林书豪",
+                "gender": 1,
+                "sex": "男",
+                "birthYear": 1964,
+                "age": 62,
+                "visitCount": 1,
+                "followCycle": 12,
+                "subtype": null,
+                "latestDas28": null,
+                "lastVisitDate": "2026-09-03",
+                "nextDueDate": "2027-09-03",
+                "followStatus": "active",
+                "followStatusLabel": "随访中",
+                "incomplete": false,
+                "missingItems": [],
+                "comorbidities": [
+                    { "code": "FM", "name": "纤维肌痛", "sinceYear": 2019, "status": null, "coreItems": null, "treatment": null, "linkedStudyReady": false }
+                ]
+            }
+        ]
+    }
+}
+```
+
+#### 失败返回
+
+| 场景 | `code` | `message` |
+|---|---|---|
+| `followStatus` / `completeness` 取值不对 | `400` | 随访状态不正确：xxx / 数据完整性不正确：xxx |
+| `page` < 1 或 `size` 不在 1~200 | `400` | 页码从 1 开始 / 每页条数应为 1~200 |
+| 数据库查询出错 | `500` | 获取患者列表失败（详细错误看后台日志） |
 
 ---
 
