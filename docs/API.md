@@ -294,7 +294,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `visits[]` | 随访时间线（最近的在前） | `patient_follow_up_history` |
 | `visits[].visitId` / `visitDate` | 随访 ID / 日期 | `id` / `follow_up_date` |
 | `visits[].visitType` / `baseline` | 访视类型 | **时间最早的一次为「基线访视」**，其余为「常规随访」 |
-| `visits[].doctorId` | 记录医生 | `doctor_id` |
+| `visits[].doctorId` / `doctorName` | 记录医生 ID / 姓名 | `doctor_id`；姓名取 `user.name`，无则 `null`（页面显示 ID） |
 
 ### 3.2 查看身份证号明文
 

@@ -16,6 +16,8 @@ public class VisitItemVo {
 	private boolean baseline;
 	@ApiModelProperty("记录医生ID")
 	private Long doctorId;
+	@ApiModelProperty("记录医生姓名（user.name）；无则 null")
+	private String doctorName;
 
 	public Long getVisitId() {
 		return visitId;
@@ -46,5 +48,11 @@ public class VisitItemVo {
 	}
 	public void setDoctorId(Long doctorId) {
 		this.doctorId = doctorId;
+	}
+	public String getDoctorName() {
+		return doctorName;
+	}
+	public void setDoctorName(String doctorName) {
+		this.doctorName = doctorName;
 	}
 }

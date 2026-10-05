@@ -122,12 +122,14 @@
 		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId})
 	</select>
 
-	<!-- 随访时间线：最近的在前；无日期的排最后 -->
+	<!-- 随访时间线：最近的在前；无日期的排最后；记录医生姓名取 user.name -->
 	<select id="listVisits" resultType="Map" parameterType="Map">
 		SELECT f.id AS visitId,
 		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
-		       f.doctor_id AS doctorId
+		       f.doctor_id AS doctorId,
+		       u.name AS doctorName
 		FROM patient_follow_up_history f
+		LEFT JOIN `user` u ON u.id = f.doctor_id
 		WHERE f.patient_basic_info_id = #{patientId}
 		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
 		         COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC

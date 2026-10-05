@@ -186,6 +186,7 @@ public class PatientServiceImpl implements PatientService {
 			vi.setVisitId(toLong(v.get("visitId")));
 			vi.setVisitDate((String) v.get("visitDate"));
 			vi.setDoctorId(toLong(v.get("doctorId")));
+			vi.setDoctorName(blankToNull((String) v.get("doctorName")));
 			visits.add(vi);
 			if (baseline == null || isEarlier(vi, baseline)) {
 				baseline = vi;

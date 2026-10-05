@@ -6,7 +6,6 @@
 |---|---|---|---|
 | 1 | 婚史 `patient_basic_info.marry`（int）每个数字代表什么？可先查：`SELECT marry, COUNT(*) FROM patient_basic_info GROUP BY marry;` | 详情页显示「代码 N」 | `PatientServiceImpl` 补编码 → 中文 |
 | 2 | 吸烟 `patient_basic_info.smoke`（int）取值含义？是否 0 = 不吸烟、其它 = 吸烟？`smoke_stop` 是否表示已戒烟？ | 0 显示「不吸烟」，其它显示「吸烟 N 年 · 每日 N 支」 | `PatientServiceImpl.smokingText` |
-| 3 | `user` 表里医生姓名是哪个字段？可执行 `SHOW CREATE TABLE user;` 查看 | 随访时间线显示「记录医生 ID N」 | `PatientMapper.xml` 的 `listVisits` 关联 `user` 取姓名 |
 
 ## 上线前
 
