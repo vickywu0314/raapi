@@ -5,7 +5,7 @@
 | # | 问题 | 现在的做法 | 确认后改哪里 |
 |---|---|---|---|
 | 1 | 婚史 `patient_basic_info.marry`（int）每个数字代表什么？可先查：`SELECT marry, COUNT(*) FROM patient_basic_info GROUP BY marry;` | 详情页显示「代码 N」 | `PatientServiceImpl` 补编码 → 中文 |
-| 2 | 吸烟 `patient_basic_info.smoke`（int）取值含义？是否 0 = 不吸烟、其它 = 吸烟？`smoke_stop` 是否表示已戒烟？ | 0 显示「不吸烟」，其它显示「吸烟 N 年 · 每日 N 支」 | `PatientServiceImpl.smokingText` |
+| 2 | 吸烟：`smoke` 0 = 不吸烟（**已确认**）。还剩：`smoke_stop` 是否表示已戒烟？取值含义？ | 0 显示「不吸烟」，其它显示「吸烟 N 年 · 每日 N 支」，未显示是否戒烟 | `PatientServiceImpl.smokingText` |
 
 ## 上线前
 

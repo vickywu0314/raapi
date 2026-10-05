@@ -276,7 +276,7 @@ public class PatientServiceImpl implements PatientService {
 		}
 	}
 
-	/** 吸烟史：smoke=0 不吸烟；其它值视为吸烟，附年数、每日支数 */
+	/** 吸烟史：smoke=0 不吸烟（已与业务确认）；其它值视为吸烟，附年数、每日支数 */
 	private static String smokingText(Map<String, Object> basic) {
 		Integer smoke = toInteger(basic.get("smoke"));
 		if (smoke == null) {
