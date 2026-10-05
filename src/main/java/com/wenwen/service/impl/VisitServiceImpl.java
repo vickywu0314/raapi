@@ -1,6 +1,7 @@
 package com.wenwen.service.impl;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,18 @@ public class VisitServiceImpl implements VisitService {
 		{ "adverse", "不良反应", "blsj" },
 		{ "caseRecord", "随诊病例", "bblsj" },
 	};
+
+	/**
+	 * 模块 JSON 里已知字段的中文名（未列出的字段按原名显示）。
+	 * 不良反应 blsj 已确认格式：{"event":"无","startDate":"2018-12-01","endDate":"2019-01-01","badCaseList":["咳嗽"]}
+	 */
+	private static final Map<String, String> ITEM_LABELS = new HashMap<String, String>();
+	static {
+		ITEM_LABELS.put("event", "本次是否发生不良反应");
+		ITEM_LABELS.put("badCaseList", "不良反应名称");
+		ITEM_LABELS.put("startDate", "发生日期");
+		ITEM_LABELS.put("endDate", "结束日期");
+	}
 
 	@Autowired
 	private VisitMapper visitMapper;
@@ -104,14 +117,33 @@ public class VisitServiceImpl implements VisitService {
 			mod.setRecordDate(blankToNull(json.getString("date")));
 		} else {
 			for (Map.Entry<String, Object> e : json.entrySet()) {
-				String v = e.getValue() == null ? null : blankToNull(e.getValue() instanceof String ? (String) e.getValue() : JSON.toJSONString(e.getValue()));
+				String v = itemText(e.getValue());
 				if (v != null) {
-					mod.getItems().add(new FieldChange(e.getKey(), e.getKey(), null, v));
+					String label = ITEM_LABELS.containsKey(e.getKey()) ? ITEM_LABELS.get(e.getKey()) : e.getKey();
+					mod.getItems().add(new FieldChange(e.getKey(), label, null, v));
 				}
 			}
 		}
 		mod.setFilled(mod.getRecord() != null || !mod.getItems().isEmpty());
 		return mod;
+	}
+
+	/** 字段值转显示文字：数组用「、」连接（如不良反应名称），其它对象转 JSON 文本；空值返回 null */
+	private static String itemText(Object value) {
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof Collection) {
+			List<String> parts = new ArrayList<String>();
+			for (Object o : (Collection<?>) value) {
+				String t = itemText(o);
+				if (t != null) {
+					parts.add(t);
+				}
+			}
+			return parts.isEmpty() ? null : String.join("、", parts);
+		}
+		return blankToNull(value instanceof String ? (String) value : JSON.toJSONString(value));
 	}
 
 	/** 空串、空 JSON（{} / [] / null）都视为未填写 */

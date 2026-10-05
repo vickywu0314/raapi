@@ -375,7 +375,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `assessment` | 病情评估 | `bqpg` |
 | `tcm` | 中医诊断 | `zyzd` |
 | `treatment` | 治疗方案 | `zlfa` |
-| `adverse` | 不良反应 | `blsj`（待确认） |
+| `adverse` | 不良反应 | `blsj`（已确认），格式 `{"event":"无","startDate":"…","endDate":"…","badCaseList":["咳嗽"]}`，显示为：本次是否发生不良反应 / 发生日期 / 结束日期 / 不良反应名称（多个用「、」连接） |
 | `caseRecord` | 随诊病例 | `bblsj`（待确认） |
 
 **每个模块 `modules[]`**
@@ -386,7 +386,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `filled` | 是否有内容；空串、`{}`、`[]`、`null` 视为未记录，页面显示「本次未记录」 |
 | `record` | 记录内容：字段存的是 `{"record": "...", "date": "..."}` 时取 `record`；是普通文字时为原文 |
 | `recordDate` | 记录日期：取上面 JSON 的 `date` |
-| `items[]` | 字段存的是其它结构的 JSON 时，按原字段顺序逐项列出：`label` 名称、`after` 值 |
+| `items[]` | 字段存的是其它结构的 JSON 时，按原字段顺序逐项列出：`label` 名称（已知字段转中文）、`after` 值（数组用「、」连接）；空值不列出 |
 
 ---
 
