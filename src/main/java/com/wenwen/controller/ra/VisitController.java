@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,6 +13,9 @@ import com.wenwen.service.VisitService;
 import com.wenwen.util.BizException;
 import com.wenwen.vo.DataResult;
 import com.wenwen.vo.VisitDetailVo;
+import com.wenwen.vo.VisitEditFormVo;
+import com.wenwen.vo.VisitUpdateRequest;
+import com.wenwen.vo.VisitUpdateResultVo;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -83,6 +87,61 @@ public class VisitController {
 			e.printStackTrace();
 			result.setCode("500");
 			result.setMessage("删除随访失败，已撤销本次操作");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "编辑随访表单", notes = "编辑随访页（visit-edit.html）：按字段字典返回当前值；基本信息不在此接口（只读，用 patientDetail）", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/visitEditForm")
+	public DataResult<VisitEditFormVo> visitEditForm(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "visitId", required = true) @ApiParam(value = "随访ID", required = true) Long visitId) {
+		DataResult<VisitEditFormVo> result = new DataResult<VisitEditFormVo>();
+		try {
+			result.setData(visitService.getEditForm(doctorId, visitId));
+			result.setCode("200");
+			result.setMessage("成功");
+			result.setSuccess(true);
+		} catch (BizException e) {
+			result.setCode(e.getCode());
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (IllegalArgumentException e) {
+			result.setCode("400");
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (Exception e) {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage("获取编辑表单失败");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "保存编辑随访", notes = "请求体为 JSON（VisitUpdateRequest）。只写有变化的字段，保持老系统 JSON 结构；病情评估计算项自动重算；写修改记录", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/updateVisit")
+	public DataResult<VisitUpdateResultVo> updateVisit(@RequestBody VisitUpdateRequest req) {
+		DataResult<VisitUpdateResultVo> result = new DataResult<VisitUpdateResultVo>();
+		try {
+			VisitUpdateResultVo r = visitService.updateVisit(req);
+			result.setData(r);
+			result.setCode("200");
+			result.setMessage(r.getChangedCount() == 0 ? "没有修改内容" : "已保存 " + r.getChangedCount() + " 项修改");
+			result.setSuccess(true);
+		} catch (BizException e) {
+			result.setCode(e.getCode());
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (IllegalArgumentException e) {
+			result.setCode("400");
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (Exception e) {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage("保存失败，已撤销本次修改");
 			result.setSuccess(false);
 		}
 		return result;

@@ -62,6 +62,22 @@
 		WHERE r.patient_id = #{patientId} AND r.doctor_id = #{visitDoctorId} AND r.research_type = #{researchType}
 	</update>
 
+	<!-- 编辑随访：只更新有变化的模块；改随访日期时下划线、驼峰两个日期字段都更新 -->
+	<update id="updateVisit" parameterType="Map">
+		UPDATE patient_follow_up_history
+		<set>
+			<if test="bsbq != null">bsbq = #{bsbq},</if>
+			<if test="fzjc != null">fzjc = #{fzjc},</if>
+			<if test="bqpg != null">bqpg = #{bqpg},</if>
+			<if test="zyzd != null">zyzd = #{zyzd},</if>
+			<if test="zlfa != null">zlfa = #{zlfa},</if>
+			<if test="blsj != null">blsj = #{blsj},</if>
+			<if test="bblsj != null">bblsj = #{bblsj},</if>
+			<if test="visitDate != null">follow_up_date = #{visitDate}, followUpDate = #{visitDate},</if>
+		</set>
+		WHERE id = #{visitId}
+	</update>
+
 	<select id="getUserName" resultType="String" parameterType="Map">
 		SELECT name FROM `user` WHERE id = #{doctorId}
 	</select>

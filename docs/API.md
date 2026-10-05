@@ -440,6 +440,54 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 **失败返回**：`400` 未填原因；`403` 随访不存在或不在名下；`409` 这次随访还被其他表的数据引用（外键），无法删除，已整体撤销。
 
+### 4.3 编辑随访表单
+
+| 项 | 值 |
+|---|---|
+| 页面 | 访视详情「编辑本次随访」→ `visit-edit.html?id=患者ID&visit=随访ID` |
+| 地址 | `POST /api/ra/visit/visitEditForm`，入参 `doctorId`、`visitId` |
+| 说明 | 基本信息只读（页面另调 3.1 `patientDetail`）；随访日期和 7 个病历模块可改 |
+
+出参 `data`：`visitDate`、`visitType`、`version`（数据版本，保存时原样传回）、`modules[]`：
+
+| 字段 | 中文含义 |
+|---|---|
+| `editable` / `record` | 模块是否可编辑；存的是普通文字等非结构化内容时为 `false`，只读显示 `record` |
+| `groups[].fields[]` | `key`、`label`、`unit`、`type`、`value`（list 为字符串数组）、`wx`（未查勾选，无未查标记为 `null`） |
+| `type` | `text` 文本 / `date` 日期 / `list` 多选（「、」分隔）/ `number` 数字 / `haq` HAQ 选项（无困难、稍有困难、很困难、不能进行）/ `computed` 保存时自动计算（只读）/ `readonly` 只读 / `wxonly` 只有未查勾选 |
+| `tables[]` | 清单：`columns`（可编辑列）、`rows`（每行 `_row` 为原数组位置，保存时原样传回） |
+| `images[]` / `others[]` | 图片、字典外字段：只读，保存时原样保留 |
+
+### 4.4 保存编辑
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/updateVisit`，**请求体为 JSON**（`Content-Type: application/json`） |
+| 代码 | `VisitServiceImpl.updateVisit`（`@Transactional`）+ `VisitEditor`（合并与重算规则） |
+
+请求体：
+
+```json
+{
+  "doctorId": 82394, "visitId": 18957, "version": "打开表单时拿到的 version", "visitDate": "2021-07-16",
+  "modules": {
+    "fzjc": { "fields": { "cfydb": "10" }, "wx": { "cmcfydb": false }, "tables": {} },
+    "zlfa": { "fields": {}, "wx": {}, "tables": { "xyList": [ { "_row": 1, "drugName": "甲氨蝶呤", "dosis": "15" }, { "drugName": "叶酸", "dosis": "5" } ] } }
+  }
+}
+```
+
+**保存规则（老系统仍在使用，不能影响老数据）**：
+1. 和数据库现值逐项比对，**只写有变化的字段**；没变化不写库（返回 `changedCount = 0`）。
+2. 保持原值类型：原来是数字写数字、是字符串写字符串、是数组写数组；字典外字段、清单行里未显示的字段（如 `id`、`haveBadCost`）原样保留；字段顺序不变。
+3. 清空字段写空串 / 空数组，不删除字段。清单：带 `_row` 的行在原行上修改；不带的是新增行（自动生成 `id`）；没传回的原有行即删除。
+4. **病情评估计算项自动重算**（与老系统同一算法，已用真实数据验证一致）：肿胀 / 压痛关节数、DAS28-CRP、DAS28-ESR、HAQ 得分；只在相关输入（关节、患者总体评分、CRP、血沉、HAQ 各题）有变化时重算。ACR20/50/70 需要对比上次随访，不重算。
+5. 改随访日期：同时改 `follow_up_date` / `followUpDate`，病史病情里有 `followDate` 的同步修改；老系统的随访次数、首次 / 最近随访日期重算。
+6. 打开表单后数据被别人（含老系统）改过：返回 `409`，提示刷新后重新编辑。
+7. 写一条修改记录：动作「编辑随访」，内容逐项「模块·字段：旧值 → 新值」，自动计算项标「（自动计算）」。
+
+出参 `data`：`changedCount` 修改项数、`changes[]` 修改内容。失败：`400` 格式错误（如数字、日期）、`403` 无权限、`409` 数据已被修改。
+
 ---
 
 ## 新增接口时的维护约定

@@ -28,6 +28,9 @@ public interface VisitMapper {
 	/** 重新计算医患关系表的随访次数、首次 / 最近随访日期，入参 patientId / visitDoctorId / researchType */
 	int refreshRelationCounters(Map<String, Object> map);
 
+	/** 编辑随访：更新有变化的模块字段和随访日期，入参 visitId，以及 bsbq / fzjc / … / visitDate 中有变化的项 */
+	int updateVisit(Map<String, Object> map);
+
 	/** 医生姓名（user.name），入参 doctorId */
 	String getUserName(Map<String, Object> map);
 }
