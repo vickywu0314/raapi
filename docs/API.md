@@ -378,7 +378,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `filledCount` | 有内容的模块数（共 7） | — |
 | `modules[]` | 7 个病历模块，按页面顺序 | 见下表 |
 
-**模块与随访表字段对应**
+**模块与随访表字段对应**（字段含义见 `docs/随访字段字典.md`，业务已确认）
 
 | `key` | 页面模块 | 随访表字段 |
 |---|---|---|
@@ -387,8 +387,8 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `assessment` | 病情评估 | `bqpg` |
 | `tcm` | 中医诊断 | `zyzd` |
 | `treatment` | 治疗方案 | `zlfa` |
-| `adverse` | 不良反应 | `blsj`（已确认），格式 `{"event":"无","startDate":"…","endDate":"…","badCaseList":["咳嗽"]}`，显示为：本次是否发生不良反应 / 发生日期 / 结束日期 / 不良反应名称（多个用「、」连接） |
-| `caseRecord` | 随诊病例 | `bblsj`（待确认） |
+| `adverse` | 不良反应 | `blsj` |
+| `adverseEvent` | 不良事件 | `bblsj`（格式待确认，按原字段名显示） |
 
 **每个模块 `modules[]`**
 
@@ -396,9 +396,13 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 |---|---|
 | `key` / `title` / `column` | 模块编码 / 中文名 / 随访表字段 |
 | `filled` | 是否有内容；空串、`{}`、`[]`、`null` 视为未记录，页面显示「本次未记录」 |
-| `record` | 记录内容：字段存的是 `{"record": "...", "date": "..."}` 时取 `record`；是普通文字时为原文 |
-| `recordDate` | 记录日期：取上面 JSON 的 `date` |
-| `items[]` | 字段存的是其它结构的 JSON 时，按原字段顺序逐项列出：`label` 名称（已知字段转中文）、`after` 值（数组用「、」连接）；空值不列出 |
+| `groups[]` | 按字段字典分好的组：`title` 组名（如 血常规）、`items[]` 字段；字典外的字段在最后的「其他字段」组，按原字段名显示 |
+| `groups[].items[]` | `key` 老系统字段名、`label` 中文名、`value` 显示值（多选用「、」连接）、`unit` 单位、`notChecked` 是否未查（`Wx` 标记为 true，此时 `value` 为「未查」） |
+| `tables[]` | 清单（西药、中成药、中药饮片、中医外治）：`title`、`columns` 列名（只保留有内容的列）、`rows` 每行的值 |
+| `images[]` | 图片：`title` 类别（化验检查报告、双手正位片、心电图、面部 / 舌面 / 舌底）、`urls` 地址 |
+| `record` / `recordDate` | 字段存的是普通文字或 `{record, date}` 时的内容和日期；结构化 JSON 时为 `null` |
+
+只读解析，不改老数据。
 
 ---
 

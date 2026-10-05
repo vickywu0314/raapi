@@ -8,20 +8,24 @@ import io.swagger.annotations.ApiModelProperty;
 @ApiModel(value = "访视详情的一个病历模块")
 public class VisitModuleVo {
 
-	@ApiModelProperty("模块编码：history / exam / assessment / tcm / treatment / adverse / caseRecord")
+	@ApiModelProperty("模块编码：history / exam / assessment / tcm / treatment / adverse / adverseEvent")
 	private String key;
-	@ApiModelProperty("模块中文名：病史病情 / 辅助检查 / 病情评估 / 中医诊断 / 治疗方案 / 不良反应 / 随诊病例")
+	@ApiModelProperty("模块中文名：病史病情 / 辅助检查 / 病情评估 / 中医诊断 / 治疗方案 / 不良反应 / 不良事件")
 	private String title;
 	@ApiModelProperty("对应随访表字段：bsbq / fzjc / bqpg / zyzd / zlfa / blsj / bblsj")
 	private String column;
 	@ApiModelProperty("是否有内容")
 	private boolean filled;
-	@ApiModelProperty("记录内容：字段存的是 {record, date} 时取 record；是普通文字时为原文")
+	@ApiModelProperty("字段存的是普通文字或 {record, date} 时的记录内容；结构化 JSON 时为 null")
 	private String record;
-	@ApiModelProperty("记录日期：取 {record, date} 中的 date；无则 null")
+	@ApiModelProperty("{record, date} 中的 date")
 	private String recordDate;
-	@ApiModelProperty("字段存的是其它结构的 JSON 时，按「名称：值」逐项列出（只用 label、after 两项）；否则为空数组")
-	private List<FieldChange> items;
+	@ApiModelProperty("按字段字典分组的字段；字典外的字段在最后的「其他字段」组")
+	private List<VisitFieldGroupVo> groups;
+	@ApiModelProperty("清单（西药、中成药、中药饮片、中医外治）")
+	private List<VisitTableVo> tables;
+	@ApiModelProperty("图片（化验单、关节X线、心电图、舌面等）")
+	private List<VisitImageGroupVo> images;
 
 	public String getKey() {
 		return key;
@@ -59,10 +63,22 @@ public class VisitModuleVo {
 	public void setRecordDate(String recordDate) {
 		this.recordDate = recordDate;
 	}
-	public List<FieldChange> getItems() {
-		return items;
+	public List<VisitFieldGroupVo> getGroups() {
+		return groups;
 	}
-	public void setItems(List<FieldChange> items) {
-		this.items = items;
+	public void setGroups(List<VisitFieldGroupVo> groups) {
+		this.groups = groups;
+	}
+	public List<VisitTableVo> getTables() {
+		return tables;
+	}
+	public void setTables(List<VisitTableVo> tables) {
+		this.tables = tables;
+	}
+	public List<VisitImageGroupVo> getImages() {
+		return images;
+	}
+	public void setImages(List<VisitImageGroupVo> images) {
+		this.images = images;
 	}
 }

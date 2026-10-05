@@ -305,7 +305,7 @@ public class PatientServiceImpl implements PatientService {
 		}
 	}
 
-	/** 吸烟史：smoke=0 不吸烟（已与业务确认）；其它值视为吸烟，附年数、每日支数 */
+	/** 吸烟史：smoke=0 不吸烟；其它值视为吸烟，附年数、每日支数；smoke_stop=1 已戒烟（均已与业务确认） */
 	private static String smokingText(Map<String, Object> basic) {
 		Integer smoke = toInteger(basic.get("smoke"));
 		if (smoke == null) {
@@ -322,6 +322,10 @@ public class PatientServiceImpl implements PatientService {
 		}
 		if (perDay != null && perDay > 0) {
 			sb.append(" · 每日 ").append(perDay).append(" 支");
+		}
+		Integer stop = toInteger(basic.get("smokeStop"));
+		if (stop != null && stop == 1) {
+			sb.append(" · 已戒烟");
 		}
 		return sb.toString();
 	}

@@ -24,7 +24,7 @@ public class VisitDetailVo {
 	private String doctorName;
 	@ApiModelProperty("有内容的模块数（共 7 个）")
 	private int filledCount;
-	@ApiModelProperty("7 个病历模块，按页面顺序")
+	@ApiModelProperty("7 个病历模块，按页面顺序（病史病情、辅助检查、病情评估、中医诊断、治疗方案、不良反应、不良事件）")
 	private List<VisitModuleVo> modules;
 
 	public Long getVisitId() {

@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <!--
 	随访（访视）：patient_follow_up_history
-	7 个病历模块各存一列：bsbq 病史病情 / fzjc 辅助检查 / bqpg 病情评估 / zyzd 中医诊断 / zlfa 治疗方案 / blsj 不良反应 / bblsj 随诊病例
+	7 个病历模块各存一列：bsbq 病史病情 / fzjc 辅助检查 / bqpg 病情评估 / zyzd 中医诊断 / zlfa 治疗方案 / blsj 不良反应 / bblsj 不良事件
 -->
 <mapper namespace="com.wenwen.mapper.VisitMapper" >
 
