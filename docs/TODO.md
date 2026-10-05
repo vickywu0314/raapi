@@ -1,5 +1,13 @@
 # 待办事项
 
+## ❓ 待业务确认（确认后告诉开发，改完即删）
+
+| # | 问题 | 现在的做法 | 确认后改哪里 |
+|---|---|---|---|
+| 1 | 婚史 `patient_basic_info.marry`（int）每个数字代表什么？可先查：`SELECT marry, COUNT(*) FROM patient_basic_info GROUP BY marry;` | 详情页显示「代码 N」 | `PatientServiceImpl` 补编码 → 中文 |
+| 2 | 吸烟 `patient_basic_info.smoke`（int）取值含义？是否 0 = 不吸烟、其它 = 吸烟？`smoke_stop` 是否表示已戒烟？ | 0 显示「不吸烟」，其它显示「吸烟 N 年 · 每日 N 支」 | `PatientServiceImpl.smokingText` |
+| 3 | `user` 表里医生姓名是哪个字段？可执行 `SHOW CREATE TABLE user;` 查看 | 随访时间线显示「记录医生 ID N」 | `PatientMapper.xml` 的 `listVisits` 关联 `user` 取姓名 |
+
 ## 上线前
 
 - [ ] **执行建表 / 改表 SQL**（按文件名日期顺序）
@@ -27,6 +35,4 @@
 - [ ] 患者列表「疾病分型」「DAS28」：目前返回 null，等随访表 `bsbq` / `bqpg` 有结构化数据后再取
 - [ ] 其他病史弹窗的当前情况、核心指标、治疗：目前无数据来源，返回 null
 - [ ] 所有写接口在同一事务里调用 `AuditLogService.record(...)` 写修改记录（见 docs/API.md 3.3）
-- [ ] 患者详情「婚史」：`marry` 编码含义待确认，确认后在 `PatientServiceImpl` 补中文
-- [ ] 随访时间线「记录医生」：目前显示医生 ID，`user` 表姓名字段确认后改为显示姓名
 - [ ] 患者详情页按钮（下载病历、问问AI、标记脱落、AI 拍照导入）、访视详情、编辑档案、新增随访：接口未做，前端暂时提示「开发中」或仍为演示页
