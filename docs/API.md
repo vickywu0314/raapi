@@ -335,6 +335,61 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ---
 
+## 四、访视详情页
+
+页面：患者详情 → 点随访时间线中的一次随访（`visit-detail.html?id=患者ID&visit=随访ID`）。
+页面同时请求两个接口：顶部患者信息用 3.1 `patientDetail`，下面 7 个病历模块用本接口。
+
+### 4.1 访视详情（7 个病历模块）
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/visitDetail` |
+| 代码 | `VisitController.visitDetail` → `VisitServiceImpl.getVisitDetail` → `VisitMapper.xml` |
+| 权限 | 只能查看自己名下患者的随访，否则返回 `403`「随访记录不存在，或患者不在您名下」 |
+
+#### 入参
+
+| 参数 | 类型 | 必填 | 中文含义 |
+|---|---|---|---|
+| `doctorId` | Long | 是 | 当前登录医生 ID |
+| `visitId` | Long | 是 | 随访 ID（`patient_follow_up_history.id`） |
+
+#### 出参（`data` 字段）
+
+| 字段 | 中文含义 | 取法 |
+|---|---|---|
+| `visitId` / `patientId` | 随访 ID / 患者 ID | 前端核对患者 ID 与地址栏一致 |
+| `visitDate` | 随访日期 | `follow_up_date` |
+| `visitType` / `baseline` | 访视类型 | 该患者时间最早的一次为「基线访视」，其余「常规随访」（与时间线同一规则） |
+| `doctorId` / `doctorName` | 记录医生 | `doctor_id`；姓名 `user.name` |
+| `filledCount` | 有内容的模块数（共 7） | — |
+| `modules[]` | 7 个病历模块，按页面顺序 | 见下表 |
+
+**模块与随访表字段对应**
+
+| `key` | 页面模块 | 随访表字段 |
+|---|---|---|
+| `history` | 病史病情 | `bsbq` |
+| `exam` | 辅助检查 | `fzjc` |
+| `assessment` | 病情评估 | `bqpg` |
+| `tcm` | 中医诊断 | `zyzd` |
+| `treatment` | 治疗方案 | `zlfa` |
+| `adverse` | 不良反应 | `blsj`（待确认） |
+| `caseRecord` | 随诊病例 | `bblsj`（待确认） |
+
+**每个模块 `modules[]`**
+
+| 字段 | 中文含义 |
+|---|---|
+| `key` / `title` / `column` | 模块编码 / 中文名 / 随访表字段 |
+| `filled` | 是否有内容；空串、`{}`、`[]`、`null` 视为未记录，页面显示「本次未记录」 |
+| `record` | 记录内容：字段存的是 `{"record": "...", "date": "..."}` 时取 `record`；是普通文字时为原文 |
+| `recordDate` | 记录日期：取上面 JSON 的 `date` |
+| `items[]` | 字段存的是其它结构的 JSON 时，按原字段顺序逐项列出：`label` 名称、`after` 值 |
+
+---
+
 ## 新增接口时的维护约定
 
 每加一个接口，在本文件对应页面下补一节，写清楚：页面、地址、入参（含中文含义）、出参（含中文含义和计算口径）、返回示例。

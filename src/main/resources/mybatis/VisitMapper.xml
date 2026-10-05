@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<!--
+	随访（访视）：patient_follow_up_history
+	7 个病历模块各存一列：bsbq 病史病情 / fzjc 辅助检查 / bqpg 病情评估 / zyzd 中医诊断 / zlfa 治疗方案 / blsj 不良反应 / bblsj 随诊病例
+-->
+<mapper namespace="com.wenwen.mapper.VisitMapper" >
+
+	<select id="getVisit" resultType="Map" parameterType="Map">
+		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
+		       f.doctor_id AS doctorId, u.name AS doctorName,
+		       f.bsbq, f.fzjc, f.bqpg, f.zyzd, f.zlfa, f.blsj, f.bblsj
+		FROM patient_follow_up_history f
+		LEFT JOIN `user` u ON u.id = f.doctor_id
+		WHERE f.id = #{visitId}
+		  AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId})
+	</select>
+
+	<!-- 与患者详情时间线同一规则：日期最早的一次；同日期取 ID 小的；都没有日期时取 ID 最小的 -->
+	<select id="getBaselineVisitId" resultType="Long" parameterType="Map">
+		SELECT f.id FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id = #{patientId}
+		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
+		         COALESCE(f.follow_up_date, f.followUpDate), f.id
+		LIMIT 1
+	</select>
+
+</mapper>
