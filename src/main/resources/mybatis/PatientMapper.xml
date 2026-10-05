@@ -3,7 +3,7 @@
 <!--
 	RA 患者列表（patientsList）
 	表：patient_basic_info 患者 / patient_follow_up_history 随诊 / patient_relation_doctor 医生患者关系 / patient_comorbidity 其他病史
-	只返回当前医生名下（patient_relation_doctor.doctor_id）的 RA 患者；AS 等排除的研究类型见 ProjectMapper.excludedResearchTypes。
+	只返回当前医生名下（patient_relation_doctor.doctor_id）的 RA 患者；RA 包含哪些研究类型见 ProjectMapper.raResearchTypes。
 -->
 <mapper namespace="com.wenwen.mapper.PatientMapper" >
 
@@ -35,14 +35,14 @@
 		            ELSE 'active' END AS followStatus,
 		       q.missingCodes
 		FROM patient_basic_info p
-		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)) d ON d.patient_id = p.id
-		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE miss = 1 AND research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)) w ON w.patient_id = p.id
+		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) d ON d.patient_id = p.id
+		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE miss = 1 AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) w ON w.patient_id = p.id
 		LEFT JOIN (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS visitCount,
 		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit,
 		                  MIN(COALESCE(f.follow_up_date, f.followUpDate)) AS firstVisit
 		           FROM patient_follow_up_history f
-		           WHERE f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
-		             AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+		           WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		             AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 		           GROUP BY f.patient_basic_info_id) v ON v.pid = p.id
 		LEFT JOIN (SELECT t.patient_id, GROUP_CONCAT(t.rule_code ORDER BY t.rule_code) AS missingCodes
 		           FROM (<include refid="com.wenwen.mapper.ProjectMapper.pendingQcIssues"/>) t
@@ -105,7 +105,7 @@
 		FROM patient_follow_up_history f
 		WHERE f.patient_basic_info_id IN
 		<foreach collection="patientIds" item="id" open="(" separator="," close=")">#{id}</foreach>
-		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		  AND f.bqpg LIKE '%"crpScore":%'
 		  AND JSON_VALID(f.bqpg)
 		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
@@ -134,10 +134,10 @@
 		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
 		       p.allergy, p.gms, p.jzs, p.jws,
 		       (SELECT CONCAT_WS('；', NULLIF(TRIM(r.reason), ''), NULLIF(TRIM(r.other_miss_reason), ''), NULLIF(TRIM(r.note), ''))
-		        FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>) ORDER BY r.id DESC LIMIT 1) AS withdrawReason
+		        FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>) ORDER BY r.id DESC LIMIT 1) AS withdrawReason
 		FROM patient_basic_info p
 		WHERE p.id = #{patientId}
-		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 	</select>
 
 	<!-- 随访时间线：最近的在前；无日期的排最后；记录医生姓名取 user.name -->
@@ -149,14 +149,14 @@
 		FROM patient_follow_up_history f
 		LEFT JOIN `user` u ON u.id = f.doctor_id
 		WHERE f.patient_basic_info_id = #{patientId}
-		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
 		         COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
 	</select>
 
 	<!-- 该患者是否在该医生名下 -->
 	<select id="countDoctorPatient" resultType="int" parameterType="Map">
-		SELECT COUNT(*) FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND patient_id = #{patientId} AND research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		SELECT COUNT(*) FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND patient_id = #{patientId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 	</select>
 
 	<select id="getCardNo" resultType="String" parameterType="Map">

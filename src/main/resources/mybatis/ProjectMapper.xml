@@ -8,21 +8,21 @@
 <mapper namespace="com.wenwen.mapper.ProjectMapper" >
 
 	<!--
-		研究类型（patient_relation_doctor.research_type / patient_follow_up_history.research_type）：
-		6 = AS 强直性脊柱炎（随访数据为 BASDAI / HLA-B27 等），不属于 RA 平台，所有统计和列表都排除；
-		0、1、2、3、4、7 为 RA。要调整 RA 平台包含哪些类型，只改这里。
+		研究类型（patient_relation_doctor.research_type / patient_follow_up_history.research_type），RA 平台只算以下几类（业务确认）：
+		0 类风湿关节炎研究平台、1 益赛普研究系统、2 瘀血痹胶囊真实世界研究、3 尪痹胶囊、4 痹祺胶囊、7 疗效可视化研究。
+		不算：6 强直性数据库（AS），以及 5、9、999（含义不明）。要调整 RA 平台包含哪些类型，只改这里。
 	-->
-	<sql id="excludedResearchTypes">6</sql>
+	<sql id="raResearchTypes">0, 1, 2, 3, 4, 7</sql>
 
 	<!-- RA 患者（别名 p）：至少有一条 RA 类型的医患关系 -->
 	<sql id="raPatient">
-		p.id IN (SELECT rr.patient_id FROM patient_relation_doctor rr WHERE rr.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+		p.id IN (SELECT rr.patient_id FROM patient_relation_doctor rr WHERE rr.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 	</sql>
 
 	<!-- 有效 RA 患者（未脱落）：RA 患者，且没有任何一条 RA 医患关系被标记为脱落 miss=1 -->
 	<sql id="activePatientCond">
 		<include refid="com.wenwen.mapper.ProjectMapper.raPatient"/>
-		AND NOT EXISTS (SELECT 1 FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+		AND NOT EXISTS (SELECT 1 FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 	</sql>
 
 	<!--
@@ -32,7 +32,7 @@
 	<sql id="qcScope">
 		AND <include refid="com.wenwen.mapper.ProjectMapper.raPatient"/>
 		<if test="patientId != null">AND p.id = #{patientId}</if>
-		<if test="doctorId != null">AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))</if>
+		<if test="doctorId != null">AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))</if>
 	</sql>
 
 	<!--
@@ -48,17 +48,17 @@
 			<!-- 缺 DAS28 评分：所有 RA 随访的病情评估（bqpg）里都没有算出 DAS28（老系统存在 result.crpScore / result.esrScore） -->
 			SELECT p.id AS patient_id, 'M_DAS28' AS rule_code FROM patient_basic_info p
 			WHERE NOT EXISTS (SELECT 1 FROM patient_follow_up_history f
-			                  WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>) AND (f.bqpg LIKE '%"crpScore":%' OR f.bqpg LIKE '%"esrScore":%'))
+			                  WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>) AND (f.bqpg LIKE '%"crpScore":%' OR f.bqpg LIKE '%"esrScore":%'))
 			  <include refid="com.wenwen.mapper.ProjectMapper.qcScope"/>
 			UNION ALL
 			<!-- 缺基线检验：首次随访的辅助检查为空（没有随访也算缺） -->
 			SELECT p.id, 'M_BASELINE_LAB' FROM patient_basic_info p
 			WHERE NOT EXISTS (
 				SELECT 1 FROM patient_follow_up_history f
-				WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+				WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 				  AND COALESCE(f.follow_up_date, f.followUpDate) = (
 				      SELECT MIN(COALESCE(f2.follow_up_date, f2.followUpDate))
-				      FROM patient_follow_up_history f2 WHERE f2.patient_basic_info_id = p.id AND f2.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+				      FROM patient_follow_up_history f2 WHERE f2.patient_basic_info_id = p.id AND f2.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 				  AND IFNULL(TRIM(f.fzjc), '') NOT IN ('', '{}', '[]', 'null'))
 			  <include refid="com.wenwen.mapper.ProjectMapper.qcScope"/>
 			UNION ALL
@@ -70,7 +70,7 @@
 			<!-- 缺用药史：所有随访的治疗方案都为空 -->
 			SELECT p.id, 'M_MEDICATION' FROM patient_basic_info p
 			WHERE NOT EXISTS (SELECT 1 FROM patient_follow_up_history f
-			                  WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+			                  WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 			                    AND IFNULL(TRIM(f.zlfa), '') NOT IN ('', '{}', '[]', 'null'))
 			  <include refid="com.wenwen.mapper.ProjectMapper.qcScope"/>
 			UNION ALL
@@ -78,7 +78,7 @@
 			SELECT p.id, 'L_DATE_ORDER' FROM patient_basic_info p
 			WHERE (COALESCE(p.happen_date, p.happenDate) &gt; COALESCE(p.confirm_date, p.confirmDate)
 			   OR EXISTS (SELECT 1 FROM patient_follow_up_history f
-			              WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+			              WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 			                AND (COALESCE(f.follow_up_date, f.followUpDate) &lt; COALESCE(p.happen_date, p.happenDate)
 			                     OR COALESCE(f.follow_up_date, f.followUpDate) &gt; NOW())))
 			  <include refid="com.wenwen.mapper.ProjectMapper.qcScope"/>
@@ -113,7 +113,7 @@
 		SELECT COUNT(*) AS dueCount,
 		       IFNULL(SUM(CASE WHEN EXISTS (
 		           SELECT 1 FROM patient_follow_up_history f
-		           WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		           WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		             AND COALESCE(f.follow_up_date, f.followUpDate) &gt;= DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
 		             AND COALESCE(f.follow_up_date, f.followUpDate) &lt;= NOW()
 		       ) THEN 1 ELSE 0 END), 0) AS doneCount
@@ -128,7 +128,7 @@
 		WHERE <include refid="activePatientCond"/>
 		  AND COALESCE(
 		        (SELECT MAX(COALESCE(f.follow_up_date, f.followUpDate)) FROM patient_follow_up_history f
-		         WHERE f.patient_basic_info_id = p.id AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)),
+		         WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)),
 		        COALESCE(p.create_date, p.createDate)
 		      ) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
 	</select>
@@ -142,7 +142,7 @@
 	<!-- 研究级可用记录：随访日期、病情评估、辅助检查、治疗方案均不缺失的随访记录条数 -->
 	<select id="countUsableRecords" resultType="int">
 		SELECT COUNT(*) FROM patient_follow_up_history f
-		WHERE f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		  AND COALESCE(f.follow_up_date, f.followUpDate) IS NOT NULL
 		  AND IFNULL(TRIM(f.bqpg), '') NOT IN ('', '{}', '[]', 'null')
 		  AND IFNULL(TRIM(f.fzjc), '') NOT IN ('', '{}', '[]', 'null')

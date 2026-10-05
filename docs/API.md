@@ -11,8 +11,20 @@
 
 ### 统计范围：只含 RA
 
-所有接口只统计 / 返回 RA 患者和 RA 随访。`research_type`（医患关系表、随访表都有）为 **6 的是 AS 强直性脊柱炎**，一律排除；0、1、2、3、4、7 为 RA。
-排除哪些类型只在 `ProjectMapper.xml` 的 `excludedResearchTypes` 一处配置。
+所有接口只统计 / 返回 RA 患者和 RA 随访：`research_type`（医患关系表、随访表都有）为 **0、1、2、3、4、7**。
+
+| 值 | 含义 | 是否算 RA |
+|---|---|---|
+| 0 | 类风湿关节炎研究平台 | 是 |
+| 1 | 益赛普研究系统 | 是 |
+| 2 | 瘀血痹胶囊真实世界研究 | 是 |
+| 3 | 尪痹胶囊 | 是 |
+| 4 | 痹祺胶囊 | 是 |
+| 7 | 疗效可视化研究 | 是 |
+| 6 | 强直性数据库（AS） | 否 |
+| 5、9、999 | 含义不明 | 否 |
+
+包含哪些类型只在 `ProjectMapper.xml` 的 `raResearchTypes` 一处配置。
 
 ### 与老系统共用数据库的约定
 
@@ -403,6 +415,30 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `record` / `recordDate` | 字段存的是普通文字或 `{record, date}` 时的内容和日期；结构化 JSON 时为 `null` |
 
 只读解析，不改老数据。
+
+### 4.2 删除随访
+
+| 项 | 值 |
+|---|---|
+| 页面 | 访视详情「删除本次随访」（弹窗填写删除原因） |
+| 地址 | `POST /api/ra/visit/deleteVisit` |
+| 代码 | `VisitController.deleteVisit` → `VisitServiceImpl.deleteVisit`（`@Transactional`，任何一步失败全部撤销） |
+| 权限 | 只能删自己名下 RA 患者的随访，否则 `403` |
+
+**入参**：`doctorId`、`visitId`、`reason`（删除原因，必填，≤ 500 字）
+
+**出参**：`data` 为患者 ID（前端删除后回到该患者的随访记录）
+
+**处理逻辑**（业务确认 2026-10-05）：
+1. **物理删除**，不备份，不可恢复；老系统中也一并删除。基线访视也可以删，删除后日期最早的下一次随访自动成为基线访视。
+2. 删除前，把后一次随访的 `last_follow_up_id` 改为指向被删这次的上一次（该字段有外键，链条接好才能删）。
+3. 删除后，按剩下的随访重新计算老系统维护的字段：
+   - `patient_basic_info`：`follow_up_count`、`last_follow_up_date` / `lastFollowUpDate`；
+   - `patient_relation_doctor`（该患者、该随访的医生、该研究类型）：`follow_count`、`first_follow_up_date`、`last_follow_up_date`。
+4. 写一条修改记录：动作「删除随访」，内容「基线访视 / 常规随访 日期；删除原因：…」。
+5. 其它模块里引用这次随访的数据（如下一次随访病情评估里的「上次 DAS28」）保持原样，不重算。
+
+**失败返回**：`400` 未填原因；`403` 随访不存在或不在名下；`409` 这次随访还被其他表的数据引用（外键），无法删除，已整体撤销。
 
 ---
 

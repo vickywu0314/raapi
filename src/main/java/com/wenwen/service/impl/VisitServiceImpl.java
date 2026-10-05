@@ -10,12 +10,14 @@ import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.wenwen.mapper.VisitMapper;
+import com.wenwen.service.AuditLogService;
 import com.wenwen.service.VisitService;
 import com.wenwen.util.BizException;
 import com.wenwen.util.VisitFieldDict;
@@ -33,6 +35,9 @@ public class VisitServiceImpl implements VisitService {
 
 	@Autowired
 	private VisitMapper visitMapper;
+
+	@Autowired
+	private AuditLogService auditLogService;
 
 	@Override
 	public VisitDetailVo getVisitDetail(Long doctorId, Long visitId) {
@@ -70,6 +75,48 @@ public class VisitServiceImpl implements VisitService {
 		vo.setModules(modules);
 		vo.setFilledCount(filled);
 		return vo;
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public Long deleteVisit(Long doctorId, Long visitId, String reason) {
+		reason = reason == null ? "" : reason.trim();
+		if (doctorId == null || visitId == null) {
+			throw new IllegalArgumentException("缺少医生ID或随访ID");
+		}
+		if (reason.isEmpty()) {
+			throw new IllegalArgumentException("请填写删除原因");
+		}
+		if (reason.length() > 500) {
+			throw new IllegalArgumentException("删除原因不能超过 500 字");
+		}
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("doctorId", doctorId);
+		map.put("visitId", visitId);
+		Map<String, Object> row = visitMapper.getVisit(map);
+		if (row == null) {
+			throw new BizException("403", "随访记录不存在，或患者不在您名下");
+		}
+		Long patientId = toLong(row.get("patientId"));
+		map.put("patientId", patientId);
+		boolean baseline = visitId.equals(visitMapper.getBaselineVisitId(map));
+		String visitDate = (String) row.get("visitDate");
+
+		// 1. 接好「上一次随访」链条；2. 删除
+		map.put("prevVisitId", toLong(row.get("lastFollowUpId")));
+		visitMapper.relinkNextVisit(map);
+		visitMapper.deleteVisit(map);
+		// 3、4. 老系统的计数和日期按剩下的随访重新计算
+		visitMapper.refreshPatientCounters(map);
+		map.put("visitDoctorId", toLong(row.get("doctorId")));
+		map.put("researchType", row.get("researchType"));
+		visitMapper.refreshRelationCounters(map);
+		// 5. 修改记录（只记删除原因，不备份数据）
+		String operator = blankToNull(visitMapper.getUserName(map));
+		auditLogService.record(patientId, visitId, "删除随访", null,
+				(baseline ? "基线访视" : "常规随访") + " " + (visitDate == null ? "日期未填" : visitDate) + "；删除原因：" + reason,
+				doctorId, operator == null ? "医生 ID " + doctorId : operator);
+		return patientId;
 	}
 
 	/**

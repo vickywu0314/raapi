@@ -10,22 +10,60 @@
 		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
 		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
 		       f.doctor_id AS doctorId, u.name AS doctorName,
+		       f.research_type AS researchType, f.last_follow_up_id AS lastFollowUpId,
 		       f.bsbq, f.fzjc, f.bqpg, f.zyzd, f.zlfa, f.blsj, f.bblsj
 		FROM patient_follow_up_history f
 		LEFT JOIN `user` u ON u.id = f.doctor_id
 		WHERE f.id = #{visitId}
-		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
-		  AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		  AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 	</select>
 
 	<!-- 与患者详情时间线同一规则：日期最早的一次；同日期取 ID 小的；都没有日期时取 ID 最小的 -->
 	<select id="getBaselineVisitId" resultType="Long" parameterType="Map">
 		SELECT f.id FROM patient_follow_up_history f
 		WHERE f.patient_basic_info_id = #{patientId}
-		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
 		         COALESCE(f.follow_up_date, f.followUpDate), f.id
 		LIMIT 1
+	</select>
+
+	<!-- ===== 删除随访（物理删除，业务确认 2026-10-05）：以下在同一事务里执行 ===== -->
+
+	<!-- 1. 后一次随访原来指向被删的这次 → 改为指向被删这次的上一次（last_follow_up_id 有外键，先接好链条才能删） -->
+	<update id="relinkNextVisit" parameterType="Map">
+		UPDATE patient_follow_up_history SET last_follow_up_id = #{prevVisitId} WHERE last_follow_up_id = #{visitId}
+	</update>
+
+	<!-- 2. 删除 -->
+	<delete id="deleteVisit" parameterType="Map">
+		DELETE FROM patient_follow_up_history WHERE id = #{visitId}
+	</delete>
+
+	<!-- 3. 老系统维护的患者随访次数、最近随访日期：按剩下的随访重新计算（下划线、驼峰两套字段都更新） -->
+	<update id="refreshPatientCounters" parameterType="Map">
+		UPDATE patient_basic_info p
+		JOIN (SELECT COUNT(*) AS cnt, MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS last
+		      FROM patient_follow_up_history f WHERE f.patient_basic_info_id = #{patientId}) v
+		SET p.follow_up_count = v.cnt, p.last_follow_up_date = v.last, p.lastFollowUpDate = v.last
+		WHERE p.id = #{patientId}
+	</update>
+
+	<!-- 4. 老系统维护的医患关系随访次数、首次 / 最近随访日期：按该患者在该医生、该研究类型下剩下的随访重新计算 -->
+	<update id="refreshRelationCounters" parameterType="Map">
+		UPDATE patient_relation_doctor r
+		JOIN (SELECT COUNT(*) AS cnt,
+		             MIN(COALESCE(f.follow_up_date, f.followUpDate)) AS first,
+		             MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS last
+		      FROM patient_follow_up_history f
+		      WHERE f.patient_basic_info_id = #{patientId} AND f.doctor_id = #{visitDoctorId} AND f.research_type = #{researchType}) v
+		SET r.follow_count = v.cnt, r.first_follow_up_date = v.first, r.last_follow_up_date = v.last
+		WHERE r.patient_id = #{patientId} AND r.doctor_id = #{visitDoctorId} AND r.research_type = #{researchType}
+	</update>
+
+	<select id="getUserName" resultType="String" parameterType="Map">
+		SELECT name FROM `user` WHERE id = #{doctorId}
 	</select>
 
 </mapper>
