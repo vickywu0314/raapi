@@ -248,6 +248,93 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 
 ---
 
+## 三、患者详情页
+
+页面：患者管理 → 点列表中的患者（`patient-visits.html?id=患者ID`）。三个接口都**只能查看自己名下的患者**，不在名下返回 `403`「患者不存在，或不在您名下」。
+
+### 3.1 患者详情（基本信息 + 随访时间线）
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/patientDetail` |
+| 代码 | `PatientController.patientDetail` → `PatientServiceImpl.getPatientDetail` → `PatientMapper.xml`（`getPatientBasic`、`listPatients`、`listVisits`） |
+
+#### 入参
+
+| 参数 | 类型 | 必填 | 中文含义 |
+|---|---|---|---|
+| `doctorId` | Long | 是 | 当前登录医生 ID |
+| `patientId` | Long | 是 | 患者 ID |
+
+#### 出参（`data` 字段）
+
+| 字段 | 页面位置 / 中文含义 | 取法 |
+|---|---|---|
+| `patientId` / `studyNo` / `name` / `sex` / `birthYear` / `age` | 标题与标签 | 同患者列表 |
+| `followStatus` / `followStatusLabel` | 姓名旁的随访状态 | 同患者列表 |
+| `withdrawReason` | 脱落原因（已脱落时） | `patient_relation_doctor`（`miss=1`）的 `reason`、`other_miss_reason`、`note`，用「；」连接 |
+| `subtype` | 疾病分型 | 一期 `null`，显示「待补充」 |
+| `mobile` | 患者手机号 | `mobile` |
+| `cardNoMasked` / `hasCardNo` | 患者身份证号（后 4 位打码）/ 是否显示「眼睛」按钮 | `card_no` |
+| `nation` | 民族 | `nation` |
+| `marry` / `marryLabel` | 婚史 | `marry` 原值；编码含义待确认，`marryLabel` 暂为 `null`，页面显示「代码 N」 |
+| `createDate` | 建档日期 | `create_date` |
+| `followStartDate` | 随访观察起始 | 基线访视（最早一次随访）日期；无随访取建档日期 |
+| `confirmDate` / `happenDate` | 确诊日期 / 发病时间 | `confirm_date` / `happen_date` |
+| `followCycle` / `nextDueDate` / `nextDueDays` | 随访周期 · 下次随访 · 已逾期 N 天 / N 天后 | `follow_cycle`；下次 = 最近随访 + 周期；`nextDueDays` 负数为已逾期 |
+| `latestDas28` | DAS28-CRP | 一期 `null` |
+| `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
+| `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
+| `allergy` | 过敏史 | `gms`；为空且 `allergy=0` →「无」 |
+| `familyHistory` | 家族史 | `jzs` |
+| `pastHistory` | 其他病史 | `jws`（既往史） |
+| `incomplete` / `missingItems` | 其他病史下的「资料待补全」 | 同患者列表 |
+| `comorbidities[]` | 常见相关疾病 | `patient_comorbidity`，同患者列表 |
+| `visitCount` | N 次访视 | 随访记录条数 |
+| `visits[]` | 随访时间线（最近的在前） | `patient_follow_up_history` |
+| `visits[].visitId` / `visitDate` | 随访 ID / 日期 | `id` / `follow_up_date` |
+| `visits[].visitType` / `baseline` | 访视类型 | **时间最早的一次为「基线访视」**，其余为「常规随访」 |
+| `visits[].doctorId` | 记录医生 | `doctor_id` |
+
+### 3.2 查看身份证号明文
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/patientSensitive` |
+| 入参 | `doctorId`、`patientId`（同 3.1） |
+| 出参 | `data` 为身份证号明文字符串；无则 `null` |
+| 页面 | 身份证号旁「眼睛」按钮，第一次点击时请求 |
+
+### 3.3 修改记录
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/auditLogs` |
+| 入参 | `doctorId`、`patientId`（同 3.1） |
+| 依赖 | 先执行 `sql/20261005_patient_audit_log.sql` |
+| 页面 | 「修改记录」默认收起，**展开时才请求**；老数据没有记录，返回空数组，页面显示「暂无修改记录」 |
+
+出参 `data` 为数组，最新的在前：
+
+| 字段 | 中文含义 |
+|---|---|
+| `time` | 操作时间 `yyyy-MM-dd HH:mm` |
+| `action` | 动作：新建档案 / 修改档案 / 新增随访 / 编辑随访 / 删除随访 / 标记脱落 / 质控处理（决定标签颜色） |
+| `visitId` | 涉及的随访 ID，档案类操作为 `null` |
+| `detail` | 修改内容；多项用「；」分隔，字段修改写成「字段：旧值 → 新值」，页面把旧值标红删除线、新值标绿 |
+| `operator` | 操作人，如「陈医生（研究者）」 |
+
+**怎么记录**：表 `patient_audit_log`。以后的写接口（新建患者、编辑档案、新增 / 编辑 / 删除随访、标记脱落）在业务更新的**同一事务**里调用：
+
+```java
+List<FieldChange> changes = auditLogService.diff(修改前Map, 修改后Map, 字段中文名Map);
+auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明, doctorId, "陈医生（研究者）");
+```
+
+`diff` 只比较列出的字段、只记录有变化的；`record` 把变化拼成页面显示的 `detail`，同时把结构化明细存成 JSON（`changes` 列），以后可按字段统计和回溯。
+
+---
+
 ## 新增接口时的维护约定
 
 每加一个接口，在本文件对应页面下补一节，写清楚：页面、地址、入参（含中文含义）、出参（含中文含义和计算口径）、返回示例。

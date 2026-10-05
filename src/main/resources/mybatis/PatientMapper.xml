@@ -25,6 +25,7 @@
 		       p.follow_cycle AS followCycle,
 		       IFNULL(v.visitCount, 0) AS visitCount,
 		       v.lastVisit,
+		       v.firstVisit,
 		       CASE WHEN w.patient_id IS NULL AND v.lastVisit IS NOT NULL
 		            THEN DATE_ADD(DATE(v.lastVisit), INTERVAL p.follow_cycle MONTH) END AS nextDue,
 		       CASE WHEN w.patient_id IS NOT NULL THEN 'withdrawn'
@@ -37,12 +38,16 @@
 		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId}) d ON d.patient_id = p.id
 		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE miss = 1) w ON w.patient_id = p.id
 		LEFT JOIN (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS visitCount,
-		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit
-		           FROM patient_follow_up_history f GROUP BY f.patient_basic_info_id) v ON v.pid = p.id
+		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit,
+		                  MIN(COALESCE(f.follow_up_date, f.followUpDate)) AS firstVisit
+		           FROM patient_follow_up_history f
+		           WHERE f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId})
+		           GROUP BY f.patient_basic_info_id) v ON v.pid = p.id
 		LEFT JOIN (SELECT t.patient_id, GROUP_CONCAT(t.rule_code ORDER BY t.rule_code) AS missingCodes
 		           FROM (<include refid="com.wenwen.mapper.ProjectMapper.pendingQcIssues"/>) t
 		           WHERE t.rule_code LIKE 'M\_%'
 		           GROUP BY t.patient_id) q ON q.patient_id = p.id
+		<if test="patientId != null">WHERE p.id = #{patientId}</if>
 	</sql>
 
 	<!-- 筛选：keyword 姓名 / ID号 / 研究编号包含匹配（不区分大小写）；followStatus；completeness missing / complete -->
@@ -79,6 +84,7 @@
 	<!-- 默认排序：最近随访倒序，无随访的排最后 -->
 	<select id="listPatients" resultType="Map" parameterType="Map">
 		SELECT x.patientId, x.studyNo, x.name, x.gender, x.age, x.createYear, x.followCycle, x.visitCount,
+		       DATE_FORMAT(x.firstVisit, '%Y-%m-%d') AS firstVisitDate,
 		       DATE_FORMAT(x.lastVisit, '%Y-%m-%d') AS lastVisitDate,
 		       DATE_FORMAT(x.nextDue, '%Y-%m-%d') AS nextDueDate,
 		       x.followStatus, x.missingCodes
@@ -94,6 +100,46 @@
 		WHERE patient_id IN
 		<foreach collection="patientIds" item="id" open="(" separator="," close=")">#{id}</foreach>
 		ORDER BY patient_id, id
+	</select>
+
+	<!-- ===== 患者详情（patient-visits.html） ===== -->
+
+	<!-- 详情页基本信息里患者表的其它字段；随访状态、待补全等计算字段复用 listPatients（传 patientId） -->
+	<select id="getPatientBasic" resultType="Map" parameterType="Map">
+		SELECT p.id AS patientId, p.mobile, p.card_no AS cardNo, p.nation, p.marry,
+		       DATE_FORMAT(COALESCE(p.create_date, p.createDate), '%Y-%m-%d') AS createDate,
+		       DATE_FORMAT(COALESCE(p.confirm_date, p.confirmDate), '%Y-%m-%d') AS confirmDate,
+		       DATE_FORMAT(COALESCE(p.happen_date, p.happenDate), '%Y-%m-%d') AS happenDate,
+		       p.height, p.weight,
+		       p.smoke, COALESCE(p.smoke_years, p.smokeYears) AS smokeYears,
+		       COALESCE(p.smoke_count_by_day, p.smokeCountByDay) AS smokeCountByDay,
+		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
+		       p.allergy, p.gms, p.jzs, p.jws,
+		       (SELECT CONCAT_WS('；', NULLIF(TRIM(r.reason), ''), NULLIF(TRIM(r.other_miss_reason), ''), NULLIF(TRIM(r.note), ''))
+		        FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 ORDER BY r.id DESC LIMIT 1) AS withdrawReason
+		FROM patient_basic_info p
+		WHERE p.id = #{patientId}
+		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId})
+	</select>
+
+	<!-- 随访时间线：最近的在前；无日期的排最后 -->
+	<select id="listVisits" resultType="Map" parameterType="Map">
+		SELECT f.id AS visitId,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
+		       f.doctor_id AS doctorId
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id = #{patientId}
+		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
+		         COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
+	</select>
+
+	<!-- 该患者是否在该医生名下 -->
+	<select id="countDoctorPatient" resultType="int" parameterType="Map">
+		SELECT COUNT(*) FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND patient_id = #{patientId}
+	</select>
+
+	<select id="getCardNo" resultType="String" parameterType="Map">
+		SELECT card_no FROM patient_basic_info WHERE id = #{patientId}
 	</select>
 
 </mapper>

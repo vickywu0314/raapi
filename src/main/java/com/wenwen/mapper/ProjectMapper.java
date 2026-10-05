@@ -22,8 +22,8 @@ public interface ProjectMapper {
 	/** 待随访患者数，入参 cycleDays */
 	int countPendingFollowUp(Map<String, Object> map);
 
-	/** 待处理质控问题：返回 issueCount（问题条数）、patientCount（涉及患者数） */
-	Map<String, Object> countPendingQc();
+	/** 待处理质控问题：返回 issueCount（问题条数）、patientCount（涉及患者数）；map 不传 doctorId / patientId 即全部患者 */
+	Map<String, Object> countPendingQc(Map<String, Object> map);
 
 	/** 研究级可用记录数 */
 	int countUsableRecords();

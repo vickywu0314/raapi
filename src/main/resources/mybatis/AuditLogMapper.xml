@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<!-- 患者修改记录：patient_audit_log（建表见 sql/20261005_patient_audit_log.sql） -->
+<mapper namespace="com.wenwen.mapper.AuditLogMapper" >
+
+	<insert id="insert" parameterType="Map">
+		INSERT INTO patient_audit_log (patient_id, visit_id, action, detail, changes, operator_id, operator_name, create_time)
+		VALUES (#{patientId}, #{visitId}, #{action}, #{detail}, #{changes}, #{operatorId}, #{operatorName}, NOW())
+	</insert>
+
+	<select id="listByPatient" resultType="Map" parameterType="Map">
+		SELECT id, DATE_FORMAT(create_time, '%Y-%m-%d %H:%i') AS time, action, visit_id AS visitId, detail, operator_name AS operator
+		FROM patient_audit_log
+		WHERE patient_id = #{patientId}
+		ORDER BY create_time DESC, id DESC
+	</select>
+
+</mapper>

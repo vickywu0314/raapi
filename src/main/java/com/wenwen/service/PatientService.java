@@ -1,5 +1,9 @@
 package com.wenwen.service;
 
+import java.util.List;
+
+import com.wenwen.vo.AuditLogVo;
+import com.wenwen.vo.PatientDetailVo;
 import com.wenwen.vo.PatientsListVo;
 
 /**
@@ -19,4 +23,17 @@ public interface PatientService {
 	 * @throws IllegalArgumentException 参数不合法
 	 */
 	PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size);
+
+	/**
+	 * 患者详情：基本信息 + 随访时间线
+	 *
+	 * @throws com.wenwen.util.BizException 403 患者不存在或不在该医生名下
+	 */
+	PatientDetailVo getPatientDetail(Long doctorId, Long patientId);
+
+	/** 身份证号明文（详情页「眼睛」按钮） */
+	String getCardNo(Long doctorId, Long patientId);
+
+	/** 修改记录，最新的在前；老数据没有记录返回空列表 */
+	List<AuditLogVo> listAuditLogs(Long doctorId, Long patientId);
 }

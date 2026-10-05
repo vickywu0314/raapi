@@ -38,7 +38,7 @@ public class ProjectServiceImpl implements ProjectService {
 		int due = toInt(plan.get("dueCount"));
 		int done = toInt(plan.get("doneCount"));
 
-		Map<String, Object> qc = projectMapper.countPendingQc();
+		Map<String, Object> qc = projectMapper.countPendingQc(map);
 		int issueCount = toInt(qc.get("issueCount"));
 		int issuePatients = toInt(qc.get("patientCount"));
 

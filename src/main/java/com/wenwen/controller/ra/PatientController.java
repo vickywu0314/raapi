@@ -1,5 +1,7 @@
 package com.wenwen.controller.ra;
 
+import java.util.List;
+
 import javax.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +12,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wenwen.service.PatientService;
+import com.wenwen.util.BizException;
+import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.DataResult;
+import com.wenwen.vo.PatientDetailVo;
 import com.wenwen.vo.PatientsListVo;
 
 import io.swagger.annotations.Api;
@@ -53,5 +58,70 @@ public class PatientController {
 			result.setSuccess(false);
 		}
 		return result;
+	}
+
+	@ApiOperation(value = "患者详情", notes = "患者详情页（patient-visits.html）：基本信息 + 常见相关疾病 + 随访时间线；只能查看自己名下患者", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/patientDetail")
+	public DataResult<PatientDetailVo> patientDetail(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+		DataResult<PatientDetailVo> result = new DataResult<PatientDetailVo>();
+		try {
+			ok(result, patientService.getPatientDetail(doctorId, patientId));
+		} catch (Exception e) {
+			fail(result, e, "获取患者详情失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "查看身份证号明文", notes = "患者详情页身份证号旁的「眼睛」按钮", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/patientSensitive")
+	public DataResult<String> patientSensitive(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+		DataResult<String> result = new DataResult<String>();
+		try {
+			ok(result, patientService.getCardNo(doctorId, patientId));
+		} catch (Exception e) {
+			fail(result, e, "获取身份证号失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "修改记录", notes = "患者详情页「修改记录」展开时查询；老数据没有记录时返回空数组", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/auditLogs")
+	public DataResult<List<AuditLogVo>> auditLogs(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+		DataResult<List<AuditLogVo>> result = new DataResult<List<AuditLogVo>>();
+		try {
+			ok(result, patientService.listAuditLogs(doctorId, patientId));
+		} catch (Exception e) {
+			fail(result, e, "获取修改记录失败");
+		}
+		return result;
+	}
+
+	private static <T> void ok(DataResult<T> result, T data) {
+		result.setCode("200");
+		result.setData(data);
+		result.setMessage("成功");
+		result.setSuccess(true);
+	}
+
+	/** 参数错误 400、无权限等业务异常按其返回码，其余 500 */
+	private static void fail(DataResult<?> result, Exception e, String message) {
+		if (e instanceof BizException) {
+			result.setCode(((BizException) e).getCode());
+			result.setMessage(e.getMessage());
+		} else if (e instanceof IllegalArgumentException) {
+			result.setCode("400");
+			result.setMessage(e.getMessage());
+		} else {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage(message);
+		}
+		result.setSuccess(false);
 	}
 }

@@ -1,5 +1,9 @@
 package com.wenwen.service.impl;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -13,10 +17,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.wenwen.mapper.PatientMapper;
+import com.wenwen.service.AuditLogService;
 import com.wenwen.service.PatientService;
+import com.wenwen.util.BizException;
+import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.ComorbidityVo;
+import com.wenwen.vo.PatientDetailVo;
 import com.wenwen.vo.PatientItemVo;
 import com.wenwen.vo.PatientsListVo;
+import com.wenwen.vo.VisitItemVo;
 
 @Service
 public class PatientServiceImpl implements PatientService {
@@ -51,6 +60,9 @@ public class PatientServiceImpl implements PatientService {
 
 	@Autowired
 	private PatientMapper patientMapper;
+
+	@Autowired
+	private AuditLogService auditLogService;
 
 	@Override
 	public PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size) {
@@ -97,16 +109,204 @@ public class PatientServiceImpl implements PatientService {
 			items.add(item);
 			byId.put(item.getPatientId(), item);
 		}
-		if (!byId.isEmpty()) {
-			for (Map<String, Object> c : patientMapper.listComorbidities(new ArrayList<Long>(byId.keySet()))) {
-				PatientItemVo item = byId.get(toLong(c.get("patientId")));
-				if (item != null) {
-					item.getComorbidities().add(toComorbidity(c));
-				}
-			}
-		}
+		attachComorbidities(byId);
 		vo.setItems(items);
 		return vo;
+	}
+
+	@Override
+	public PatientDetailVo getPatientDetail(Long doctorId, Long patientId) {
+		Map<String, Object> map = patientParams(doctorId, patientId);
+		Map<String, Object> basic = patientMapper.getPatientBasic(map);
+		if (basic == null) {
+			throw noAccess();
+		}
+		// 随访状态、待补全、年龄等与列表同一套计算
+		map.put("offset", 0);
+		map.put("size", 1);
+		List<Map<String, Object>> rows = patientMapper.listPatients(map);
+		if (rows.isEmpty()) {
+			throw noAccess();
+		}
+		Map<String, Object> row = rows.get(0);
+		PatientItemVo item = toItem(row, Calendar.getInstance().get(Calendar.YEAR));
+		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
+		byId.put(item.getPatientId(), item);
+		attachComorbidities(byId);
+
+		PatientDetailVo d = new PatientDetailVo();
+		d.setPatientId(item.getPatientId());
+		d.setStudyNo(item.getStudyNo());
+		d.setName(item.getName());
+		d.setGender(item.getGender());
+		d.setSex(item.getSex());
+		d.setBirthYear(item.getBirthYear());
+		d.setAge(item.getAge());
+		d.setFollowStatus(item.getFollowStatus());
+		d.setFollowStatusLabel(item.getFollowStatusLabel());
+		d.setFollowCycle(item.getFollowCycle());
+		d.setNextDueDate(item.getNextDueDate());
+		if (item.getNextDueDate() != null) {
+			d.setNextDueDays((int) ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(item.getNextDueDate())));
+		}
+		d.setIncomplete(item.isIncomplete());
+		d.setMissingItems(item.getMissingItems());
+		d.setComorbidities(item.getComorbidities());
+		d.setVisitCount(item.getVisitCount());
+		if ("withdrawn".equals(item.getFollowStatus())) {
+			d.setWithdrawReason(blankToNull((String) basic.get("withdrawReason")));
+		}
+
+		d.setMobile(blankToNull((String) basic.get("mobile")));
+		String cardNo = blankToNull((String) basic.get("cardNo"));
+		d.setHasCardNo(cardNo != null);
+		d.setCardNoMasked(maskCardNo(cardNo));
+		d.setNation(blankToNull((String) basic.get("nation")));
+		d.setMarry(toInteger(basic.get("marry")));
+		d.setCreateDate((String) basic.get("createDate"));
+		String firstVisit = (String) row.get("firstVisitDate");
+		d.setFollowStartDate(firstVisit != null ? firstVisit : d.getCreateDate());
+		d.setConfirmDate((String) basic.get("confirmDate"));
+		d.setHappenDate((String) basic.get("happenDate"));
+		d.setHeight(blankToNull(str(basic.get("height"))));
+		d.setWeight(blankToNull(str(basic.get("weight"))));
+		d.setBmi(bmi(d.getHeight(), d.getWeight()));
+		d.setSmoking(smokingText(basic));
+		String gms = blankToNull((String) basic.get("gms"));
+		Integer allergy = toInteger(basic.get("allergy"));
+		d.setAllergy(gms != null ? gms : (allergy != null && allergy == 0 ? "无" : null));
+		d.setFamilyHistory(blankToNull((String) basic.get("jzs")));
+		d.setPastHistory(blankToNull((String) basic.get("jws")));
+
+		// 随访时间线：最近的在前；时间最早的一次为基线访视
+		List<VisitItemVo> visits = new ArrayList<VisitItemVo>();
+		VisitItemVo baseline = null;
+		for (Map<String, Object> v : patientMapper.listVisits(map)) {
+			VisitItemVo vi = new VisitItemVo();
+			vi.setVisitId(toLong(v.get("visitId")));
+			vi.setVisitDate((String) v.get("visitDate"));
+			vi.setDoctorId(toLong(v.get("doctorId")));
+			visits.add(vi);
+			if (baseline == null || isEarlier(vi, baseline)) {
+				baseline = vi;
+			}
+		}
+		for (VisitItemVo vi : visits) {
+			vi.setBaseline(vi == baseline);
+			vi.setVisitType(vi == baseline ? "基线访视" : "常规随访");
+		}
+		d.setVisits(visits);
+		return d;
+	}
+
+	@Override
+	public String getCardNo(Long doctorId, Long patientId) {
+		Map<String, Object> map = patientParams(doctorId, patientId);
+		checkAccess(map);
+		return blankToNull(patientMapper.getCardNo(map));
+	}
+
+	@Override
+	public List<AuditLogVo> listAuditLogs(Long doctorId, Long patientId) {
+		checkAccess(patientParams(doctorId, patientId));
+		return auditLogService.listByPatient(patientId);
+	}
+
+	private Map<String, Object> patientParams(Long doctorId, Long patientId) {
+		if (doctorId == null || patientId == null) {
+			throw new IllegalArgumentException("缺少医生ID或患者ID");
+		}
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("doctorId", doctorId);
+		map.put("patientId", patientId);
+		return map;
+	}
+
+	/** 只能看自己名下的患者 */
+	private void checkAccess(Map<String, Object> map) {
+		if (patientMapper.countDoctorPatient(map) == 0) {
+			throw noAccess();
+		}
+	}
+
+	private static BizException noAccess() {
+		return new BizException("403", "患者不存在，或不在您名下");
+	}
+
+	private void attachComorbidities(Map<Long, PatientItemVo> byId) {
+		if (byId.isEmpty()) {
+			return;
+		}
+		for (Map<String, Object> c : patientMapper.listComorbidities(new ArrayList<Long>(byId.keySet()))) {
+			PatientItemVo item = byId.get(toLong(c.get("patientId")));
+			if (item != null) {
+				item.getComorbidities().add(toComorbidity(c));
+			}
+		}
+	}
+
+	/** 日期早的在前；没有日期的视为最晚，同日期按 ID */
+	private static boolean isEarlier(VisitItemVo a, VisitItemVo b) {
+		if (a.getVisitDate() == null || b.getVisitDate() == null) {
+			return a.getVisitDate() != null || (b.getVisitDate() == null && a.getVisitId() < b.getVisitId());
+		}
+		int c = a.getVisitDate().compareTo(b.getVisitDate());
+		return c < 0 || (c == 0 && a.getVisitId() < b.getVisitId());
+	}
+
+	/** 身份证号后 4 位打码 */
+	private static String maskCardNo(String cardNo) {
+		if (cardNo == null) {
+			return null;
+		}
+		return cardNo.length() <= 4 ? "****" : cardNo.substring(0, cardNo.length() - 4) + "****";
+	}
+
+	/** BMI = 体重 kg ÷ (身高 m)²，1 位小数；身高体重不是数字时为 null */
+	private static BigDecimal bmi(String height, String weight) {
+		try {
+			double h = Double.parseDouble(height) / 100, w = Double.parseDouble(weight);
+			if (h <= 0 || w <= 0) {
+				return null;
+			}
+			return new BigDecimal(w / (h * h)).setScale(1, RoundingMode.HALF_UP);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/** 吸烟史：smoke=0 不吸烟；其它值视为吸烟，附年数、每日支数 */
+	private static String smokingText(Map<String, Object> basic) {
+		Integer smoke = toInteger(basic.get("smoke"));
+		if (smoke == null) {
+			return null;
+		}
+		if (smoke == 0) {
+			return "不吸烟";
+		}
+		StringBuilder sb = new StringBuilder("吸烟");
+		Integer years = toInteger(basic.get("smokeYears"));
+		Integer perDay = toInteger(basic.get("smokeCountByDay"));
+		if (years != null && years > 0) {
+			sb.append(" ").append(years).append(" 年");
+		}
+		if (perDay != null && perDay > 0) {
+			sb.append(" · 每日 ").append(perDay).append(" 支");
+		}
+		return sb.toString();
+	}
+
+	/** 空串、空 JSON（{} / [] / null）都视为未填写 */
+	private static String blankToNull(String s) {
+		if (s == null) {
+			return null;
+		}
+		String t = s.trim();
+		return t.isEmpty() || "{}".equals(t) || "[]".equals(t) || "null".equalsIgnoreCase(t) ? null : t;
+	}
+
+	private static String str(Object v) {
+		return v == null ? null : String.valueOf(v);
 	}
 
 	private PatientItemVo toItem(Map<String, Object> row, int thisYear) {
