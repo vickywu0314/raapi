@@ -117,6 +117,7 @@ public class PatientServiceImpl implements PatientService {
 			byId.put(item.getPatientId(), item);
 		}
 		attachComorbidities(byId);
+		attachDas28(byId);
 		vo.setItems(items);
 		return vo;
 	}
@@ -140,6 +141,7 @@ public class PatientServiceImpl implements PatientService {
 		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
 		byId.put(item.getPatientId(), item);
 		attachComorbidities(byId);
+		attachDas28(byId);
 
 		PatientDetailVo d = new PatientDetailVo();
 		d.setPatientId(item.getPatientId());
@@ -159,6 +161,7 @@ public class PatientServiceImpl implements PatientService {
 		d.setIncomplete(item.isIncomplete());
 		d.setMissingItems(item.getMissingItems());
 		d.setComorbidities(item.getComorbidities());
+		d.setLatestDas28(item.getLatestDas28());
 		d.setVisitCount(item.getVisitCount());
 		if ("withdrawn".equals(item.getFollowStatus())) {
 			d.setWithdrawReason(blankToNull((String) basic.get("withdrawReason")));
@@ -250,6 +253,24 @@ public class PatientServiceImpl implements PatientService {
 			PatientItemVo item = byId.get(toLong(c.get("patientId")));
 			if (item != null) {
 				item.getComorbidities().add(toComorbidity(c));
+			}
+		}
+	}
+
+	/** 最近一次 DAS28-CRP：每个患者取最近一次随访里能转成数字的 result.crpScore，保留 2 位小数 */
+	private void attachDas28(Map<Long, PatientItemVo> byId) {
+		if (byId.isEmpty()) {
+			return;
+		}
+		for (Map<String, Object> row : patientMapper.listDas28(new ArrayList<Long>(byId.keySet()))) {
+			PatientItemVo item = byId.get(toLong(row.get("patientId")));
+			if (item == null || item.getLatestDas28() != null) {
+				continue;
+			}
+			try {
+				item.setLatestDas28(new BigDecimal(String.valueOf(row.get("das28")).trim()).setScale(2, RoundingMode.HALF_UP));
+			} catch (Exception e) {
+				// 空值或非数字，看下一次随访
 			}
 		}
 	}

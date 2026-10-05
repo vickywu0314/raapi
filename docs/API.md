@@ -14,6 +14,13 @@
 所有接口只统计 / 返回 RA 患者和 RA 随访。`research_type`（医患关系表、随访表都有）为 **6 的是 AS 强直性脊柱炎**，一律排除；0、1、2、3、4、7 为 RA。
 排除哪些类型只在 `ProjectMapper.xml` 的 `excludedResearchTypes` 一处配置。
 
+### 与老系统共用数据库的约定
+
+老系统仍在使用这些表，新平台**不能影响老系统**：
+- 老表只读；需要写老表时，只改用户实际修改的字段，JSON 内容保持老系统的字段名和结构，不认识的字段原样保留。
+- 老表只允许**新增可为空或有默认值的字段**（如 `study_no`、`follow_cycle`），不改、不删老字段。
+- 新功能的数据放新表（如 `patient_comorbidity`、`patient_audit_log`）。
+
 ### 统一返回结构 `DataResult`
 
 所有接口都返回下面这个外层结构，业务数据在 `data` 里。
@@ -84,7 +91,7 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 
 | 规则编码 | 类型 | 中文含义 |
 |---|---|---|
-| `M_DAS28` | 缺失 | 所有随访的病情评估里都没有 DAS28 评分 |
+| `M_DAS28` | 缺失 | 所有 RA 随访的病情评估 `bqpg` 里都没有 `result.crpScore` / `result.esrScore` |
 | `M_BASELINE_LAB` | 缺失 | 首次随访的辅助检查为空（没有随访也算） |
 | `M_COMORBIDITY` | 缺失 | 既往史（合并疾病）为空 |
 | `M_MEDICATION` | 缺失 | 所有随访的治疗方案都为空 |
@@ -189,7 +196,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
 | `subtype` | String | 疾病资料 · 分型 | 一期无结构化数据，固定 `null`（显示「分型未提供」） |
-| `latestDas28` | number | 疾病资料 · DAS28-CRP | 一期无结构化数据，固定 `null`（显示「DAS28-CRP 未提供」） |
+| `latestDas28` | number | 疾病资料 · DAS28-CRP | 最近一次随访病情评估 `bqpg` 的 `result.crpScore`（老系统算好存的），2 位小数；该次为空则往前找；都没有为 `null`（显示「DAS28-CRP 未提供」） |
 | `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
 | `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
 | `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
@@ -287,7 +294,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `followStartDate` | 随访观察起始 | 基线访视（最早一次随访）日期；无随访取建档日期 |
 | `confirmDate` / `happenDate` | 确诊日期 / 发病时间 | `confirm_date` / `happen_date` |
 | `followCycle` / `nextDueDate` / `nextDueDays` | 随访周期 · 下次随访 · 已逾期 N 天 / N 天后 | `follow_cycle`；下次 = 最近随访 + 周期；`nextDueDays` 负数为已逾期 |
-| `latestDas28` | DAS28-CRP | 一期 `null` |
+| `latestDas28` | DAS28-CRP | 同患者列表 |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
 | `allergy` | 过敏史 | `gms`；为空且 `allergy=0` →「无」 |

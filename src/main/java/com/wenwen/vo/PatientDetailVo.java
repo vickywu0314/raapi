@@ -57,7 +57,7 @@ public class PatientDetailVo {
 	private String nextDueDate;
 	@ApiModelProperty("距下次应随访天数，负数为已逾期")
 	private Integer nextDueDays;
-	@ApiModelProperty("DAS28-CRP；一期返回 null")
+	@ApiModelProperty("最近一次 DAS28-CRP（同患者列表）")
 	private BigDecimal latestDas28;
 	@ApiModelProperty("身高 cm")
 	private String height;

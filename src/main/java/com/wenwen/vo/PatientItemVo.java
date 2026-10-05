@@ -29,7 +29,7 @@ public class PatientItemVo {
 	private int followCycle;
 	@ApiModelProperty("疾病分型；一期无结构化数据，返回 null（页面显示「分型未提供」）")
 	private String subtype;
-	@ApiModelProperty("最近一次 DAS28-CRP；一期无结构化数据，返回 null")
+	@ApiModelProperty("最近一次 DAS28-CRP（病情评估 bqpg 的 result.crpScore），2 位小数；无则 null")
 	private BigDecimal latestDas28;
 	@ApiModelProperty("最近随访日期 yyyy-MM-dd；无随访则 null（页面显示「暂无访视」）")
 	private String lastVisitDate;

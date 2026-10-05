@@ -95,6 +95,23 @@
 		LIMIT #{offset}, #{size}
 	</select>
 
+	<!--
+		指定患者各次 RA 随访里的 DAS28-CRP（老系统存在病情评估 bqpg 的 result.crpScore），最近的在前；
+		每个患者取第一条有效数值（在 Service 里挑），只查当前页的患者
+	-->
+	<select id="listDas28" resultType="Map">
+		SELECT f.patient_basic_info_id AS patientId,
+		       JSON_UNQUOTE(JSON_EXTRACT(f.bqpg, '$.result.crpScore')) AS das28
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id IN
+		<foreach collection="patientIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		  AND f.bqpg LIKE '%"crpScore":%'
+		  AND JSON_VALID(f.bqpg)
+		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
+		         COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
+	</select>
+
 	<select id="listComorbidities" resultType="Map">
 		SELECT patient_id AS patientId, disease_code AS code, since_year AS sinceYear
 		FROM patient_comorbidity
