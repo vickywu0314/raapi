@@ -14,13 +14,15 @@
 		FROM patient_follow_up_history f
 		LEFT JOIN `user` u ON u.id = f.doctor_id
 		WHERE f.id = #{visitId}
-		  AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId})
+		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
+		  AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>))
 	</select>
 
 	<!-- 与患者详情时间线同一规则：日期最早的一次；同日期取 ID 小的；都没有日期时取 ID 最小的 -->
 	<select id="getBaselineVisitId" resultType="Long" parameterType="Map">
 		SELECT f.id FROM patient_follow_up_history f
 		WHERE f.patient_basic_info_id = #{patientId}
+		  AND f.research_type NOT IN (<include refid="com.wenwen.mapper.ProjectMapper.excludedResearchTypes"/>)
 		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
 		         COALESCE(f.follow_up_date, f.followUpDate), f.id
 		LIMIT 1

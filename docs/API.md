@@ -9,6 +9,11 @@
 | 请求方式 | 所有接口均为 `POST`，参数放在 URL 查询串或 `application/x-www-form-urlencoded` 表单里 |
 | 在线文档 | 启动后访问 `http://localhost:8065/swagger-ui.html`，可直接在页面上调接口 |
 
+### 统计范围：只含 RA
+
+所有接口只统计 / 返回 RA 患者和 RA 随访。`research_type`（医患关系表、随访表都有）为 **6 的是 AS 强直性脊柱炎**，一律排除；0、1、2、3、4、7 为 RA。
+排除哪些类型只在 `ProjectMapper.xml` 的 `excludedResearchTypes` 一处配置。
+
 ### 统一返回结构 `DataResult`
 
 所有接口都返回下面这个外层结构，业务数据在 `data` 里。
