@@ -41,7 +41,7 @@ public class PatientDetailVo {
 	private String nation;
 	@ApiModelProperty("婚史编码（原值）")
 	private Integer marry;
-	@ApiModelProperty("婚史中文；编码含义待确认，暂为 null")
+	@ApiModelProperty("婚史中文：0 未婚 / 1 已婚 / 2 离异 / 3 丧偶；其它编码为 null（页面显示「代码 N」）")
 	private String marryLabel;
 	@ApiModelProperty("建档日期 yyyy-MM-dd")
 	private String createDate;

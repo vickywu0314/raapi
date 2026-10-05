@@ -277,7 +277,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `mobile` | 患者手机号 | `mobile` |
 | `cardNoMasked` / `hasCardNo` | 患者身份证号（后 4 位打码）/ 是否显示「眼睛」按钮 | `card_no` |
 | `nation` | 民族 | `nation` |
-| `marry` / `marryLabel` | 婚史 | `marry` 原值；编码含义待确认，`marryLabel` 暂为 `null`，页面显示「代码 N」 |
+| `marry` / `marryLabel` | 婚史 | `marry`：0 未婚 / 1 已婚 / 2 离异 / 3 丧偶；其它编码 `marryLabel` 为 `null`，页面显示「代码 N」 |
 | `createDate` | 建档日期 | `create_date` |
 | `followStartDate` | 随访观察起始 | 基线访视（最早一次随访）日期；无随访取建档日期 |
 | `confirmDate` / `happenDate` | 确诊日期 / 发病时间 | `confirm_date` / `happen_date` |

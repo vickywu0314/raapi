@@ -36,6 +36,8 @@ public class PatientServiceImpl implements PatientService {
 	private static final Map<String, String> FOLLOW_STATUS = new LinkedHashMap<String, String>();
 	/** 「缺失」类质控规则编码 → 缺失项中文 */
 	private static final Map<String, String> MISSING_ITEMS = new HashMap<String, String>();
+	/** 婚史 patient_basic_info.marry 编码 → 中文（已与业务确认） */
+	private static final Map<Integer, String> MARRY = new HashMap<Integer, String>();
 	/** 其他病史病种编码 → 病名 */
 	private static final Map<String, String> COMORBIDITY_NAMES = new HashMap<String, String>();
 	static {
@@ -49,6 +51,11 @@ public class PatientServiceImpl implements PatientService {
 		MISSING_ITEMS.put("M_BASELINE_LAB", "缺基线检验");
 		MISSING_ITEMS.put("M_COMORBIDITY", "缺合并疾病记录");
 		MISSING_ITEMS.put("M_MEDICATION", "缺用药史");
+
+		MARRY.put(0, "未婚");
+		MARRY.put(1, "已婚");
+		MARRY.put(2, "离异");
+		MARRY.put(3, "丧偶");
 
 		COMORBIDITY_NAMES.put("FM", "纤维肌痛");
 		COMORBIDITY_NAMES.put("AS", "强直性脊柱炎");
@@ -163,6 +170,7 @@ public class PatientServiceImpl implements PatientService {
 		d.setCardNoMasked(maskCardNo(cardNo));
 		d.setNation(blankToNull((String) basic.get("nation")));
 		d.setMarry(toInteger(basic.get("marry")));
+		d.setMarryLabel(d.getMarry() == null ? null : MARRY.get(d.getMarry()));
 		d.setCreateDate((String) basic.get("createDate"));
 		String firstVisit = (String) row.get("firstVisitDate");
 		d.setFollowStartDate(firstVisit != null ? firstVisit : d.getCreateDate());
