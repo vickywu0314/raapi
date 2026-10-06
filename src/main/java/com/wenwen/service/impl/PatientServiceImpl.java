@@ -3,6 +3,7 @@ package com.wenwen.service.impl;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,6 +21,7 @@ import com.wenwen.mapper.PatientMapper;
 import com.wenwen.service.AuditLogService;
 import com.wenwen.service.PatientService;
 import com.wenwen.util.BizException;
+import com.wenwen.util.IdCardUtil;
 import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.ComorbidityVo;
 import com.wenwen.vo.PatientDetailVo;
@@ -351,9 +353,14 @@ public class PatientServiceImpl implements PatientService {
 		Integer gender = toInteger(row.get("gender"));
 		item.setGender(gender);
 		item.setSex(gender == null ? null : gender == 1 ? "男" : gender == 2 ? "女" : null);
-		// 表里没有出生日期：出生年份 = 建档年份 − 建档时年龄；当前年龄 = 今年 − 出生年份
+		// 出生年份 / 年龄：优先取身份证号里的出生日期，年龄按周岁算；
+		// 没有有效身份证号时兜底：出生年份 = 建档年份 − 建档时年龄，年龄 = 今年 − 出生年份
+		LocalDate birth = IdCardUtil.birthDate((String) row.get("cardNo"));
 		Integer age = toInteger(row.get("age"));
-		if (age != null) {
+		if (birth != null) {
+			item.setBirthYear(birth.getYear());
+			item.setAge(Period.between(birth, LocalDate.now()).getYears());
+		} else if (age != null) {
 			Integer createYear = toInteger(row.get("createYear"));
 			int birthYear = (createYear == null ? thisYear : createYear) - age;
 			item.setBirthYear(birthYear);

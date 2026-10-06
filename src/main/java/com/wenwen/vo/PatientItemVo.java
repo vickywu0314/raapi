@@ -19,9 +19,9 @@ public class PatientItemVo {
 	private Integer gender;
 	@ApiModelProperty("性别中文：男 / 女；其他值为 null")
 	private String sex;
-	@ApiModelProperty("出生年份 = 建档年份 − 建档时年龄；无年龄则 null")
+	@ApiModelProperty("出生年份：取身份证号里的出生日期；无有效身份证号时 = 建档年份 − 建档时年龄；都没有为 null")
 	private Integer birthYear;
-	@ApiModelProperty("当前年龄 = 今年 − 出生年份；无则 null")
+	@ApiModelProperty("当前年龄：有身份证号按出生日期算周岁，否则 = 今年 − 出生年份；无则 null")
 	private Integer age;
 	@ApiModelProperty("已随访次数（随访记录条数）")
 	private int visitCount;

@@ -21,6 +21,7 @@
 		       p.name,
 		       p.gender,
 		       p.age,
+		       p.card_no AS cardNo,
 		       YEAR(COALESCE(p.create_date, p.createDate)) AS createYear,
 		       p.follow_cycle AS followCycle,
 		       IFNULL(v.visitCount, 0) AS visitCount,
@@ -84,7 +85,7 @@
 
 	<!-- 默认排序：最近随访倒序，无随访的排最后 -->
 	<select id="listPatients" resultType="Map" parameterType="Map">
-		SELECT x.patientId, x.studyNo, x.name, x.gender, x.age, x.createYear, x.followCycle, x.visitCount,
+		SELECT x.patientId, x.studyNo, x.name, x.gender, x.age, x.cardNo, x.createYear, x.followCycle, x.visitCount,
 		       DATE_FORMAT(x.firstVisit, '%Y-%m-%d') AS firstVisitDate,
 		       DATE_FORMAT(x.lastVisit, '%Y-%m-%d') AS lastVisitDate,
 		       DATE_FORMAT(x.nextDue, '%Y-%m-%d') AS nextDueDate,

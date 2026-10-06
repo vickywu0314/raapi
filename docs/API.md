@@ -202,8 +202,8 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `name` | String | 患者信息 · 姓名 | `name` |
 | `gender` | Integer | 性别编码 | `gender`：1 男 / 2 女 |
 | `sex` | String | 患者信息 · 性别 | 男 / 女；其它值为 `null` |
-| `birthYear` | Integer | 患者信息 · 出生年份 | 表中无出生日期：建档年份（`create_date`）− 建档时年龄（`age`）；`age` 为空则 `null` |
-| `age` | Integer | 患者信息 · （xx 岁） | 今年 − `birthYear` |
+| `birthYear` | Integer | 患者信息 · 出生年份 | 取身份证号 `card_no` 里的出生日期（18 位第 7–14 位、15 位第 7–12 位）；无有效身份证号时 = 建档年份 − 建档时年龄 `age`；都没有为 `null` |
+| `age` | Integer | 患者信息 · xx 岁（页面显示「1964 年 · 62 岁」） | 有身份证号：按出生日期算周岁；否则 = 今年 − `birthYear` |
 | `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
 | `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |

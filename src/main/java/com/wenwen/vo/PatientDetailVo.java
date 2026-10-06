@@ -19,7 +19,7 @@ public class PatientDetailVo {
 	private Integer gender;
 	@ApiModelProperty("性别中文；其他值为 null")
 	private String sex;
-	@ApiModelProperty("出生年份 = 建档年份 − 建档时年龄")
+	@ApiModelProperty("出生年份：取身份证号里的出生日期；无有效身份证号时 = 建档年份 − 建档时年龄")
 	private Integer birthYear;
 	@ApiModelProperty("当前年龄")
 	private Integer age;
