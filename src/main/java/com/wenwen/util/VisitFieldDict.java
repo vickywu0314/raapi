@@ -343,7 +343,8 @@ public final class VisitFieldDict {
 				f("event", "本次是否发生不良反应", "", "text"),
 				f("startDate", "发生日期", "", "date"),
 				f("endDate", "结束日期", "", "date"),
-				f("badCaseList", "不良反应名称", "", "list")));
+				f("badCaseList", "不良反应名称", "", "list"),
+				f("action", "采取与药物的相关措施", "", "list")));
 		list.add(m);
 
 		// 不良事件（bblsj）
