@@ -317,7 +317,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表 |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `waistline` / `heartRate` | 腰围（cm）/ 心率（次/分） | `waistline`、`xl` |
-| `systolic` / `diastolic` | 血压：收缩压 / 舒张压（mmHg） | `xy_h`、`xy_l`；两者都为空且 `xy` 为「139/92」格式时从 `xy` 拆分 |
+| `systolic` / `diastolic` | 血压：收缩压 / 舒张压（mmHg） | `xy_h`、`xy_l`；`xy` 是老系统另存的一份收缩压（与 `xy_h` 相同），`xy_h` 为空时用 `xy`。原样显示，不纠正（老数据有收缩压 < 舒张压、疑似填反的） |
 | `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
 | `allergy` | 过敏史 | `gms`；为空且 `allergy=0` →「无」 |
 | `familyHistory` | 家族史 | `jzs` |

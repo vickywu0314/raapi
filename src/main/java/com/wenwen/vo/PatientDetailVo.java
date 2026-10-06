@@ -77,9 +77,9 @@ public class PatientDetailVo {
 	private String waistline;
 	@ApiModelProperty("心率（次/分），patient_basic_info.xl")
 	private String heartRate;
-	@ApiModelProperty("收缩压（mmHg），patient_basic_info.xy_h；为空时取 xy 里「收缩压/舒张压」的前一个")
+	@ApiModelProperty("收缩压（mmHg），patient_basic_info.xy_h；为空时取 xy（老系统另存的收缩压）")
 	private String systolic;
-	@ApiModelProperty("舒张压（mmHg），patient_basic_info.xy_l；为空时取 xy 里「收缩压/舒张压」的后一个")
+	@ApiModelProperty("舒张压（mmHg），patient_basic_info.xy_l")
 	private String diastolic;
 	@ApiModelProperty("吸烟史（文字）")
 	private String smoking;
