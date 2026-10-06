@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wenwen.mapper.PatientWriteMapper">
+
+	<select id="findByCardNo" resultType="Map">
+		SELECT id, name FROM patient_basic_info
+		WHERE UPPER(TRIM(card_no)) = UPPER(TRIM(#{cardNo}))
+		ORDER BY id
+	</select>
+
+	<select id="listRelations" resultType="Map">
+		SELECT r.id, r.doctor_id AS doctorId, u.name AS doctorName, r.research_type AS researchType,
+		       CASE WHEN r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>) THEN 1 ELSE 0 END AS isRa
+		FROM patient_relation_doctor r LEFT JOIN `user` u ON u.id = r.doctor_id
+		WHERE r.patient_id = #{patientId}
+		ORDER BY r.id
+	</select>
+
+	<select id="getBasicForm" resultType="Map">
+		SELECT p.name, p.card_no AS cardNo, p.gender, p.mobile, p.nation, p.marry,
+		       DATE_FORMAT(COALESCE(p.confirm_date, p.confirmDate), '%Y-%m-%d') AS confirmDate,
+		       DATE_FORMAT(COALESCE(p.happen_date, p.happenDate), '%Y-%m-%d') AS happenDate,
+		       p.height, p.weight, p.waistline, p.xl AS heartRate, COALESCE(NULLIF(p.xy_h, ''), p.xy) AS systolic, p.xy_l AS diastolic,
+		       p.smoke, COALESCE(p.smoke_years, p.smokeYears) AS smokeYears,
+		       COALESCE(p.smoke_count_by_day, p.smokeCountByDay) AS smokeCountByDay,
+		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
+		       p.gms AS allergyHistory, p.jzs AS familyHistory, p.jws AS pastHistory, p.follow_cycle AS followCycle,
+		       p.study_no AS studyNo
+		FROM patient_basic_info p WHERE p.id = #{patientId}
+	</select>
+
+	<insert id="insertPatient" parameterType="Map" useGeneratedKeys="true" keyProperty="id">
+		INSERT INTO patient_basic_info
+		  (name, card_no, gender, age, mobile, nation, marry, confirm_date, happen_date,
+		   height, weight, waistline, xl, xy, xy_h, xy_l,
+		   smoke, smoke_years, smoke_count_by_day, smoke_stop, gms, jzs, jws,
+		   acr_eular_score, create_date, follow_up_count, study_no, follow_cycle)
+		VALUES
+		  (#{name}, #{cardNo}, #{gender}, #{age}, #{mobile}, #{nation}, #{marry}, #{confirmDate}, #{happenDate},
+		   #{height}, #{weight}, #{waistline}, #{xl}, #{xy_h}, #{xy_h}, #{xy_l},
+		   #{smoke}, #{smokeYears}, #{smokeCountByDay}, #{smokeStop}, #{gms}, #{jzs}, #{jws},
+		   #{acrEularScore}, NOW(), 0, #{studyNo}, #{followCycle})
+	</insert>
+
+	<update id="updatePatientFields">
+		UPDATE patient_basic_info SET
+		<foreach collection="fields" index="col" item="val" separator=",">${col} = #{val}</foreach>
+		WHERE id = #{patientId}
+	</update>
+
+	<select id="countStudyNoPrefix" resultType="int">
+		SELECT COUNT(*) FROM patient_basic_info WHERE study_no LIKE CONCAT(#{prefix}, '%')
+	</select>
+
+	<insert id="insertRelation" parameterType="Map" useGeneratedKeys="true" keyProperty="id">
+		INSERT INTO patient_relation_doctor
+		  (create_date, doctor_id, patient_id, research_type, confirm_date, happen_date, follow_count, miss, revisit, last_verify_status)
+		VALUES
+		  (NOW(), #{doctorId}, #{patientId}, #{researchType}, #{confirmDate}, #{happenDate}, 0, 0, 0, 0)
+	</insert>
+
+	<update id="transferRelation">
+		UPDATE patient_relation_doctor SET doctor_id = #{doctorId}, update_date = NOW() WHERE id = #{relationId}
+	</update>
+
+	<insert id="insertAcrEular" parameterType="Map">
+		INSERT INTO patient_acr_eular (patient_id, joint_score, serology_score, duration_score, acute_score, total_score, doctor_id)
+		VALUES (#{patientId}, #{jointScore}, #{serologyScore}, #{durationScore}, #{acuteScore}, #{totalScore}, #{doctorId})
+	</insert>
+
+	<insert id="insertComorbidity" parameterType="Map">
+		INSERT IGNORE INTO patient_comorbidity (patient_id, disease_code, since_year, source, linked_patient_id)
+		VALUES (#{patientId}, #{code}, #{sinceYear}, #{source}, #{linkedPatientId})
+	</insert>
+
+	<select id="getUserName" resultType="String">
+		SELECT name FROM `user` WHERE id = #{doctorId}
+	</select>
+
+</mapper>

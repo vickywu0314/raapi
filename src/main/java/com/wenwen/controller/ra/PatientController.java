@@ -7,14 +7,19 @@ import javax.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wenwen.service.PatientService;
+import com.wenwen.service.PatientWriteService;
 import com.wenwen.util.BizException;
 import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.DataResult;
+import com.wenwen.vo.PatientCheckVo;
+import com.wenwen.vo.PatientCreateRequest;
+import com.wenwen.vo.PatientCreateResultVo;
 import com.wenwen.vo.PatientDetailVo;
 import com.wenwen.vo.PatientsListVo;
 
@@ -30,6 +35,9 @@ public class PatientController {
 
 	@Autowired
 	private PatientService patientService;
+
+	@Autowired
+	private PatientWriteService patientWriteService;
 
 	@ApiOperation(value = "患者列表", notes = "患者列表页：列表、模糊查询、筛选、分页、页头汇总；只返回该医生名下患者", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/patientsList")
@@ -98,6 +106,34 @@ public class PatientController {
 			ok(result, patientService.listAuditLogs(doctorId, patientId));
 		} catch (Exception e) {
 			fail(result, e, "获取修改记录失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "新建患者前按身份证号查重", notes = "新增患者页填完身份证号时调用。result：NEW 新患者 / OTHER_DISEASE 已在其他病种库（返回已有基本信息预填）/ RA_OTHER_DOCTOR 已在 RA 库其他医生名下 / MINE 已在本医生名下", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/checkCardNo")
+	public DataResult<PatientCheckVo> checkCardNo(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "cardNo", required = false) @ApiParam(value = "身份证号") String cardNo) {
+		DataResult<PatientCheckVo> result = new DataResult<PatientCheckVo>();
+		try {
+			ok(result, patientWriteService.checkCardNo(doctorId, cardNo));
+		} catch (Exception e) {
+			fail(result, e, "身份证号查重失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "新建患者", notes = "请求体为 JSON（PatientCreateRequest）。写 patient_basic_info + patient_relation_doctor，ACR/EULAR 各部分存 patient_acr_eular，写修改记录；身份证号已存在时按 checkCardNo 的规则处理，409 = 已存在（RA 库其他医生名下时传 transfer=true 转到自己名下）", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/createPatient")
+	public DataResult<PatientCreateResultVo> createPatient(@RequestBody PatientCreateRequest req) {
+		DataResult<PatientCreateResultVo> result = new DataResult<PatientCreateResultVo>();
+		try {
+			PatientCreateResultVo r = patientWriteService.createPatient(req);
+			ok(result, r);
+			result.setMessage("transferred".equals(r.getAction()) ? "已转到您名下" : "建档成功");
+		} catch (Exception e) {
+			fail(result, e, "新建患者失败");
 		}
 		return result;
 	}

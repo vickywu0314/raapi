@@ -517,6 +517,83 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ---
 
+## 六、新增患者页（patient-create.html）
+
+页面：基本信息与患者详情页一致；ACR/EULAR 2010 用弹窗评估，结果回显到基本信息。填完身份证号先调 6.1 查重，保存调 6.2。
+
+### 6.1 身份证号查重
+
+`POST /api/ra/patient/checkCardNo`（表单参数）
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `doctorId` | 是 | 当前医生ID |
+| `cardNo` | 否 | 身份证号；空则返回 NEW；格式不对返回 400 |
+
+出参 `data`：
+
+| 字段 | 说明 |
+|---|---|
+| `result` | `NEW` 新患者 / `OTHER_DISEASE` 已在其他病种库（如 AS），保存时复用档案、新增 RA 关系 / `RA_OTHER_DOCTOR` 已在 RA 库其他医生名下，可转到自己名下 / `MINE` 已在本医生名下 |
+| `patientId` / `name` | 已存在时的患者ID、姓名 |
+| `otherDoctorName` | `RA_OTHER_DOCTOR` 时所属医生（`user.name`，空则「医生 ID n」） |
+| `otherDiseases` | `OTHER_DISEASE` 时所在病种，如 `["强直性脊柱炎"]`；未确认名称的显示「研究类型 n」 |
+| `basic` | `OTHER_DISEASE` 时已有的基本信息（结构同 6.2 的 `basic`），用于预填 |
+
+判断规则：同身份证号（忽略大小写、首尾空格）的患者里，有本医生的 RA 关系（research_type 在 RA 白名单）→ `MINE`；有其他医生的 RA 关系 → `RA_OTHER_DOCTOR`；只有其他病种 → `OTHER_DISEASE`。
+
+### 6.2 新建患者
+
+`POST /api/ra/patient/createPatient`（JSON）
+
+```json
+{
+  "doctorId": 82394,
+  "transfer": false,
+  "basic": {
+    "name": "张三", "cardNo": "110105199203046021", "gender": 2, "mobile": "13812345678",
+    "nation": "汉族", "marry": 1, "confirmDate": "2024-05-01", "happenDate": "2024-01-10",
+    "height": "162", "weight": "55.5", "waistline": "72", "heartRate": "78", "systolic": "125", "diastolic": "80",
+    "smoke": 1, "smokeYears": 10, "smokeCountByDay": 5, "smokeStop": 0,
+    "allergyHistory": "青霉素", "familyHistory": null, "pastHistory": null, "followCycle": 12,
+    "acrEular": { "jointScore": 3, "serologyScore": 2, "durationScore": 1, "acuteScore": 1 },
+    "comorbidities": [ { "code": "FM", "sinceYear": 2020 } ]
+  }
+}
+```
+
+| 字段 | 必填 | 存到 `patient_basic_info` | 说明 |
+|---|---|---|---|
+| `name` | 是 | `name` | ≤100 字 |
+| `cardNo` | 否 | `card_no`（转大写） | 校验出生日期；同时算建档时年龄写 `age` |
+| `gender` | 是 | `gender` | 1 男 / 2 女 |
+| `mobile` | 否 | `mobile` | 11 位，1 开头 |
+| `nation` | 否 | `nation` | 民族全称，如 汉族 |
+| `marry` | 否 | `marry` | 0 未婚 / 1 已婚 / 2 离异 / 3 丧偶 |
+| `confirmDate` / `happenDate` | 否 | `confirm_date` / `happen_date` | yyyy-MM-dd，不晚于今天；同时写入医患关系 |
+| `height` / `weight` / `waistline` | 否 | `height` / `weight` / `waistline` | 数字，范围 30~250 cm / 2~300 kg / 20~250 cm |
+| `heartRate` | 否 | `xl` | 20~250 |
+| `systolic` / `diastolic` | 否 | `xy_h`（`xy` 同写一份）/ `xy_l` | 40~300 / 20~200 |
+| `smoke` / `smokeYears` / `smokeCountByDay` / `smokeStop` | 否 | `smoke` / `smoke_years` / `smoke_count_by_day` / `smoke_stop` | smoke 0 无 / 1 有；有时才写后 3 项 |
+| `allergyHistory` / `familyHistory` / `pastHistory` | 否 | `gms` / `jzs` / `jws` | ≤255 字 |
+| `followCycle` | 否 | `follow_cycle` | 3 / 6 / 12 / 24，默认 12 |
+| `acrEular` | 否 | 总分写 `acr_eular_score`；各部分插入新表 `patient_acr_eular` | 4 部分须全选或全不选；总分后端重算（joint 0/1/2/3/5、serology 0/2/3、duration 0/1、acute 0/1） |
+| `comorbidities[]` | 否 | 新表 `patient_comorbidity`（source=manual） | code：FM / AS / SS / RA-ILD / RA-MS |
+
+另外：`study_no` 自动生成（RA-今天-当天序号，冲突重试）、`create_date` = 当前时间、`follow_up_count` = 0；
+医患关系 `patient_relation_doctor`：`doctor_id`、`patient_id`、`research_type` = 配置 `ra.patient.research-type`、`confirm_date`、`happen_date`、`create_date` = 当前时间，`follow_count` / `miss` / `revisit` / `last_verify_status` = 0。
+
+身份证号已存在时（同 6.1 规则）：
+
+| 情况 | 处理 |
+|---|---|
+| `MINE` | 409「该患者已在您名下（姓名，ID号 n）」 |
+| `RA_OTHER_DOCTOR`，`transfer=false` | 409「该患者已在 某医生 名下，确认要转到自己名下吗？」 |
+| `RA_OTHER_DOCTOR`，`transfer=true` | 把该 RA 医患关系的 `doctor_id` 改为本医生（原医生不再看到），写修改记录「转入名下」；不改基本信息 |
+| `OTHER_DISEASE` | 不新建患者行：只更新医生填了且与原值不同的字段（不清空原有信息），没有研究编号的补上；新增 RA 医患关系；原病种（已确认的：6 = AS）记入 `patient_comorbidity`（source=auto）；修改记录写改了哪些字段 |
+
+出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
+
 ## 新增接口时的维护约定
 
 每加一个接口，在本文件对应页面下补一节，写清楚：页面、地址、入参（含中文含义）、出参（含中文含义和计算口径）、返回示例。

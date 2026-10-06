@@ -40,7 +40,9 @@
   - `src/main/resources/sql/20261003_backfill_study_no.sql`：老患者补研究编号
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
+  - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
+- [ ] **配置新建患者的研究类型**：`application.properties` 的 `ra.patient.research-type`（待确认 RA 研究库对应的值；留空时新建患者提示未配置、不写库）
 
 - [ ] **整理老数据：按身份证号把患者的相关疾病写入中间表 `patient_comorbidity`**
   - 规则：RA 患者（`patient_basic_info.card_no`）与其它病种表中的患者**身份证号相同**，即认为该患者也患有该病，插入一条关联：
