@@ -75,29 +75,13 @@ public class PatientServiceImpl implements PatientService {
 
 	@Override
 	public PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size) {
-		followStatus = emptyToNull(followStatus);
-		completeness = emptyToNull(completeness);
-		if (doctorId == null) {
-			throw new IllegalArgumentException("缺少医生ID");
-		}
-		if (followStatus != null && !FOLLOW_STATUS.containsKey(followStatus)) {
-			throw new IllegalArgumentException("随访状态不正确：" + followStatus);
-		}
-		if (completeness != null && !COMPLETENESS.contains(completeness)) {
-			throw new IllegalArgumentException("数据完整性不正确：" + completeness);
-		}
 		if (page < 1) {
 			throw new IllegalArgumentException("页码从 1 开始");
 		}
 		if (size < 1 || size > MAX_PAGE_SIZE) {
 			throw new IllegalArgumentException("每页条数应为 1~" + MAX_PAGE_SIZE);
 		}
-
-		Map<String, Object> map = new HashMap<String, Object>();
-		map.put("doctorId", doctorId);
-		map.put("keyword", escapeLike(emptyToNull(keyword == null ? null : keyword.trim())));
-		map.put("followStatus", followStatus);
-		map.put("completeness", completeness);
+		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
 		map.put("offset", (page - 1) * size);
 		map.put("size", size);
 
@@ -122,6 +106,39 @@ public class PatientServiceImpl implements PatientService {
 		attachDas28(byId);
 		vo.setItems(items);
 		return vo;
+	}
+
+	@Override
+	public List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness) {
+		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
+		map.put("offset", 0);
+		map.put("size", Integer.MAX_VALUE);
+		List<Long> ids = new ArrayList<Long>();
+		for (Map<String, Object> row : patientMapper.listPatients(map)) {
+			ids.add(toLong(row.get("patientId")));
+		}
+		return ids;
+	}
+
+	/** 患者列表的筛选参数（校验后），不含分页 */
+	private Map<String, Object> listParams(Long doctorId, String keyword, String followStatus, String completeness) {
+		followStatus = emptyToNull(followStatus);
+		completeness = emptyToNull(completeness);
+		if (doctorId == null) {
+			throw new IllegalArgumentException("缺少医生ID");
+		}
+		if (followStatus != null && !FOLLOW_STATUS.containsKey(followStatus)) {
+			throw new IllegalArgumentException("随访状态不正确：" + followStatus);
+		}
+		if (completeness != null && !COMPLETENESS.contains(completeness)) {
+			throw new IllegalArgumentException("数据完整性不正确：" + completeness);
+		}
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("doctorId", doctorId);
+		map.put("keyword", escapeLike(emptyToNull(keyword == null ? null : keyword.trim())));
+		map.put("followStatus", followStatus);
+		map.put("completeness", completeness);
+		return map;
 	}
 
 	@Override

@@ -488,6 +488,22 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`changedCount` 修改项数、`changes[]` 修改内容。失败：`400` 格式错误（如数字、日期）、`403` 无权限、`409` 数据已被修改。
 
+## 五、数据导出（患者列表「数据导出」按钮）
+
+规则（业务确认 2026-10-06）：**近半年内**（当前月份往前 6 个月的 1 号至今，如 10 月为 4 月 1 日至今；`application.properties` 的 `ra.export.free-months`）的随访数据可直接下载；**更早的**需填写原因提交申请，申请发送到指定邮箱（`ra.export.apply-mail-to`，发邮件功能待实现，先记录到 `export_application` 表）。范围规则在后端校验。
+
+导出范围：勾选了患者则只导出勾选的（只保留该医生名下的）；没勾选则导出当前查询条件下的全部患者（不分页）。
+导出内容：所选时间段内的 RA 随访，每次随访一行；**姓名脱敏**（保留第一个字），不含身份证号、手机号。
+列：患者ID、研究编号、姓名（脱敏）、性别、出生年份、年龄、随访ID、随访日期、访视类型、DAS28-CRP、DAS28-ESR、肿胀 / 压痛关节数、HAQ 健康评分、CRP、血沉、类风湿因子、主证、西药、中成药、本次是否发生不良反应。
+
+| 接口 | 地址 | 入参 | 出参 |
+|---|---|---|---|
+| 可直接下载的范围 | `POST /api/ra/export/range` | 无 | `freeStartDate`、`today`、`freeMonths`、`mailConfigured`（弹窗默认日期） |
+| 下载 CSV | `POST /api/ra/export/visitsCsv` | `doctorId`、`startDate`、`endDate`（yyyy-MM-dd）、`keyword` / `followStatus` / `completeness`（同患者列表）、`patientIds`（勾选的患者，逗号分隔） | 成功：CSV 文件（UTF-8 带 BOM，Excel 可直接打开）；失败：JSON，`code = NEED_APPLY` 表示开始日期超过半年需申请，`400` 日期不对 |
+| 提交申请 | `POST /api/ra/export/apply` | 同下载，另加 `reason`（申请原因 / 用途，必填，≤ 1000 字） | `data` 为申请编号 |
+
+依赖：先执行 `sql/20261006_export_application.sql`。
+
 ---
 
 ## 新增接口时的维护约定

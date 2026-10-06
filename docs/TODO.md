@@ -33,6 +33,8 @@
   - `src/main/resources/sql/20261003_patient_list.sql`：患者表加 `study_no`、`follow_cycle`；新建 `patient_comorbidity`
   - `src/main/resources/sql/20261003_backfill_study_no.sql`：老患者补研究编号
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
+  - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
+- [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
 
 - [ ] **整理老数据：按身份证号把患者的相关疾病写入中间表 `patient_comorbidity`**
   - 规则：RA 患者（`patient_basic_info.card_no`）与其它病种表中的患者**身份证号相同**，即认为该患者也患有该病，插入一条关联：
@@ -49,6 +51,9 @@
   - 新建患者时也要按同一规则自动匹配一次（新建患者接口实现时做）。
 
 ## 后续接口
+
+- [ ] 导出申请发邮件：提交后发到 `ra.export.apply-mail-to`（申请已记录在 export_application，mail_sent 标记是否已发）；审批流程待定
+- [ ] OCR识别录入（患者列表、患者详情、访视详情的按钮，目前提示开发中）：百度医疗 OCR
 
 - [ ] 新建患者 / 编辑档案：写入 `study_no`（`StudyNoUtil` 生成）、`follow_cycle`、`patient_comorbidity`（医生勾选）
 - [ ] 患者列表「疾病分型」：目前返回 null，待字段字典确认分型存在哪个字段

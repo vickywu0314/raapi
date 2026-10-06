@@ -24,6 +24,9 @@ public interface PatientService {
 	 */
 	PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size);
 
+	/** 符合筛选条件的全部患者ID（该医生名下，不分页；数据导出用） */
+	List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness);
+
 	/**
 	 * 患者详情：基本信息 + 随访时间线
 	 *

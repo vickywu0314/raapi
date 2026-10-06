@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<!-- 数据导出：只读老表；导出申请写新表 export_application（建表见 sql/20261006_export_application.sql） -->
+<mapper namespace="com.wenwen.mapper.ExportMapper" >
+
+	<select id="listVisits" resultType="Map" parameterType="Map">
+		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
+		       f.fzjc, f.bqpg, f.zyzd, f.zlfa, f.blsj,
+		       p.name, p.gender, p.study_no AS studyNo, p.card_no AS cardNo, p.age,
+		       YEAR(COALESCE(p.create_date, p.createDate)) AS createYear
+		FROM patient_follow_up_history f
+		JOIN patient_basic_info p ON p.id = f.patient_basic_info_id
+		WHERE f.patient_basic_info_id IN
+		<foreach collection="patientIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		  AND COALESCE(f.follow_up_date, f.followUpDate) &gt;= #{startDate}
+		  AND COALESCE(f.follow_up_date, f.followUpDate) &lt; DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate), f.id
+	</select>
+
+	<select id="listVisitOrder" resultType="Map" parameterType="Map">
+		SELECT f.patient_basic_info_id AS patientId, f.id AS visitId
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id IN
+		<foreach collection="patientIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
+		         COALESCE(f.follow_up_date, f.followUpDate), f.id
+	</select>
+
+	<insert id="insertApplication" parameterType="Map" useGeneratedKeys="true" keyProperty="id">
+		INSERT INTO export_application (doctor_id, doctor_name, start_date, end_date, scope, reason, mail_to, create_time)
+		VALUES (#{doctorId}, #{doctorName}, #{startDate}, #{endDate}, #{scope}, #{reason}, #{mailTo}, NOW())
+	</insert>
+
+</mapper>
