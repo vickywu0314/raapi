@@ -10,6 +10,12 @@
 | 2 | 疾病分型的判定口径：① RF、抗CCP 的参考范围上限 ULN 用多少（老数据只有数值，没存各化验室参考范围）；② 取最近一次结果，还是历次「曾经阳性就算阳性」 | 按 RF、抗CCP 计算（不落库）：RF ULN 20 IU/mL、抗CCP ULN 25 U/mL，取最近一次有结果的随访；≤ULN 阴性，≤3×ULN 低滴度阳性，>3×ULN 高滴度阳性 | `application.properties` 的 `ra.serology.*-uln`；取值规则在 `PatientServiceImpl.attachSerology` |
 | 3 | 手部关节编号（zzgjHand / ytgjHand 的 1、4、6…）对应哪个关节？对照在老系统前端 | 显示编号 | 访视详情 |
 | 4 | 检验参考范围用哪套？ | 不标红异常值 | 访视详情 |
+| 5 | 新建患者写 `patient_relation_doctor.research_type` 填几（RA 研究库对应的值） | 未开发 | 新建患者接口 |
+
+**新建患者 · 身份证号已存在时（2026-10-06 已确认）**
+- 不在 RA 研究库（research_type 不在 0/1/2/3/4/7，如 6 = AS）：不新建患者行，复用该患者，新增一条 RA 医患关系挂到当前医生名下；原来的病种自动记入「其他病史」（`patient_comorbidity`）。
+- 在 RA 研究库、不在我名下：提示「患者已存在，确认要把该患者转到自己名下吗」，点「是」把该 RA 医患关系的 `doctor_id` 改为当前医生（原医生不再看到），写修改记录。
+- 已在我名下：提示后直接打开患者详情。
 
 已确认并完成：research_type 只算 0/1/2/3/4/7、删除随访（物理删除）、婚史编码、吸烟 smoke / smoke_stop、user.name、不良反应 blsj、随访字段含义（101 项，见 `docs/随访字段字典.md`）、HAQ 20 题题目、Wx = 未查、finish 仅供前端显示、图片可直接显示。
 
