@@ -73,6 +73,14 @@ public class PatientDetailVo {
 	private String weight;
 	@ApiModelProperty("BMI，1 位小数；身高体重任一缺失为 null")
 	private BigDecimal bmi;
+	@ApiModelProperty("腰围（cm），patient_basic_info.waistline")
+	private String waistline;
+	@ApiModelProperty("心率（次/分），patient_basic_info.xl")
+	private String heartRate;
+	@ApiModelProperty("收缩压（mmHg），patient_basic_info.xy_h；为空时取 xy 里「收缩压/舒张压」的前一个")
+	private String systolic;
+	@ApiModelProperty("舒张压（mmHg），patient_basic_info.xy_l；为空时取 xy 里「收缩压/舒张压」的后一个")
+	private String diastolic;
 	@ApiModelProperty("吸烟史（文字）")
 	private String smoking;
 	@ApiModelProperty("过敏史（文字）")
@@ -253,6 +261,30 @@ public class PatientDetailVo {
 	}
 	public void setLatestDas28(BigDecimal latestDas28) {
 		this.latestDas28 = latestDas28;
+	}
+	public String getWaistline() {
+		return waistline;
+	}
+	public void setWaistline(String waistline) {
+		this.waistline = waistline;
+	}
+	public String getHeartRate() {
+		return heartRate;
+	}
+	public void setHeartRate(String heartRate) {
+		this.heartRate = heartRate;
+	}
+	public String getSystolic() {
+		return systolic;
+	}
+	public void setSystolic(String systolic) {
+		this.systolic = systolic;
+	}
+	public String getDiastolic() {
+		return diastolic;
+	}
+	public void setDiastolic(String diastolic) {
+		this.diastolic = diastolic;
 	}
 	public String getHeight() {
 		return height;

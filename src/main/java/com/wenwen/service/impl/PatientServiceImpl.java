@@ -218,6 +218,18 @@ public class PatientServiceImpl implements PatientService {
 		d.setHeight(blankToNull(str(basic.get("height"))));
 		d.setWeight(blankToNull(str(basic.get("weight"))));
 		d.setBmi(bmi(d.getHeight(), d.getWeight()));
+		d.setWaistline(blankToNull(str(basic.get("waistline"))));
+		d.setHeartRate(blankToNull(str(basic.get("xl"))));
+		// 血压：老系统分开存 xy_h 收缩压 / xy_l 舒张压；都为空时兼容 xy 存成「139/92」的写法
+		String systolic = blankToNull(str(basic.get("xyH"))), diastolic = blankToNull(str(basic.get("xyL")));
+		String xy = blankToNull(str(basic.get("xy")));
+		if (systolic == null && diastolic == null && xy != null && xy.matches("\\s*\\d+(\\.\\d+)?\\s*/\\s*\\d+(\\.\\d+)?\\s*")) {
+			String[] parts = xy.split("/");
+			systolic = parts[0].trim();
+			diastolic = parts[1].trim();
+		}
+		d.setSystolic(systolic);
+		d.setDiastolic(diastolic);
 		d.setSmoking(smokingText(basic));
 		String gms = blankToNull((String) basic.get("gms"));
 		Integer allergy = toInteger(basic.get("allergy"));

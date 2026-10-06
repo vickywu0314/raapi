@@ -145,7 +145,7 @@
 		       DATE_FORMAT(COALESCE(p.create_date, p.createDate), '%Y-%m-%d') AS createDate,
 		       DATE_FORMAT(COALESCE(p.confirm_date, p.confirmDate), '%Y-%m-%d') AS confirmDate,
 		       DATE_FORMAT(COALESCE(p.happen_date, p.happenDate), '%Y-%m-%d') AS happenDate,
-		       p.height, p.weight,
+		       p.height, p.weight, p.waistline, p.xl, p.xy, p.xy_h AS xyH, p.xy_l AS xyL,
 		       p.smoke, COALESCE(p.smoke_years, p.smokeYears) AS smokeYears,
 		       COALESCE(p.smoke_count_by_day, p.smokeCountByDay) AS smokeCountByDay,
 		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
