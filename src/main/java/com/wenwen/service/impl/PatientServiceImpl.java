@@ -218,6 +218,11 @@ public class PatientServiceImpl implements PatientService {
 		d.setHeight(blankToNull(str(basic.get("height"))));
 		d.setWeight(blankToNull(str(basic.get("weight"))));
 		d.setBmi(bmi(d.getHeight(), d.getWeight()));
+		// ACR/EULAR 2010 分类标准：老系统只存了总分（各部分选项 acr_eular_info 从未写过）；≥6 分可分类为 RA
+		d.setAcrEularScore(toInteger(basic.get("acrEularScore")));
+		if (d.getAcrEularScore() != null) {
+			d.setAcrEularLabel(d.getAcrEularScore() >= 6 ? "符合 RA 分类" : "暂不符合 RA 分类");
+		}
 		d.setWaistline(blankToNull(str(basic.get("waistline"))));
 		d.setHeartRate(blankToNull(str(basic.get("xl"))));
 		// 血压：xy_h 收缩压、xy_l 舒张压；xy 是老系统另存的一份收缩压（查数据与 xy_h 相同），xy_h 为空时用它兜底

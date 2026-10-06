@@ -73,6 +73,10 @@ public class PatientDetailVo {
 	private String weight;
 	@ApiModelProperty("BMI，1 位小数；身高体重任一缺失为 null")
 	private BigDecimal bmi;
+	@ApiModelProperty("ACR/EULAR 2010 类风湿关节炎分类标准总分（0~10），patient_basic_info.acr_eular_score（空则 acrEularScore）；未评估为 null")
+	private Integer acrEularScore;
+	@ApiModelProperty("ACR/EULAR 2010 结论：≥6 分「符合 RA 分类」，<6 分「暂不符合 RA 分类」；未评估为 null")
+	private String acrEularLabel;
 	@ApiModelProperty("腰围（cm），patient_basic_info.waistline")
 	private String waistline;
 	@ApiModelProperty("心率（次/分），patient_basic_info.xl")
@@ -261,6 +265,18 @@ public class PatientDetailVo {
 	}
 	public void setLatestDas28(BigDecimal latestDas28) {
 		this.latestDas28 = latestDas28;
+	}
+	public Integer getAcrEularScore() {
+		return acrEularScore;
+	}
+	public void setAcrEularScore(Integer acrEularScore) {
+		this.acrEularScore = acrEularScore;
+	}
+	public String getAcrEularLabel() {
+		return acrEularLabel;
+	}
+	public void setAcrEularLabel(String acrEularLabel) {
+		this.acrEularLabel = acrEularLabel;
 	}
 	public String getWaistline() {
 		return waistline;
