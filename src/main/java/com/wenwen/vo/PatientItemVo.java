@@ -27,8 +27,12 @@ public class PatientItemVo {
 	private int visitCount;
 	@ApiModelProperty("随访周期（月）：3 / 6 / 12 / 24")
 	private int followCycle;
-	@ApiModelProperty("疾病分型；一期无结构化数据，返回 null（页面显示「分型未提供」）")
+	@ApiModelProperty("疾病分型（按 RF / 抗CCP 计算）：血清阳性 / 血清阴性；两项都未检测为 null（页面显示「分型未提供」）")
 	private String subtype;
+	@ApiModelProperty("类风湿因子 RF：随访辅助检查 fzjc.lfsyz，取最近一次有结果的随访")
+	private AntibodyVo rf;
+	@ApiModelProperty("抗CCP抗体：随访辅助检查 fzjc.kccpkt，取最近一次有结果的随访")
+	private AntibodyVo ccp;
 	@ApiModelProperty("最近一次 DAS28-CRP（病情评估 bqpg 的 result.crpScore），2 位小数；无则 null")
 	private BigDecimal latestDas28;
 	@ApiModelProperty("最近随访日期 yyyy-MM-dd；无随访则 null（页面显示「暂无访视」）")
@@ -147,6 +151,18 @@ public class PatientItemVo {
 	}
 	public void setMissingItems(List<String> missingItems) {
 		this.missingItems = missingItems;
+	}
+	public AntibodyVo getRf() {
+		return rf;
+	}
+	public void setRf(AntibodyVo rf) {
+		this.rf = rf;
+	}
+	public AntibodyVo getCcp() {
+		return ccp;
+	}
+	public void setCcp(AntibodyVo ccp) {
+		this.ccp = ccp;
 	}
 	public List<ComorbidityVo> getComorbidities() {
 		return comorbidities;

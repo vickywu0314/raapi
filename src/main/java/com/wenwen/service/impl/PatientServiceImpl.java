@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.wenwen.mapper.PatientMapper;
@@ -22,6 +23,8 @@ import com.wenwen.service.AuditLogService;
 import com.wenwen.service.PatientService;
 import com.wenwen.util.BizException;
 import com.wenwen.util.IdCardUtil;
+import com.wenwen.util.SerologyUtil;
+import com.wenwen.vo.AntibodyVo;
 import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.ComorbidityVo;
 import com.wenwen.vo.PatientDetailVo;
@@ -73,6 +76,12 @@ public class PatientServiceImpl implements PatientService {
 	@Autowired
 	private AuditLogService auditLogService;
 
+	/** 疾病分型判定用的参考范围上限（老数据没存各化验室的参考范围，统一用配置值） */
+	@Value("${ra.serology.rf-uln:20}")
+	private double rfUln;
+	@Value("${ra.serology.ccp-uln:25}")
+	private double ccpUln;
+
 	@Override
 	public PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size) {
 		if (page < 1) {
@@ -104,6 +113,7 @@ public class PatientServiceImpl implements PatientService {
 		}
 		attachComorbidities(byId);
 		attachDas28(byId);
+		attachSerology(byId);
 		vo.setItems(items);
 		return vo;
 	}
@@ -161,6 +171,7 @@ public class PatientServiceImpl implements PatientService {
 		byId.put(item.getPatientId(), item);
 		attachComorbidities(byId);
 		attachDas28(byId);
+		attachSerology(byId);
 
 		PatientDetailVo d = new PatientDetailVo();
 		d.setPatientId(item.getPatientId());
@@ -179,6 +190,9 @@ public class PatientServiceImpl implements PatientService {
 		}
 		d.setIncomplete(item.isIncomplete());
 		d.setMissingItems(item.getMissingItems());
+		d.setSubtype(item.getSubtype());
+		d.setRf(item.getRf());
+		d.setCcp(item.getCcp());
 		d.setComorbidities(item.getComorbidities());
 		d.setLatestDas28(item.getLatestDas28());
 		d.setVisitCount(item.getVisitCount());
@@ -292,6 +306,57 @@ public class PatientServiceImpl implements PatientService {
 				// 空值或非数字，看下一次随访
 			}
 		}
+	}
+
+	/**
+	 * 疾病分型：RF、抗CCP 各取最近一次有结果的随访判定阴性 / 低滴度阳性 / 高滴度阳性，
+	 * 所有随访都没有结果为未检测；再由两项合成血清阳性 / 血清阴性
+	 */
+	private void attachSerology(Map<Long, PatientItemVo> byId) {
+		if (byId.isEmpty()) {
+			return;
+		}
+		Map<Long, AntibodyVo> rfs = new HashMap<Long, AntibodyVo>();
+		Map<Long, AntibodyVo> ccps = new HashMap<Long, AntibodyVo>();
+		for (Map<String, Object> row : patientMapper.listSerology(new ArrayList<Long>(byId.keySet()))) {
+			Long patientId = toLong(row.get("patientId"));
+			String visitDate = (String) row.get("visitDate");
+			pickAntibody(rfs, patientId, (String) row.get("rf"), rfUln, visitDate);
+			pickAntibody(ccps, patientId, (String) row.get("ccp"), ccpUln, visitDate);
+		}
+		for (PatientItemVo item : byId.values()) {
+			AntibodyVo rf = rfs.containsKey(item.getPatientId()) ? rfs.get(item.getPatientId()) : untested(rfUln);
+			AntibodyVo ccp = ccps.containsKey(item.getPatientId()) ? ccps.get(item.getPatientId()) : untested(ccpUln);
+			item.setRf(rf);
+			item.setCcp(ccp);
+			item.setSubtype(SerologyUtil.subtype(rf.getStatus(), ccp.getStatus()));
+		}
+	}
+
+	/** 行按随访从近到远排，每个患者只留第一个能判定的结果 */
+	private static void pickAntibody(Map<Long, AntibodyVo> picked, Long patientId, String raw, double uln, String visitDate) {
+		if (picked.containsKey(patientId)) {
+			return;
+		}
+		String status = SerologyUtil.classify(raw, uln);
+		if (status == null) {
+			return;
+		}
+		AntibodyVo a = new AntibodyVo();
+		a.setStatus(status);
+		a.setStatusLabel(SerologyUtil.label(status));
+		a.setValue(raw.trim());
+		a.setUln(uln);
+		a.setVisitDate(visitDate);
+		picked.put(patientId, a);
+	}
+
+	private static AntibodyVo untested(double uln) {
+		AntibodyVo a = new AntibodyVo();
+		a.setStatus(SerologyUtil.UNTESTED);
+		a.setStatusLabel(SerologyUtil.label(SerologyUtil.UNTESTED));
+		a.setUln(uln);
+		return a;
 	}
 
 	/** 日期早的在前；没有日期的视为最晚，同日期按 ID */

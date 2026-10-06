@@ -207,7 +207,10 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
 | `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
-| `subtype` | String | 疾病资料 · 分型 | 一期无结构化数据，固定 `null`（显示「分型未提供」） |
+| `subtype` | String | 疾病资料 · 分型 | 按 RF、抗CCP 计算（不落库）：任一阳性 → `血清阳性`；做过且都不阳性 → `血清阴性`；两项都未检测 → `null`（显示「分型未提供」） |
+| `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取**最近一次有结果**的随访 |
+| `rf.status` / `statusLabel` | String | 状态 | `negative` 阴性：值 ≤ ULN，或写「<20」「阴性」「-」；`low_positive` 低滴度阳性：ULN < 值 ≤ 3×ULN，或只写「阳性」「+」；`high_positive` 高滴度阳性：值 > 3×ULN；`untested` 未检测：所有随访都没有结果 |
+| `rf.value` / `uln` / `visitDate` | — | 化验原值 / 判定用的参考上限 / 取自哪次随访 | ULN 老数据没存，统一用配置 `ra.serology.rf-uln`（默认 20 IU/mL）、`ra.serology.ccp-uln`（默认 25 U/mL），待业务确认 |
 | `latestDas28` | number | 疾病资料 · DAS28-CRP | 最近一次随访病情评估 `bqpg` 的 `result.crpScore`（老系统算好存的），2 位小数；该次为空则往前找；都没有为 `null`（显示「DAS28-CRP 未提供」） |
 | `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
 | `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
@@ -245,7 +248,9 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
                 "age": 62,
                 "visitCount": 1,
                 "followCycle": 12,
-                "subtype": null,
+                "subtype": "血清阳性",
+                "rf": { "status": "high_positive", "statusLabel": "高滴度阳性", "value": "197", "uln": 20.0, "visitDate": "2026-09-03" },
+                "ccp": { "status": "untested", "statusLabel": "未检测", "value": null, "uln": 25.0, "visitDate": null },
                 "latestDas28": null,
                 "lastVisitDate": "2026-09-03",
                 "nextDueDate": "2027-09-03",
@@ -297,7 +302,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `patientId` / `studyNo` / `name` / `sex` / `birthYear` / `age` | 标题与标签 | 同患者列表 |
 | `followStatus` / `followStatusLabel` | 姓名旁的随访状态 | 同患者列表 |
 | `withdrawReason` | 脱落原因（已脱落时） | `patient_relation_doctor`（`miss=1`）的 `reason`、`other_miss_reason`、`note`，用「；」连接 |
-| `subtype` | 疾病分型 | 一期 `null`，显示「待补充」 |
+| `subtype` / `rf` / `ccp` | 疾病分型 / RF / 抗CCP | 同患者列表；`subtype` 为 `null` 时显示「待补充」 |
 | `mobile` | 患者手机号 | `mobile` |
 | `cardNoMasked` / `hasCardNo` | 患者身份证号（后 4 位打码）/ 是否显示「眼睛」按钮 | `card_no` |
 | `nation` | 民族 | `nation` |

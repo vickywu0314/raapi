@@ -29,8 +29,12 @@ public class PatientDetailVo {
 	private String followStatusLabel;
 	@ApiModelProperty("脱落原因（已脱落时），取医患关系的 reason / other_miss_reason / note")
 	private String withdrawReason;
-	@ApiModelProperty("疾病分型；一期返回 null（页面显示「待补充」）")
+	@ApiModelProperty("疾病分型（按 RF / 抗CCP 计算）：血清阳性 / 血清阴性；两项都未检测为 null（页面显示「待补充」）")
 	private String subtype;
+	@ApiModelProperty("类风湿因子 RF：随访辅助检查 fzjc.lfsyz，取最近一次有结果的随访")
+	private AntibodyVo rf;
+	@ApiModelProperty("抗CCP抗体：随访辅助检查 fzjc.kccpkt，取最近一次有结果的随访")
+	private AntibodyVo ccp;
 	@ApiModelProperty("手机号")
 	private String mobile;
 	@ApiModelProperty("身份证号（脱敏，后 4 位为 *）；明文另调 patientSensitive")
@@ -287,6 +291,18 @@ public class PatientDetailVo {
 	}
 	public void setMissingItems(List<String> missingItems) {
 		this.missingItems = missingItems;
+	}
+	public AntibodyVo getRf() {
+		return rf;
+	}
+	public void setRf(AntibodyVo rf) {
+		this.rf = rf;
+	}
+	public AntibodyVo getCcp() {
+		return ccp;
+	}
+	public void setCcp(AntibodyVo ccp) {
+		this.ccp = ccp;
 	}
 	public List<ComorbidityVo> getComorbidities() {
 		return comorbidities;

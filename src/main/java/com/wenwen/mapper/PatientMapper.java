@@ -24,6 +24,9 @@ public interface PatientMapper {
 	/** 指定患者各次随访的 DAS28-CRP（patientId、das28 文本），每个患者最近的在前 */
 	List<Map<String, Object>> listDas28(@Param("patientIds") List<Long> patientIds);
 
+	/** 指定患者各次随访的 RF / 抗CCP 原值（patientId、visitDate、rf、ccp），每个患者最近的在前 */
+	List<Map<String, Object>> listSerology(@Param("patientIds") List<Long> patientIds);
+
 	/** 指定患者的其他病史：patientId、code、sinceYear */
 	List<Map<String, Object>> listComorbidities(@Param("patientIds") List<Long> patientIds);
 
