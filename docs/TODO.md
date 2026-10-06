@@ -6,11 +6,22 @@
 
 | # | 问题 | 现在的做法 | 确认后改哪里 |
 |---|---|---|---|
-| 1 | 不良事件 `bblsj` 存的是什么格式？（已确认 bblsj = 不良事件） | 按原字段名显示 | 字段字典 `VisitFieldDict` |
-| 2 | 疾病分型的判定口径：① RF、抗CCP 的参考范围上限 ULN 用多少（老数据只有数值，没存各化验室参考范围）；② 取最近一次结果，还是历次「曾经阳性就算阳性」 | 按 RF、抗CCP 计算（不落库）：RF ULN 20 IU/mL、抗CCP ULN 25 U/mL，取最近一次有结果的随访；≤ULN 阴性，≤3×ULN 低滴度阳性，>3×ULN 高滴度阳性 | `application.properties` 的 `ra.serology.*-uln`；取值规则在 `PatientServiceImpl.attachSerology` |
-| 3 | 手部关节编号（zzgjHand / ytgjHand 的 1、4、6…）对应哪个关节？对照在老系统前端 | 显示编号 | 访视详情 |
-| 4 | 检验参考范围用哪套？ | 不标红异常值 | 访视详情 |
-| 5 | 新建患者写 `patient_relation_doctor.research_type` 填几（RA 研究库对应的值） | 未开发 | 新建患者接口 |
+| 1 | HAQ 第 13、14 题顺序（PDF：13 弯腰拾物 / 14 摘衣帽，字典相反）；第 2 题已确认「梳头」 | 按字典顺序显示 | `VisitFieldDict` |
+| 2 | 病史病情 `touchHot`（4068 条）与 `cmHot`（3114 条）选项相同，是什么关系？ | `touchHot` 当作「疼痛关节是否发热」 | 字段字典 |
+| 3 | 病史病情 `jrSt`（3105 条，无 / 偶尔 / 经常 / 几乎总是）是什么？ | 保留显示，新增表单不放 | 字段字典 |
+| 4 | 病情评估 `wd_zc/yc`、`hd_zc/yc`、`xz_zc/yc`、`t_6`（各 7158 条，0~6 整数）是什么？ | 保留显示，新增表单不放 | 字段字典 |
+| 5 | 脏器受累明细（受累脏器及各类明细）是否保留在表单（PDF 只有是 / 否） | 建议保留，选「是」时展开 | 新增 / 编辑随访 |
+| 6 | 中医外治、药费合计在 RA 数据里没有，是否从字典去掉 | 建议去掉 | 字段字典 |
+| 7 | 字段核对 SQL 第③段结果（各字段存的类型） | 待开发跑 | 新增随访写库 |
+| 8 | 新建患者写 `patient_relation_doctor.research_type` 填几 | 配置留空，提示未配置 | `ra.patient.research-type` |
+| 9 | research_type 5、9、999 各是什么病（6 = AS 已知） | 显示「研究类型 N」 | `PatientWriteServiceImpl.OTHER_RESEARCH` |
+| 10 | 「转到自己名下」是转走还是两位医生共享 | 转走 | 新建患者接口 |
+| 11 | 疾病分型口径：RF / 抗CCP 参考上限；取最近一次还是曾经阳性 | RF 20、抗CCP 25，取最近一次 | `ra.serology.*-uln`、`PatientServiceImpl.attachSerology` |
+| 12 | ACR/EULAR 0 分（109 人）是真 0 分还是没填 | 按 0 分「暂不符合」 | `PatientServiceImpl` |
+| 13 | `bblsj` 存的是什么（不良事件已确认存 `blsj`） | 原样显示，新增不写 | 字段字典 |
+| 14 | 手部关节编号 1~20 对应哪个关节（对照在老系统前端） | 显示编号 | 访视详情 / 关节图 |
+| 15 | 检验参考范围用哪套 | 不标红异常值 | 访视详情 |
+| 16 | 导出申请接收邮箱 | 未配置 | `ra.export.apply-mail-to` |
 
 **新建患者 · 身份证号已存在时（2026-10-06 已确认）**
 - 不在 RA 研究库（research_type 不在 0/1/2/3/4/7，如 6 = AS）：不新建患者行，复用该患者，新增一条 RA 医患关系挂到当前医生名下；原来的病种自动记入「其他病史」（`patient_comorbidity`）。
