@@ -212,6 +212,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `rf.status` / `statusLabel` | String | 状态 | `negative` 阴性：值 ≤ ULN，或写「<20」「阴性」「-」；`low_positive` 低滴度阳性：ULN < 值 ≤ 3×ULN，或只写「阳性」「+」；`high_positive` 高滴度阳性：值 > 3×ULN；`untested` 未检测：所有随访都没有结果 |
 | `rf.value` / `uln` / `visitDate` | — | 化验原值 / 判定用的参考上限 / 取自哪次随访 | ULN 老数据没存，统一用配置 `ra.serology.rf-uln`（默认 20 IU/mL）、`ra.serology.ccp-uln`（默认 25 U/mL），待业务确认 |
 | `latestDas28` | number | 疾病资料 · DAS28-CRP | 最近一次随访病情评估 `bqpg` 的 `result.crpScore`（老系统算好存的），2 位小数；该次为空则往前找；都没有为 `null`（显示「DAS28-CRP 未提供」） |
+| `das28Activity` / `das28ActivityLabel` | String | 疾病资料 · DAS28-CRP 后的活动度标签 | 按 `latestDas28` 分级（EULAR 通用切点）：`remission` 临床缓解 < 2.6；`low` 低疾病活动度 2.6 ~ 3.2；`moderate` 中疾病活动度 3.2 ~ 5.1（不含 3.2）；`high` 高疾病活动度 > 5.1；无分值为 `null` |
 | `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
 | `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
 | `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
@@ -251,7 +252,9 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
                 "subtype": "血清阳性",
                 "rf": { "status": "high_positive", "statusLabel": "高滴度阳性", "value": "197", "uln": 20.0, "visitDate": "2026-09-03" },
                 "ccp": { "status": "untested", "statusLabel": "未检测", "value": null, "uln": 25.0, "visitDate": null },
-                "latestDas28": null,
+                "latestDas28": 6.68,
+                "das28Activity": "high",
+                "das28ActivityLabel": "高疾病活动度",
                 "lastVisitDate": "2026-09-03",
                 "nextDueDate": "2027-09-03",
                 "followStatus": "active",
@@ -311,7 +314,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `followStartDate` | 随访观察起始 | 基线访视（最早一次随访）日期；无随访取建档日期 |
 | `confirmDate` / `happenDate` | 确诊日期 / 发病时间 | `confirm_date` / `happen_date` |
 | `followCycle` / `nextDueDate` / `nextDueDays` | 随访周期 · 下次随访 · 已逾期 N 天 / N 天后 | `follow_cycle`；下次 = 最近随访 + 周期；`nextDueDays` 负数为已逾期 |
-| `latestDas28` | DAS28-CRP | 同患者列表 |
+| `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表 |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
 | `allergy` | 过敏史 | `gms`；为空且 `allergy=0` →「无」 |

@@ -35,6 +35,10 @@ public class PatientItemVo {
 	private AntibodyVo ccp;
 	@ApiModelProperty("最近一次 DAS28-CRP（病情评估 bqpg 的 result.crpScore），2 位小数；无则 null")
 	private BigDecimal latestDas28;
+	@ApiModelProperty("DAS28-CRP 疾病活动度：remission 临床缓解（<2.6）/ low 低（2.6~3.2）/ moderate 中（3.2~5.1）/ high 高（>5.1）；无分值为 null")
+	private String das28Activity;
+	@ApiModelProperty("疾病活动度中文：临床缓解 / 低疾病活动度 / 中疾病活动度 / 高疾病活动度")
+	private String das28ActivityLabel;
 	@ApiModelProperty("最近随访日期 yyyy-MM-dd；无随访则 null（页面显示「暂无访视」）")
 	private String lastVisitDate;
 	@ApiModelProperty("下次应随访日期 yyyy-MM-dd = 最近随访 + 随访周期；已脱落或无随访则 null")
@@ -109,6 +113,18 @@ public class PatientItemVo {
 	}
 	public void setSubtype(String subtype) {
 		this.subtype = subtype;
+	}
+	public String getDas28Activity() {
+		return das28Activity;
+	}
+	public void setDas28Activity(String das28Activity) {
+		this.das28Activity = das28Activity;
+	}
+	public String getDas28ActivityLabel() {
+		return das28ActivityLabel;
+	}
+	public void setDas28ActivityLabel(String das28ActivityLabel) {
+		this.das28ActivityLabel = das28ActivityLabel;
 	}
 	public BigDecimal getLatestDas28() {
 		return latestDas28;
