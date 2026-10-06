@@ -218,7 +218,7 @@ public final class VisitFieldDict {
 				f("zqslOtherItem", "其他受累", "", "text")));
 		m.groups.add(new Group("HAQ 健康评估问卷",
 				f("q1", "1. 穿衣能力", "", "haq"),
-				f("q2", "2. 自己能洗头吗", "", "haq"),
+				f("q2", "2. 能自己梳头吗", "", "haq"),
 				f("q3", "3. 能从椅子上不用手站起来吗", "", "haq"),
 				f("q4", "4. 能上下床吗", "", "haq"),
 				f("q5", "5. 能自己使用筷子吗", "", "haq"),
