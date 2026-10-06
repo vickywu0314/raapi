@@ -344,7 +344,11 @@ public final class VisitFieldDict {
 				f("startDate", "发生日期", "", "date"),
 				f("endDate", "结束日期", "", "date"),
 				f("badCaseList", "不良反应名称", "", "list"),
-				f("action", "采取与药物的相关措施", "", "list")));
+				f("action", "采取与药物的相关措施", "", "list"),
+				// 以下 3 个老系统没有存过，本系统自定义（2026-10-06 与业务确认）
+				f("saeList", "SAE类别", "", "list"),
+				f("otherAction", "其他措施", "", "text"),
+				f("eventDetail", "不良事件详情", "", "text")));
 		list.add(m);
 
 		// 不良事件（bblsj）
