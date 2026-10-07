@@ -22,6 +22,9 @@ public class ProjectServiceImpl implements ProjectService {
 	@Autowired
 	private ProjectMapper projectMapper;
 
+    @Autowired
+    private com.wenwen.ai.qc.QcSnapshotReader qcReader;
+
 	/** 随访周期（天），用于计划随访完成率和待随访判断 */
 	@Value("${ra.followup.cycle-days:90}")
 	private int followUpCycleDays;
@@ -31,16 +34,16 @@ public class ProjectServiceImpl implements ProjectService {
 		Map<String, Object> map = new HashMap<String, Object>();
 		map.put("cycleDays", followUpCycleDays);
 
-		int total = projectMapper.countAllPatients();
+		com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readProject();
+        int total = snapshot.getPatientIds().size();
 		int active = projectMapper.countActivePatients();
 
 		Map<String, Object> plan = projectMapper.countFollowUpPlan(map);
 		int due = toInt(plan.get("dueCount"));
 		int done = toInt(plan.get("doneCount"));
 
-		Map<String, Object> qc = projectMapper.countPendingQc(map);
-		int issueCount = toInt(qc.get("issueCount"));
-		int issuePatients = toInt(qc.get("patientCount"));
+		int issueCount = snapshot.getIssueCount();
+        int issuePatients = snapshot.getIssuePatients();
 
 		ProjectsDataVo vo = new ProjectsDataVo();
 		vo.setEnrolledPatients(total);

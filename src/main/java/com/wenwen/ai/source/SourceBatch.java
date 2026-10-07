@@ -10,4 +10,13 @@ public class SourceBatch {
     List<Long> patientIds;
     List<ScoreVisit> visits;
     Instant readCompletedAt;
+    java.util.Map<Long,com.wenwen.ai.clinical.PatientClinical> clinical;
+    java.util.Map<Long,com.wenwen.ai.qc.MissingDataStatus> qc;
+    public SourceBatch(List<Long> patientIds,List<ScoreVisit> visits,Instant readCompletedAt,java.util.Map<Long,com.wenwen.ai.clinical.PatientClinical> clinical,java.util.Map<Long,com.wenwen.ai.qc.MissingDataStatus> qc) {
+        this.patientIds=java.util.Collections.unmodifiableList(new java.util.ArrayList<>(patientIds));
+        this.visits=java.util.Collections.unmodifiableList(new java.util.ArrayList<>(visits));
+        this.readCompletedAt=readCompletedAt;
+        this.qc=java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(qc));
+        this.clinical=java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(clinical));
+    }
 }

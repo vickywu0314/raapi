@@ -1,0 +1,5 @@
+CREATE TABLE patient_basic_info (id BIGINT PRIMARY KEY, follow_up_count INT, last_follow_up_date DATETIME(6), lastFollowUpDate DATETIME(6)) ENGINE=InnoDB;
+CREATE TABLE patient_relation_doctor (patient_id BIGINT, doctor_id BIGINT, research_type INT, follow_count INT, first_follow_up_date DATETIME(6), last_follow_up_date DATETIME(6)) ENGINE=InnoDB;
+CREATE TABLE patient_follow_up_history (id BIGINT PRIMARY KEY, patient_basic_info_id BIGINT, doctor_id BIGINT, research_type INT, last_follow_up_id BIGINT, follow_up_date DATETIME(6), followUpDate DATETIME(6), bsbq LONGTEXT, fzjc LONGTEXT, bqpg LONGTEXT, zyzd LONGTEXT, zlfa LONGTEXT, blsj LONGTEXT, bblsj LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `user` (id BIGINT PRIMARY KEY, name VARCHAR(100)) ENGINE=InnoDB;
+CREATE TABLE patient_audit_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, patient_id BIGINT, visit_id BIGINT, action VARCHAR(100), detail TEXT, changes TEXT, operator_id BIGINT, operator_name VARCHAR(100), create_time DATETIME) ENGINE=InnoDB;

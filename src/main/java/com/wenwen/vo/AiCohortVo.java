@@ -3,7 +3,7 @@ package com.wenwen.vo;
 import java.util.*;
 import lombok.Value;
 
-/** P01 真实示踪响应；后续完整分析能力不以占位字段冒充。 */
+/** P02 真实临床、治疗及共享now/6m评估响应；后续完整分析能力不以占位字段冒充。 */
 @Value
 public class AiCohortVo {
     int n;

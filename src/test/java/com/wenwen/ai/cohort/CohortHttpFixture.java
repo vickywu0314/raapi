@@ -60,7 +60,7 @@ abstract class CohortHttpFixture {
         @Bean public PlatformTransactionManager transactions(DataSource dataSource) { return new DataSourceTransactionManager(dataSource); }
         @Bean public org.apache.ibatis.session.SqlSessionFactory sqlSessionFactory(DataSource dataSource) throws Exception {
             SqlSessionFactoryBean factory = new SqlSessionFactoryBean(); factory.setDataSource(dataSource);
-            factory.setMapperLocations(new org.springframework.core.io.Resource[] {new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml")});
+            factory.setMapperLocations(new org.springframework.core.io.Resource[] {new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/PatientMapper.xml")});
             return factory.getObject();
         }
         @Bean public AiCohortSourceMapper sourceMapper(org.apache.ibatis.session.SqlSessionFactory factory) {
@@ -87,6 +87,7 @@ abstract class CohortHttpFixture {
         context.setServletContext(new MockServletContext());
         context.register(Infrastructure.class);
         if (trusted) context.register(TrustedIdentity.class);
+        beforeRefresh();
         context.refresh();
         bodyRead = new CountingBodyFilter();
         http = MockMvcBuilders.webAppContextSetup(context).addFilters(bodyRead).build();
@@ -94,6 +95,7 @@ abstract class CohortHttpFixture {
         clock = context.getBean(MutableClock.class);
         observed = context.getBean(ObservedDataSource.class);
     }
+    void beforeRefresh() { }
     @BeforeEach void setup() throws Exception {
         buildContext(true);
         try (Connection c = raw.getConnection(); Statement s = c.createStatement()) {
@@ -104,14 +106,14 @@ abstract class CohortHttpFixture {
             }
             try (InputStream in = getClass().getResourceAsStream("/ai-cohort/p01c/schema.sql")) {
                 String ddl = new Scanner(in, StandardCharsets.UTF_8.name()).useDelimiter("\\A").next();
-                String[] tables = {"patient_basic_info", "patient_relation_doctor", "patient_follow_up_history"};
+                String[] tables = {"patient_basic_info", "patient_relation_doctor", "patient_follow_up_history", "patient_comorbidity"};
                 int i = 0;
                 for (String sql : ddl.split(";")) if (!sql.trim().isEmpty()) { s.execute(sql); ownedTables.add(tables[i++]); }
             }
-            try (ResultSet engines = s.executeQuery("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('patient_basic_info','patient_relation_doctor','patient_follow_up_history')")) {
-                int count=0; while(engines.next()) { assertEquals("InnoDB",engines.getString(1)); count++; } assertEquals(3,count);
+            try (ResultSet engines = s.executeQuery("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('patient_basic_info','patient_relation_doctor','patient_follow_up_history','patient_comorbidity')")) {
+                int count=0; while(engines.next()) { assertEquals("InnoDB",engines.getString(1)); count++; } assertEquals(4,count);
             }
-            for (int i = 1; i <= 7; i++) s.execute("INSERT INTO patient_basic_info VALUES (" + i + ",'synthetic-same-name')");
+            for (int i = 1; i <= 7; i++) s.execute("INSERT INTO patient_basic_info (id,name) VALUES (" + i + ",'synthetic-same-name')");
             s.execute("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,1,0,0),(101,1,1,0),(202,1,5,0),(101,2,6,0),(202,2,2,0),(101,3,3,1),(202,4,4,0),(101,5,7,0),(101,6,2,0),(101,7,4,0),(101,8,0,0)");
         }
         visit(10,1,0,"{\"result\":{\"crpScore\":9}}","2026-10-07",null,null);
@@ -129,7 +131,7 @@ abstract class CohortHttpFixture {
         try (Connection c = raw.getConnection(); Statement s = c.createStatement()) { s.execute(sql); }
     }
     void visit(long id, long patient, int type, String bqpg, String date, String camel, String fzjc) throws SQLException {
-        try (Connection c = raw.getConnection(); PreparedStatement s = c.prepareStatement("INSERT INTO patient_follow_up_history VALUES (?,?,?,?,?,?,?)")) {
+        try (Connection c = raw.getConnection(); PreparedStatement s = c.prepareStatement("INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,followUpDate,bqpg,fzjc) VALUES (?,?,?,?,?,?,?)")) {
             s.setLong(1,id); s.setLong(2,patient); s.setInt(3,type); s.setString(4,date); s.setString(5,camel); s.setString(6,bqpg); s.setString(7,fzjc); s.executeUpdate();
         }
     }

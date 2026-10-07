@@ -10,4 +10,5 @@ public final class VisitRow {
     private String observedAt;
     private String bqpg;
     private String fzjc;
+    private String zlfa;
 }

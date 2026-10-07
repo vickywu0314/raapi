@@ -10,6 +10,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AiCohortConfiguration {
     @Bean
+    @ConditionalOnMissingBean(com.wenwen.ai.treatment.DrugDictionary.class)
+    public com.wenwen.ai.treatment.DrugDictionary cohortDrugDictionary() { return new com.wenwen.ai.treatment.DevelopmentDrugDictionary(); }
+    @Bean
     @ConditionalOnMissingBean(PrincipalProvider.class)
     public PrincipalProvider cohortPrincipalProvider() {
         return () -> { throw new CohortException(401, "UNAUTHENTICATED", "请先登录"); };

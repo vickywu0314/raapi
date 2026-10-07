@@ -36,6 +36,10 @@ import com.wenwen.vo.VisitItemVo;
 @Service
 public class PatientServiceImpl implements PatientService {
 
+	@Autowired
+    private java.time.Clock clock=java.time.Clock.systemUTC();
+    private LocalDate asOf() { return clock.instant().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate(); }
+
 	private static final int MAX_PAGE_SIZE = 200;
 
 	/** 随访状态编码 → 中文 */
@@ -74,6 +78,9 @@ public class PatientServiceImpl implements PatientService {
 	@Autowired
 	private PatientMapper patientMapper;
 
+    @Autowired
+    private com.wenwen.ai.qc.QcSnapshotReader qcReader;
+
 	@Autowired
 	private AuditLogService auditLogService;
 
@@ -92,29 +99,24 @@ public class PatientServiceImpl implements PatientService {
 			throw new IllegalArgumentException("每页条数应为 1~" + MAX_PAGE_SIZE);
 		}
 		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
-		map.put("offset", (page - 1) * size);
-		map.put("size", size);
-
-		PatientsListVo vo = new PatientsListVo();
-		Map<String, Object> summary = patientMapper.countSummary(map);
-		vo.setTotalPatients(toInt(summary.get("totalPatients")));
-		vo.setIncompleteCount(toInt(summary.get("incompleteCount")));
-		vo.setTotal(patientMapper.countPatients(map));
-		vo.setPage(page);
-		vo.setSize(size);
-
-		List<Map<String, Object>> rows = vo.getTotal() == 0 ? Collections.<Map<String, Object>>emptyList() : patientMapper.listPatients(map);
+        com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readPatients(map);
+        List<Map<String,Object>> filtered=filtered(snapshot,completeness);
+        PatientsListVo vo=new PatientsListVo();
+        vo.setTotalPatients(snapshot.getPatientIds().size()); vo.setIncompleteCount(snapshot.incompleteCount());
+        vo.setTotal(filtered.size()); vo.setPage(page);vo.setSize(size);
+        long offset=((long)page-1)*size;
+        List<Map<String,Object>> rows=offset>=filtered.size()?Collections.emptyList():filtered.subList((int)offset,(int)Math.min(offset+size,filtered.size()));
 		List<PatientItemVo> items = new ArrayList<PatientItemVo>();
 		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
-		int thisYear = Calendar.getInstance().get(Calendar.YEAR);
+		LocalDate asOf = asOf();
 		for (Map<String, Object> row : rows) {
-			PatientItemVo item = toItem(row, thisYear);
+			PatientItemVo item = toItem(row, asOf, snapshot.getQc().get(toLong(row.get("patientId"))));
 			items.add(item);
 			byId.put(item.getPatientId(), item);
 		}
-		attachComorbidities(byId);
-		attachDas28(byId);
-		attachSerology(byId);
+		attachComorbidities(byId,asOf);
+		attachDas28(byId,asOf,snapshot);
+		attachSerology(byId,asOf);
 		vo.setItems(items);
 		return vo;
 	}
@@ -122,14 +124,17 @@ public class PatientServiceImpl implements PatientService {
 	@Override
 	public List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness) {
 		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
-		map.put("offset", 0);
-		map.put("size", Integer.MAX_VALUE);
-		List<Long> ids = new ArrayList<Long>();
-		for (Map<String, Object> row : patientMapper.listPatients(map)) {
-			ids.add(toLong(row.get("patientId")));
-		}
+        com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readPatients(map);
+        List<Long> ids=new ArrayList<>();
+        for(Map<String,Object> row:filtered(snapshot,completeness)) ids.add(toLong(row.get("patientId")));
 		return ids;
 	}
+
+    private static List<Map<String,Object>> filtered(com.wenwen.ai.qc.QcSnapshot snapshot,String completeness) {
+        List<Map<String,Object>> rows=new ArrayList<>();
+        for(Map<String,Object> row:snapshot.getRows()) if(snapshot.getQc().get(toLong(row.get("patientId"))).matches(emptyToNull(completeness))) rows.add(row);
+        return rows;
+    }
 
 	/** 患者列表的筛选参数（校验后），不含分页 */
 	private Map<String, Object> listParams(Long doctorId, String keyword, String followStatus, String completeness) {
@@ -160,19 +165,19 @@ public class PatientServiceImpl implements PatientService {
 			throw noAccess();
 		}
 		// 随访状态、待补全、年龄等与列表同一套计算
-		map.put("offset", 0);
-		map.put("size", 1);
-		List<Map<String, Object>> rows = patientMapper.listPatients(map);
+        com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readPatients(map);
+        List<Map<String,Object>> rows=snapshot.getRows();
 		if (rows.isEmpty()) {
 			throw noAccess();
 		}
 		Map<String, Object> row = rows.get(0);
-		PatientItemVo item = toItem(row, Calendar.getInstance().get(Calendar.YEAR));
+		LocalDate asOf=asOf();
+		PatientItemVo item = toItem(row, asOf, snapshot.getQc().get(toLong(row.get("patientId"))));
 		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
 		byId.put(item.getPatientId(), item);
-		attachComorbidities(byId);
-		attachDas28(byId);
-		attachSerology(byId);
+		attachComorbidities(byId,asOf);
+		attachDas28(byId,asOf,snapshot);
+		attachSerology(byId,asOf);
 
 		PatientDetailVo d = new PatientDetailVo();
 		d.setPatientId(item.getPatientId());
@@ -195,6 +200,7 @@ public class PatientServiceImpl implements PatientService {
 		d.setRf(item.getRf());
 		d.setCcp(item.getCcp());
 		d.setComorbidities(item.getComorbidities());
+        d.setFmState(item.getFmState()); d.setAsState(item.getAsState());
 		d.setLatestDas28(item.getLatestDas28());
 		d.setDas28Activity(item.getDas28Activity());
 		d.setDas28ActivityLabel(item.getDas28ActivityLabel());
@@ -295,7 +301,7 @@ public class PatientServiceImpl implements PatientService {
 		return new BizException("403", "患者不存在，或不在您名下");
 	}
 
-	private void attachComorbidities(Map<Long, PatientItemVo> byId) {
+	private void attachComorbidities(Map<Long, PatientItemVo> byId, LocalDate asOf) {
 		if (byId.isEmpty()) {
 			return;
 		}
@@ -303,52 +309,56 @@ public class PatientServiceImpl implements PatientService {
 			PatientItemVo item = byId.get(toLong(c.get("patientId")));
 			if (item != null) {
 				item.getComorbidities().add(toComorbidity(c));
+                if ("TRUE".equals(com.wenwen.ai.clinical.ClinicalPolicy.association(toInteger(c.get("sinceYear")),asOf))) {
+                    if ("FM".equals(c.get("code"))) item.setFmState("TRUE");
+                    if ("AS".equals(c.get("code"))) item.setAsState("TRUE");
+                }
 			}
 		}
 	}
 
-	/** 最近一次 DAS28-CRP：每个患者按原顺序取首个非负有效 result.crpScore，统一两位 canonical 与 CRP 分层；缺失继续历史查找 */
-	private void attachDas28(Map<Long, PatientItemVo> byId) {
-		if (byId.isEmpty()) {
-			return;
-		}
-		for (Map<String, Object> row : patientMapper.listDas28(new ArrayList<Long>(byId.keySet()))) {
-			PatientItemVo item = byId.get(toLong(row.get("patientId")));
-			if (item == null || item.getLatestDas28() != null) {
-				continue;
-			}
-			BigDecimal score = Das28Util.canonicalCrp(str(row.get("das28")));
-			if (score == null) {
-				continue;
-			}
-			item.setLatestDas28(score);
-			item.setDas28Activity(Das28Util.activity(score));
-			item.setDas28ActivityLabel(Das28Util.label(item.getDas28Activity()));
-		}
-	}
+    /** 当前DAS按共享Matcher：截至本次上海日期，最新有效LocalDate/最大id。 */
+    private void attachDas28(Map<Long, PatientItemVo> byId, LocalDate asOf,com.wenwen.ai.qc.QcSnapshot snapshot) {
+        if (byId.isEmpty()) return;
+        Map<Long,List<com.wenwen.ai.clinical.VisitMatcher.Visit>> visits=new HashMap<>();
+        for(com.wenwen.ai.clinical.VisitMatcher.Visit visit:snapshot.getVisits())
+            visits.computeIfAbsent(visit.getPatientId(),key -> new ArrayList<>()).add(visit);
+        for(PatientItemVo item:byId.values()) {
+            com.wenwen.ai.clinical.VisitMatcher.Visit selected=com.wenwen.ai.clinical.VisitMatcher.now(
+                visits.getOrDefault(item.getPatientId(),Collections.emptyList()),item.getPatientId(),asOf);
+            if(selected==null) continue;
+            item.setLatestDas28(selected.getScore());
+            item.setDas28Activity(Das28Util.activity(selected.getScore()));
+            item.setDas28ActivityLabel(Das28Util.label(item.getDas28Activity()));
+        }
+    }
 
-	/**
-	 * 疾病分型：RF、抗CCP 各取最近一次有结果的随访判定阴性 / 低滴度阳性 / 高滴度阳性，
-	 * 所有随访都没有结果为未检测；再由两项合成血清阳性 / 血清阴性
-	 */
-	private void attachSerology(Map<Long, PatientItemVo> byId) {
+	/** 分型取截至 asOf 曾经阳性；rf/ccp 分别取最新可分类的有日期结果。 */
+	private void attachSerology(Map<Long, PatientItemVo> byId, LocalDate asOf) {
 		if (byId.isEmpty()) {
 			return;
 		}
+		Map<Long,String> states=new HashMap<Long,String>();
 		Map<Long, AntibodyVo> rfs = new HashMap<Long, AntibodyVo>();
 		Map<Long, AntibodyVo> ccps = new HashMap<Long, AntibodyVo>();
 		for (Map<String, Object> row : patientMapper.listSerology(new ArrayList<Long>(byId.keySet()))) {
 			Long patientId = toLong(row.get("patientId"));
 			String visitDate = (String) row.get("visitDate");
-			pickAntibody(rfs, patientId, (String) row.get("rf"), rfUln, visitDate);
-			pickAntibody(ccps, patientId, (String) row.get("ccp"), ccpUln, visitDate);
+            if (!com.wenwen.ai.clinical.ClinicalPolicy.datedAt(visitDate,asOf)) continue;
+            Map<String,String> scalars=com.wenwen.ai.source.ClinicalScalarReader.read(str(row.get("fzjc")),new java.util.LinkedHashSet<>());
+            String rf=scalars.get("/lfsyz"), ccp=scalars.get("/kccpkt");
+            String state=com.wenwen.ai.clinical.ClinicalPolicy.serology(states.get(patientId),SerologyUtil.classify(rf,rfUln));
+            states.put(patientId,com.wenwen.ai.clinical.ClinicalPolicy.serology(state,SerologyUtil.classify(ccp,ccpUln)));
+			pickAntibody(rfs, patientId, rf, rfUln, visitDate);
+			pickAntibody(ccps, patientId, ccp, ccpUln, visitDate);
 		}
 		for (PatientItemVo item : byId.values()) {
 			AntibodyVo rf = rfs.containsKey(item.getPatientId()) ? rfs.get(item.getPatientId()) : untested(rfUln);
 			AntibodyVo ccp = ccps.containsKey(item.getPatientId()) ? ccps.get(item.getPatientId()) : untested(ccpUln);
 			item.setRf(rf);
 			item.setCcp(ccp);
-			item.setSubtype(SerologyUtil.subtype(rf.getStatus(), ccp.getStatus()));
+			String state=states.get(item.getPatientId());
+            item.setSubtype("TRUE".equals(state)?"血清阳性":"FALSE".equals(state)?"血清阴性":null);
 		}
 	}
 
@@ -446,7 +456,7 @@ public class PatientServiceImpl implements PatientService {
 		return v == null ? null : String.valueOf(v);
 	}
 
-	private PatientItemVo toItem(Map<String, Object> row, int thisYear) {
+	private PatientItemVo toItem(Map<String, Object> row, LocalDate asOf,com.wenwen.ai.qc.MissingDataStatus qc) {
 		PatientItemVo item = new PatientItemVo();
 		item.setPatientId(toLong(row.get("patientId")));
 		item.setStudyNo((String) row.get("studyNo"));
@@ -454,19 +464,9 @@ public class PatientServiceImpl implements PatientService {
 		Integer gender = toInteger(row.get("gender"));
 		item.setGender(gender);
 		item.setSex(gender == null ? null : gender == 1 ? "男" : gender == 2 ? "女" : null);
-		// 出生年份 / 年龄：优先取身份证号里的出生日期，年龄按周岁算；
-		// 没有有效身份证号时兜底：出生年份 = 建档年份 − 建档时年龄，年龄 = 今年 − 出生年份
-		LocalDate birth = IdCardUtil.birthDate((String) row.get("cardNo"));
-		Integer age = toInteger(row.get("age"));
-		if (birth != null) {
-			item.setBirthYear(birth.getYear());
-			item.setAge(Period.between(birth, LocalDate.now()).getYears());
-		} else if (age != null) {
-			Integer createYear = toInteger(row.get("createYear"));
-			int birthYear = (createYear == null ? thisYear : createYear) - age;
-			item.setBirthYear(birthYear);
-			item.setAge(thisYear - birthYear);
-		}
+        LocalDate birth = IdCardUtil.birthDate((String)row.get("cardNo"),asOf);
+        item.setBirthYear(birth==null?null:birth.getYear());
+        item.setAge(com.wenwen.ai.clinical.ClinicalPolicy.age((String)row.get("cardNo"),asOf));
 		item.setVisitCount(toInt(row.get("visitCount")));
 		item.setFollowCycle(toInt(row.get("followCycle")));
 		item.setLastVisitDate((String) row.get("lastVisitDate"));
@@ -475,12 +475,7 @@ public class PatientServiceImpl implements PatientService {
 		item.setFollowStatus(status);
 		item.setFollowStatusLabel(FOLLOW_STATUS.get(status));
 		List<String> missing = new ArrayList<String>();
-		String codes = (String) row.get("missingCodes");
-		if (codes != null && !codes.isEmpty()) {
-			for (String code : codes.split(",")) {
-				missing.add(MISSING_ITEMS.containsKey(code) ? MISSING_ITEMS.get(code) : code);
-			}
-		}
+        for(String code:qc.getMissingCodes()) missing.add(MISSING_ITEMS.get(code));
 		item.setMissingItems(missing);
 		item.setIncomplete(!missing.isEmpty());
 		item.setComorbidities(new ArrayList<ComorbidityVo>());

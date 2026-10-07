@@ -9,13 +9,26 @@
     <select id="patientIds" resultType="java.lang.Long">
         SELECT p.id FROM patient_basic_info p WHERE <include refid="ownedRaPatient"/> ORDER BY p.id
     </select>
+    <select id="patients" resultType="com.wenwen.ai.source.PatientRow">
+        SELECT p.id, p.gender, p.card_no AS cardNo,
+            DATE_FORMAT(COALESCE(p.confirm_date,p.confirmDate), '%Y-%m-%d') AS confirmDate
+        FROM patient_basic_info p WHERE <include refid="ownedRaPatient"/> ORDER BY p.id
+    </select>
+    <select id="comorbidities" resultType="com.wenwen.ai.source.ComorbidityRow">
+        SELECT c.id, c.patient_id AS patientId, c.disease_code AS code, c.since_year AS sinceYear
+        FROM patient_comorbidity c JOIN patient_basic_info p ON p.id=c.patient_id
+        WHERE <include refid="ownedRaPatient"/> ORDER BY p.id, c.id
+    </select>
     <select id="visits" resultType="com.wenwen.ai.source.VisitRow">
         SELECT f.id, f.patient_basic_info_id AS patientId,
             DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS observedAt,
-            f.bqpg, f.fzjc
+            f.bqpg, f.fzjc, f.zlfa
         FROM patient_follow_up_history f JOIN patient_basic_info p ON p.id = f.patient_basic_info_id
         WHERE <include refid="ownedRaPatient"/>
             AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
         ORDER BY p.id, f.id
+    </select>
+    <select id="missingIssues" resultType="Map" parameterType="Map">
+        <include refid="com.wenwen.mapper.ProjectMapper.missingIssues"/>
     </select>
 </mapper>

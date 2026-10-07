@@ -48,9 +48,9 @@ class AiCohortHttpTest extends CohortHttpFixture {
     @Test void invalidUnknownAndUnsupportedInputsFailBeforeSql() throws Exception {
         String[] invalid = {"", "[]", "null", "1", "{", "{} {}", "{\"filters\":[],\"doctorId\":null}", "{\"filters\":true}",
             "{\"filters\":{},\"filters\":{}}", "{\"filters\":{\"act\":\"low\",\"act\":\"high\"}}", "{\"cohortId\":\"x\"}",
-            "{\"filters\":{\"studyCode\":\"AS\"}}", "{\"filters\":{\"studyCode\":0}}", "{\"filters\":{\"at\":\"6m\"}}",
+            "{\"filters\":{\"studyCode\":\"AS\"}}", "{\"filters\":{\"studyCode\":0}}", "{\"filters\":{\"at\":\"6M\"}}",
             "{\"filters\":{\"at\":[]}}", "{\"filters\":{\"act\":\"unknown\"}}", "{\"filters\":{\"act\":0}}",
-            "{\"filters\":{\"sex\":\"F\"}}", "{\"filters\":{\"age\":\"18-40\"}}", "{\"filters\":{\"tx\":\"bio\"}}", "{\"filters\":{\"q\":\"x\"}}",
+            "{\"filters\":{\"sex\":\"X\"}}", "{\"filters\":{\"age\":\"40-18\"}}", "{\"filters\":{\"tx\":\"OTHER\"}}", "{\"filters\":{\"q\":\"x\"}}",
             "{\"filters\":{\"ids\":\"1,3\"}}", "{\"filters\":{\"ids\":[1]}}", "{\"filters\":{\"ids\":[null]}}",
             "{\"filters\":{\"ids\":[\"0\"]}}", "{\"filters\":{\"ids\":[\"-1\"]}}", "{\"filters\":{\"ids\":[\"01\"]}}",
             "{\"filters\":{\"ids\":[\"+1\"]}}", "{\"filters\":{\"ids\":[\"1.0\"]}}", "{\"filters\":{\"ids\":[\"1e1\"]}}",
@@ -115,8 +115,8 @@ class AiCohortHttpTest extends CohortHttpFixture {
         JsonNode data=success("{}"); JsonNode first=data.path("patients").path("items").get(0);
         assertEquals(2.30,first.path("das28At").asDouble()); assertEquals("11",first.path("scoreProvenance").path("sourceVisitId").asText());
         assertEquals("2026-10-07",data.path("meta").path("asOfDate").asText());
-        assertEquals(json.readTree("{\"crp\":\"dev-crp-v04\",\"now\":\"dev-now-v04\"}"),data.path("meta").path("policyVersions"));
-        assertEquals(json.readTree("[\"studyCode\",\"at\",\"act\",\"ids\"]"),data.path("meta").path("supportedFilters")); assertEquals("P01_TRACER",data.path("meta").path("completion").asText());
+        assertEquals(json.readTree("{\"qc\":\"dev-missing-v04\",\"crp\":\"dev-crp-v04\",\"now\":\"dev-now-v04\",\"clinical\":\"dev-clinical-v04\",\"serology\":\"dev-ever-serology-v04\",\"treatment\":\"dev-timeline-v04\",\"visitMatcher\":\"dev-visit-match-v04\",\"drugDictionary\":\"dev-drug-v04\"}"),data.path("meta").path("policyVersions"));
+        assertEquals(json.readTree("[\"studyCode\",\"at\",\"act\",\"ids\",\"sex\",\"age\",\"sero\",\"cm\",\"tx\",\"data\"]"),data.path("meta").path("supportedFilters")); assertEquals("P02_QC",data.path("meta").path("completion").asText());
         for(String field:new String[]{"readStartedAt","readCompletedAt","computedAt"}) assertEquals(clock.now,java.time.Instant.parse(data.path("meta").path(field).asText()));
         clock.now=java.time.Instant.parse("2026-10-09T02:00:00Z");
         data=success("{}"); first=data.path("patients").path("items").get(0);
@@ -125,7 +125,7 @@ class AiCohortHttpTest extends CohortHttpFixture {
     }
     @Test void firstTenAreRealNumericOrderAndTotalRemainsSeventeen() throws Exception {
         for(int id=20;id<=31;id++) {
-            sql("INSERT INTO patient_basic_info VALUES ("+id+",'synthetic-extra')");
+            sql("INSERT INTO patient_basic_info (id,name) VALUES ("+id+",'synthetic-extra')");
             sql("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type) VALUES (101,"+id+",0)");
         }
         java.util.List<String> expected=Arrays.asList("1","3","5","6","7","20","21","22","23","24");

@@ -37,7 +37,7 @@ class CohortScopeTest extends CohortHttpFixture {
     @Test void sameRelationDoctorAndRaTypesDefineScope() throws Exception {
         int id=90;
         for(int type:new int[]{5,6,9,999}) {
-            sql("INSERT INTO patient_basic_info VALUES ("+id+",'synthetic-excluded')");
+            sql("INSERT INTO patient_basic_info (id,name) VALUES ("+id+",'synthetic-excluded')");
             sql("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type) VALUES (101,"+id+","+type+")");
             visit(1000+id,1,type,"{\"result\":{\"crpScore\":99}}","2026-10-07",null,null); id++;
         }
