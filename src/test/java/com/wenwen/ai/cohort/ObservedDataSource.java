@@ -1,0 +1,59 @@
+package com.wenwen.ai.cohort;
+
+import java.lang.reflect.*;
+import java.sql.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.sql.DataSource;
+import org.springframework.jdbc.datasource.AbstractDataSource;
+
+/** 只观察生产借用连接；fixture/writer 直接用独立 raw DataSource。 */
+final class ObservedDataSource extends AbstractDataSource {
+    final DataSource delegate;
+    final AtomicInteger active = new AtomicInteger();
+    int borrowed, returned, selects, mysqlFailures;
+    final List<Integer> queryConnections = new ArrayList<>();
+    final List<Integer> isolations = new ArrayList<>();
+    final List<Boolean> autoCommits = new ArrayList<>();
+    Runnable afterFirstQuery;
+    boolean failSecondSql;
+    ObservedDataSource(DataSource delegate) { this.delegate = delegate; }
+    public Connection getConnection() throws SQLException { return observe(delegate.getConnection()); }
+    public Connection getConnection(String user, String password) throws SQLException { return observe(delegate.getConnection(user,password)); }
+    private Connection observe(Connection connection) {
+        active.incrementAndGet(); borrowed++;
+        int identity = System.identityHashCode(connection);
+        return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, new InvocationHandler() {
+            boolean closed;
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                try {
+                    if ("close".equals(method.getName())) {
+                        if (!closed) { connection.close(); closed=true; active.decrementAndGet(); returned++; }
+                        return null;
+                    }
+                    if ("prepareStatement".equals(method.getName()) && args[0] instanceof String && ((String)args[0]).trim().startsWith("SELECT")) {
+                        selects++; queryConnections.add(identity); isolations.add(connection.getTransactionIsolation()); autoCommits.add(connection.getAutoCommit());
+                        boolean second = ((String)args[0]).contains("patient_follow_up_history");
+                        Object[] actual = args.clone();
+                        if (second && failSecondSql) actual[0] = "SELECT ? FROM p01c_missing_source_table";
+                        PreparedStatement statement = (PreparedStatement) method.invoke(connection,actual);
+                        return Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),new Class<?>[]{PreparedStatement.class},(p,m,a) -> {
+                            try {
+                                Object value = m.invoke(statement,a);
+                                if ("execute".equals(m.getName()) && !second && afterFirstQuery != null) {
+                                    Runnable barrier = afterFirstQuery; afterFirstQuery=null; barrier.run();
+                                }
+                                return value;
+                            } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) mysqlFailures++; throw e.getCause(); }
+                        });
+                    }
+                    return method.invoke(connection,args);
+                } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) mysqlFailures++; throw e.getCause(); }
+            }
+        });
+    }
+    void reset() {
+        if (active.get()!=0) throw new AssertionError("请求前存在未释放连接");
+        borrowed=returned=selects=mysqlFailures=0; queryConnections.clear(); isolations.clear(); autoCommits.clear(); afterFirstQuery=null; failSecondSql=false;
+    }
+}

@@ -33,9 +33,9 @@ public class PatientItemVo {
 	private AntibodyVo rf;
 	@ApiModelProperty("抗CCP抗体：随访辅助检查 fzjc.kccpkt，取最近一次有结果的随访")
 	private AntibodyVo ccp;
-	@ApiModelProperty("最近一次 DAS28-CRP（病情评估 bqpg 的 result.crpScore），2 位小数；无则 null")
+	@ApiModelProperty("最近有效存量 DAS28-CRP（bqpg.result.crpScore），原值非负、两位 HALF_UP；非法则继续历史查找，无有效值为 null")
 	private BigDecimal latestDas28;
-	@ApiModelProperty("DAS28-CRP 疾病活动度：remission 临床缓解（<2.6）/ low 低（2.6~3.2）/ moderate 中（3.2~5.1）/ high 高（>5.1）；无分值为 null")
+	@ApiModelProperty("DAS28-CRP 疾病活动度：按两位 canonical：remission 临床缓解（<2.3）/ low 低（2.3~2.7）/ moderate 中（>2.7 且 ≤4.1）/ high 高（>4.1）；无有效分值为 null")
 	private String das28Activity;
 	@ApiModelProperty("疾病活动度中文：临床缓解 / 低疾病活动度 / 中疾病活动度 / 高疾病活动度")
 	private String das28ActivityLabel;
