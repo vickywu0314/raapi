@@ -16,7 +16,9 @@ final class ObservedDataSource extends AbstractDataSource {
     final List<Integer> isolations = new ArrayList<>();
     final List<Boolean> autoCommits = new ArrayList<>();
     Runnable afterFirstQuery;
-    boolean failSecondSql;
+    boolean failSecondSql, failQcSql;
+    String lastSqlState;int lastMysqlError;
+    String failClinicalTable;
     ObservedDataSource(DataSource delegate) { this.delegate = delegate; }
     public Connection getConnection() throws SQLException { return observe(delegate.getConnection()); }
     public Connection getConnection(String user, String password) throws SQLException { return observe(delegate.getConnection(user,password)); }
@@ -35,7 +37,8 @@ final class ObservedDataSource extends AbstractDataSource {
                         selects++; queryConnections.add(identity); isolations.add(connection.getTransactionIsolation()); autoCommits.add(connection.getAutoCommit());
                         boolean second = ((String)args[0]).contains("patient_follow_up_history");
                         Object[] actual = args.clone();
-                        if (second && failSecondSql) actual[0] = "SELECT ? FROM p01c_missing_source_table";
+                        if ((second && failSecondSql) || (failClinicalTable!=null && ((String)args[0]).contains(failClinicalTable))) actual[0] = "SELECT ? FROM p01c_missing_source_table";
+                        if(failQcSql && ((String)args[0]).contains("\'M_BASELINE_LAB\'")) actual[0]=((String)args[0]).replace("patient_basic_info", "p02e_missing_qc_source");
                         PreparedStatement statement = (PreparedStatement) method.invoke(connection,actual);
                         return Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),new Class<?>[]{PreparedStatement.class},(p,m,a) -> {
                             try {
@@ -44,16 +47,16 @@ final class ObservedDataSource extends AbstractDataSource {
                                     Runnable barrier = afterFirstQuery; afterFirstQuery=null; barrier.run();
                                 }
                                 return value;
-                            } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) mysqlFailures++; throw e.getCause(); }
+                            } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) {mysqlFailures++;lastSqlState=((SQLException)e.getCause()).getSQLState();lastMysqlError=((SQLException)e.getCause()).getErrorCode();} throw e.getCause(); }
                         });
                     }
                     return method.invoke(connection,args);
-                } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) mysqlFailures++; throw e.getCause(); }
+                } catch (InvocationTargetException e) { if (e.getCause() instanceof SQLException) {mysqlFailures++;lastSqlState=((SQLException)e.getCause()).getSQLState();lastMysqlError=((SQLException)e.getCause()).getErrorCode();} throw e.getCause(); }
             }
         });
     }
     void reset() {
         if (active.get()!=0) throw new AssertionError("请求前存在未释放连接");
-        borrowed=returned=selects=mysqlFailures=0; queryConnections.clear(); isolations.clear(); autoCommits.clear(); afterFirstQuery=null; failSecondSql=false;
+        borrowed=returned=selects=mysqlFailures=0; queryConnections.clear(); isolations.clear(); autoCommits.clear(); afterFirstQuery=null; failSecondSql=false; failClinicalTable=null;failQcSql=false;lastSqlState=null;lastMysqlError=0;
     }
 }

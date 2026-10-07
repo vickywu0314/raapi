@@ -34,6 +34,8 @@ class VisitEditor {
 	private static final Pattern LIST_SEP = Pattern.compile("[、\\n]");
 
 	final List<FieldChange> changes = new ArrayList<FieldChange>();
+	/** 本次DAS输入实际变化；独立于重评后数值是否变化，供保存保护源原文。 */
+	boolean dasReevaluated;
 	private long newRowSeq = System.currentTimeMillis();
 
 	/**
@@ -194,7 +196,10 @@ class VisitEditor {
 			return false;
 		}
 		boolean joints = !java.util.Collections.disjoint(bqpgChanged, Arrays.asList("zzgj", "ytgj", "zzgjHand", "ytgjHand"));
-		boolean das = joints || bqpgChanged.contains("ztScoreByPatient") || fzjcChanged.contains("cfydb") || fzjcChanged.contains("xc");
+		boolean commonDas = joints || bqpgChanged.contains("ztScoreByPatient");
+		boolean crpChanged = commonDas || fzjcChanged.contains("cfydb");
+		boolean esrChanged = commonDas || fzjcChanged.contains("xc");
+		dasReevaluated = crpChanged || esrChanged;
 		boolean haq = false;
 		for (String k : bqpgChanged) {
 			haq |= k.matches("q\\d+");
@@ -205,18 +210,24 @@ class VisitEditor {
 			any |= putNumber(bqpg, "result.zzgjs", new BigDecimal(count(bqpg.get("zzgj")) + count(bqpg.get("zzgjHand"))), t + "肿胀关节数（自动计算）");
 			any |= putNumber(bqpg, "result.ytgjs", new BigDecimal(count(bqpg.get("ytgj")) + count(bqpg.get("ytgjHand"))), t + "压痛关节数（自动计算）");
 		}
-		if (das) {
+		if (crpChanged || esrChanged) {
 			BigDecimal sjc = num(VisitJson.path(bqpg, "result.zzgjs")), tjc = num(VisitJson.path(bqpg, "result.ytgjs"));
 			BigDecimal pg = num(bqpg.get("ztScoreByPatient"));
-			BigDecimal crp = fzjc == null ? null : num(fzjc.get("cfydb")), esr = fzjc == null ? null : num(fzjc.get("xc"));
+			BigDecimal crp = checkedLabNumber(fzjc, "cfydb"), esr = checkedLabNumber(fzjc, "xc");
 			if (sjc != null && tjc != null && pg != null) {
 				double base = 0.56 * Math.sqrt(tjc.doubleValue()) + 0.28 * Math.sqrt(sjc.doubleValue()) + 0.014 * pg.doubleValue();
-				if (crp != null && crp.doubleValue() >= 0) {
+				if (crpChanged && crp != null && crp.doubleValue() >= 0) {
 					any |= putNumber(bqpg, "result.crpScore", round2(base + 0.36 * Math.log(crp.doubleValue() + 1) + 0.96), t + "DAS28-CRP（自动计算）");
 				}
-				if (esr != null && esr.doubleValue() > 0) {
+				if (esrChanged && esr != null && esr.doubleValue() > 0) {
 					any |= putNumber(bqpg, "result.esrScore", round2(base + 0.7 * Math.log(esr.doubleValue())), t + "DAS28-ESR（自动计算）");
 				}
+			}
+			if (crpChanged && (sjc == null || tjc == null || pg == null || crp == null || crp.signum() < 0)) {
+				any |= invalidate(bqpg, "result.crpScore", t + "DAS28-CRP（自动计算）");
+			}
+			if (esrChanged && (sjc == null || tjc == null || pg == null || esr == null || esr.signum() <= 0)) {
+				any |= invalidate(bqpg, "result.esrScore", t + "DAS28-ESR（自动计算）");
 			}
 		}
 		if (haq) {
@@ -237,12 +248,34 @@ class VisitEditor {
 			if (complete) {
 				BigDecimal score = round2(sum / HAQ_DIMS.length);
 				any |= putNumber(bqpg, "hqaScore", score, t + "HAQ 健康评分（自动计算）");
-				if (bqpg.get("result") instanceof JSONObject) {
-					putNumber(bqpg, "result.hqaScore", score, null); // 与 hqaScore 同一个值，不重复记修改记录
+				if (bqpg.get("result") instanceof JSONObject && bqpg.getJSONObject("result").containsKey("hqaScore")) {
+					any |= putNumber(bqpg, "result.hqaScore", score, null); // 与 hqaScore 同一个值，不重复记修改记录
 				}
+			} else {
+				any |= invalidate(bqpg, "hqaScore", t + "HAQ 健康评分（自动计算）");
+				any |= invalidate(bqpg, "result.hqaScore", null);
 			}
 		}
 		return any;
+	}
+
+	private static BigDecimal checkedLabNumber(JSONObject lab, String key) {
+		if (lab == null) return null;
+		Object wx = lab.get("xcgWx");
+		return wx instanceof JSONObject && VisitJson.isTrue(((JSONObject) wx).get(key)) ? null : num(lab.get(key));
+	}
+
+	/** 失效保留既存键及其空值类型；不创建缺失的派生字段。 */
+	private boolean invalidate(JSONObject obj, String key, String label) {
+		int dot = key.indexOf('.');
+		JSONObject holder = dot < 0 ? obj : (obj.get(key.substring(0, dot)) instanceof JSONObject ? obj.getJSONObject(key.substring(0, dot)) : null);
+		String leaf = dot < 0 ? key : key.substring(dot + 1);
+		if (holder == null || !holder.containsKey(leaf)) return false;
+		Object cur = holder.get(leaf), empty = cur instanceof String ? "" : null;
+		if (cur == null || "".equals(cur)) return false;
+		holder.put(leaf, empty);
+		if (label != null) changes.add(new FieldChange(key, label, VisitJson.text(cur), null));
+		return true;
 	}
 
 	/** 写入数字，保持原值类型（原来是字符串就写字符串）；值没变返回 false */

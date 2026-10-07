@@ -94,10 +94,12 @@ public class PatientDas28MapperTest {
         }
     }
 
+    private static String scoreJson(String value) {return "{\"result\":{\"crpScore\":"+value+"}}";}
+
     private static List<String> values(List<Map<String, Object>> rows) {
         List<String> result = new ArrayList<String>();
         for (Map<String, Object> row : rows) {
-            result.add(String.valueOf(row.get("das28")));
+            result.add((String)row.get("bqpg"));
         }
         return result;
     }
@@ -107,7 +109,7 @@ public class PatientDas28MapperTest {
         insert(1, 101, 0, "{\"result\":{\"crpScore\":2.295}}", "2026-01-01", null);
         insert(2, 101, 1, "{\"result\":{\"crpScore\":\"4.105\"}}", "2026-01-02", null);
         insert(3, 101, 7, "{\"result\" : {\"crpScore\" : \"2.705\"}}", "2026-01-03", null);
-        assertEquals(Arrays.asList("2.705", "4.105", "2.295"), values(query(101L)));
+        assertEquals(Arrays.asList("{\"result\" : {\"crpScore\" : \"2.705\"}}",scoreJson("\"4.105\""),scoreJson("2.295")), values(query(101L)));
     }
 
     @Test
@@ -116,15 +118,15 @@ public class PatientDas28MapperTest {
         insert(2, 101, 0, "{\"result\":{\"crpScore\":9}", "2026-01-02", null);
         insert(3, 101, 0, "not JSON", "2026-01-03", null);
         insert(4, 101, 0, null, "2026-01-04", null);
-        assertEquals(Collections.singletonList("0"), values(query(101L)));
+        assertEquals(Arrays.asList(null,"not JSON","{\"result\":{\"crpScore\":9}",scoreJson("0")), values(query(101L)));
         insert(5, 102, 0, "{\"result\":{\"esrScore\":4.105}}", "2026-01-05", null);
         List<Map<String, Object>> esrOnly = query(102L);
         assertEquals(1, esrOnly.size());
-        assertNull(esrOnly.get(0).get("das28"));
+        assertEquals("{\"result\":{\"esrScore\":4.105}}",esrOnly.get(0).get("bqpg"));
         insert(6, 103, 0, "{\"result\":{\"crpScore\":null}}", null, null);
         insert(7, 104, 0, "{\"result\":{\"crpScore\":{}}}", null, null);
         insert(8, 105, 0, "{\"result\":{\"crpScore\":[]}}", null, null);
-        assertEquals(Arrays.asList("null", "{}", "[]"), values(query(103L, 104L, 105L)));
+        assertEquals(Arrays.asList(scoreJson("null"),scoreJson("{}"),scoreJson("[]")), values(query(103L, 104L, 105L)));
     }
 
     @Test
@@ -137,7 +139,7 @@ public class PatientDas28MapperTest {
             insert(type + 20, 101, type, "{\"result\":{\"crpScore\":999}}", "2026-02-01", null);
         }
         insert(2000, 102, 0, "{\"result\":{\"crpScore\":8}}", "2026-03-01", null);
-        assertEquals(Arrays.asList("7", "4", "3", "2", "1", "0"), values(query(101L)));
+        assertEquals(Arrays.asList(scoreJson("\"7\""),scoreJson("\"4\""),scoreJson("\"3\""),scoreJson("\"2\""),scoreJson("\"1\""),scoreJson("\"0\"")), values(query(101L)));
         for (Map<String, Object> row : query(101L)) {
             assertEquals(101L, ((Number) row.get("patientId")).longValue());
         }
@@ -153,7 +155,12 @@ public class PatientDas28MapperTest {
         insert(14, 101, 0, "{\"result\":{\"crpScore\":14}}", "2026-01-01", "2026-12-31");
         insert(99, 102, 0, "{\"result\":{\"crpScore\":99}}", "2026-12-31", null);
         List<Map<String, Object>> rows = query(102L, 101L);
-        assertEquals(Arrays.asList("12", "11", "9", "10", "14", "13", "99"), values(rows));
+        assertEquals(Arrays.asList(scoreJson("12"),scoreJson("11"),scoreJson("9"),scoreJson("10"),scoreJson("14"),scoreJson("13"),scoreJson("99")), values(rows));
+        assertEquals(12L,((Number)rows.get(0).get("visitId")).longValue());
+        assertEquals("2026-01-03",rows.get(0).get("visitDate"));
+        assertEquals("2026-01-03",rows.get(1).get("visitDate"));
+        assertEquals("2026-01-02",rows.get(3).get("visitDate"));
+        assertNull(rows.get(5).get("visitDate"));
         List<Long> patients = new ArrayList<Long>();
         for (Map<String, Object> row : rows) {
             patients.add(((Number) row.get("patientId")).longValue());

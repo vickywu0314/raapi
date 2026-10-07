@@ -12,19 +12,13 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface PatientMapper {
 
-	/** 页头汇总：totalPatients、incompleteCount，入参 doctorId；不受筛选影响 */
-	Map<String, Object> countSummary(Map<String, Object> map);
+    /** doctor范围中经SQL keyword/followStatus筛选且已排序的完整候选；QC/计数/分页在同视图服务完成。 */
+    List<Map<String, Object>> listPatients(Map<String, Object> map);
 
-	/** 符合筛选条件的患者数，入参 doctorId / keyword / followStatus / completeness */
-	int countPatients(Map<String, Object> map);
-
-	/** 当前页患者，入参同 countPatients，另加 offset / size */
-	List<Map<String, Object>> listPatients(Map<String, Object> map);
-
-	/** 指定患者 RA 随访的存量 DAS28-CRP（patientId、das28 文本）；合法 JSON 空白排版等价，按原双日期/id顺序，值政策由 Service 接纳 */
+	/** 指定患者 RA 随访的存量 DAS28-CRP（patientId、visitId、visitDate、bqpg原文）；保留SQL双日期/id顺序，Service按共享Matcher的LocalDate/最大id及asOf选择 */
 	List<Map<String, Object>> listDas28(@Param("patientIds") List<Long> patientIds);
 
-	/** 指定患者各次随访的 RF / 抗CCP 原值（patientId、visitDate、rf、ccp），每个患者最近的在前 */
+	/** 指定患者各次随访的 RF / 抗CCP 原值（patientId、visitDate、fzjc原文），每个患者最近的在前 */
 	List<Map<String, Object>> listSerology(@Param("patientIds") List<Long> patientIds);
 
 	/** 指定患者的其他病史：patientId、code、sinceYear */

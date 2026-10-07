@@ -272,6 +272,8 @@ public class VisitServiceImpl implements VisitService {
 		VisitEditor editor = new VisitEditor();
 		Map<String, Object> update = new HashMap<String, Object>();
 		update.put("visitId", req.getVisitId());
+		Map<String, Object> originals = new HashMap<String, Object>();
+		update.put("originals", originals);
 
 		// 随访日期
 		String oldDate = (String) row.get("visitDate");
@@ -288,6 +290,8 @@ public class VisitServiceImpl implements VisitService {
 				throw new IllegalArgumentException("随访日期不能晚于今天");
 			}
 			update.put("visitDate", newDate);
+			update.put("originalFollowUpDate", row.get("originalFollowUpDate"));
+			update.put("originalCamelDate", row.get("originalCamelDate"));
 			editor.changes.add(new FieldChange("follow_up_date", "随访日期", oldDate, newDate));
 		}
 
@@ -323,7 +327,14 @@ public class VisitServiceImpl implements VisitService {
 		for (Map.Entry<String, Set<String>> e : changed.entrySet()) {
 			if (!e.getValue().isEmpty()) {
 				update.put(e.getKey(), VisitJson.write(objs.get(e.getKey())));
+				originals.put(e.getKey(), row.get(e.getKey()));
 			}
+		}
+
+		// 保护本次写回的DAS来源，即使化验未编辑、缺失或重评分数恰好不变。
+		if (editor.dasReevaluated && update.containsKey("bqpg")) {
+			originals.put("fzjc", row.get("fzjc"));
+			originals.put("bqpg", row.get("bqpg"));
 		}
 
 		VisitUpdateResultVo result = new VisitUpdateResultVo();
@@ -336,7 +347,9 @@ public class VisitServiceImpl implements VisitService {
 		if (editor.changes.isEmpty()) {
 			return result;
 		}
-		visitMapper.updateVisit(update);
+		if (visitMapper.updateVisit(update) == 0) {
+			throw new BizException("409", "这次随访在保存前已被修改或删除，请刷新页面后重新编辑");
+		}
 		if (dateChanged) {
 			// 老系统维护的随访次数 / 日期按新日期重算
 			Map<String, Object> map = new HashMap<String, Object>();

@@ -17,19 +17,20 @@ import com.wenwen.vo.PatientDetailVo;
 
 public class PatientDas28PolicyTest {
     private static final long PATIENT = 101L;
+    private static long nextVisitId;
+    @org.junit.jupiter.api.BeforeEach void resetVisitIds() { nextVisitId=10000; }
 
     private static Map<String, Object> score(Object value) {
         Map<String, Object> row = new HashMap<String, Object>();
         row.put("patientId", PATIENT);
-        row.put("das28", value);
+        row.put("bqpg", LegacyQcTestSupport.assessment(value));
+        row.put("visitId", nextVisitId--); row.put("visitDate", "2025-01-01");
         return row;
     }
 
     private static PatientServiceImpl service(PatientMapper mapper) {
         Map<String, Object> patient = new HashMap<String, Object>();
         patient.put("patientId", PATIENT);
-        when(mapper.countSummary(anyMap())).thenReturn(Collections.<String, Object>emptyMap());
-        when(mapper.countPatients(anyMap())).thenReturn(1);
         when(mapper.listPatients(anyMap())).thenReturn(Collections.singletonList(patient));
         when(mapper.getPatientBasic(anyMap())).thenReturn(Collections.<String, Object>emptyMap());
         when(mapper.listComorbidities(anyList())).thenReturn(Collections.<Map<String, Object>>emptyList());
@@ -37,8 +38,10 @@ public class PatientDas28PolicyTest {
         when(mapper.listVisits(anyMap())).thenReturn(Collections.<Map<String, Object>>emptyList());
         PatientServiceImpl service = new PatientServiceImpl();
         ReflectionTestUtils.setField(service, "patientMapper", mapper);
+        LegacyQcTestSupport.wire(service,mapper,Collections.singletonList(PATIENT));
         ReflectionTestUtils.setField(service, "rfUln", 20.0);
         ReflectionTestUtils.setField(service, "ccpUln", 25.0);
+        ReflectionTestUtils.setField(service,"clock",java.time.Clock.fixed(java.time.Instant.parse("2025-01-01T02:00:00Z"),java.time.ZoneOffset.UTC));
         return service;
     }
 
@@ -97,7 +100,7 @@ public class PatientDas28PolicyTest {
             invalid.add(score(raw));
         }
         Map<String, Object> esrOnly = score(null);
-        esrOnly.put("esrScore", "5.1");
+        esrOnly.put("bqpg", "{\"result\":{\"esrScore\":5.1}}");
         invalid.add(esrOnly);
         PatientMapper listMapper = mock(PatientMapper.class);
         when(listMapper.listDas28(anyList())).thenReturn(invalid);

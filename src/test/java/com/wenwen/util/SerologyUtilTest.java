@@ -26,7 +26,7 @@ public class SerologyUtilTest {
 		assertEquals(SerologyUtil.NEGATIVE, SerologyUtil.classify("阴性", 20));
 		assertEquals(SerologyUtil.NEGATIVE, SerologyUtil.classify("-", 20));
 		assertEquals(SerologyUtil.LOW_POSITIVE, SerologyUtil.classify("阳性", 20));
-		assertEquals(SerologyUtil.LOW_POSITIVE, SerologyUtil.classify("+", 20));
+		assertEquals(SerologyUtil.POSITIVE, SerologyUtil.classify("+", 20));
 	}
 
 	@Test
@@ -37,6 +37,17 @@ public class SerologyUtilTest {
 		assertNull(SerologyUtil.classify("见化验单", 20));
 	}
 
+    @Test public void uncertainBoundsAndUnknownTextNeverProveNegativeOrLowTiter() {
+        for(String raw:new String[]{"<100",">10","≥20","20 nonsense","阴性待确认","+abc","+++++","NaN","Infinity","-1"}) assertNull(SerologyUtil.classify(raw,20),raw);
+        assertEquals("positive",SerologyUtil.classify(">20",20));
+        assertEquals("positive",SerologyUtil.classify("≥21",20));
+        assertEquals("positive",SerologyUtil.classify("++",20));
+        assertEquals("high_positive",SerologyUtil.classify(">60",20));
+        assertEquals("high_positive",SerologyUtil.classify("≥60.1",20));
+        assertEquals("negative",SerologyUtil.classify("≤20",20));
+        assertEquals("阳性（滴度未定）",SerologyUtil.label("positive"));
+        assertEquals(true,SerologyUtil.isPositive("positive"));
+    }
 	@Test
 	public void subtype() {
 		assertEquals("血清阳性", SerologyUtil.subtype(SerologyUtil.NEGATIVE, SerologyUtil.HIGH_POSITIVE));

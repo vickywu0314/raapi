@@ -80,7 +80,7 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 
 | 字段 | 类型 | 页面位置 / 中文含义 | 计算口径 |
 |---|---|---|---|
-| `enrolledPatients` | int | 已入组患者 | `patient_basic_info` 全部患者（含已脱落） |
+| `enrolledPatients` | int | 已入组患者 | 全局 RA 患者（至少一条 RA 医患关系，含已脱落；不按 doctorId 限定） |
 | `followUpCompletionRate` | number | 计划随访完成率（%），1 位小数 | `followUpDoneCount ÷ followUpDueCount × 100`；分母为 0 时返回 0.0 |
 | `followUpDueCount` | int | 应随访人数（完成率的分母） | 未脱落、且入组已超过一个随访周期（90 天）的患者 |
 | `followUpDoneCount` | int | 已随访人数（完成率的分子） | 上述患者中，最近 90 天内有随访记录的人数 |
@@ -103,12 +103,16 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 
 | 规则编码 | 类型 | 中文含义 |
 |---|---|---|
-| `M_DAS28` | 缺失 | 所有 RA 随访的病情评估 `bqpg` 里都没有 `result.crpScore` / `result.esrScore` |
-| `M_BASELINE_LAB` | 缺失 | 首次随访的辅助检查为空（没有随访也算） |
-| `M_COMORBIDITY` | 缺失 | 既往史（合并疾病）为空 |
-| `M_MEDICATION` | 缺失 | 所有随访的治疗方案都为空 |
+| `M_DAS28` | 缺失 | 所有 RA 随访中都没有共同严格原始标量读取与 canonicalCrp 认可的非负 CRP 存值；ESR不能替代，0有效，未来/无日期合法存值也满足存在性 |
+| `M_BASELINE_LAB` | 缺失 | 最早完整 COALESCE 双日期时间的 RA 随访中无非空辅助检查；并列首访任一有值即可，无日期/无访视也缺 |
+| `M_COMORBIDITY` | 缺失 | 既往史 p.jws 为空 |
+| `M_MEDICATION` | 缺失 | 所有 RA 随访的 zlfa 都为空 |
 | `L_DATE_ORDER` | 逻辑冲突 | 发病晚于确诊；随访早于发病；随访日期在未来 |
 | `L_ASSESSMENT` | 逻辑冲突 | 不吸烟却填了吸烟年数/支数；不饮酒却填了饮酒年数/量；ACR/EULAR 评分不在 0~10 |
+
+四类缺失集中使用开发政策 dev-missing-v04。原三M的空值仍为 SQL IFNULL(TRIM(value), '') IN ('','{}','[]','null')；普通非空文本只证明记录存在，不证明医学结构完整。两L保留原字段、双日期、NOW()和RA范围，不属于资料缺失。
+
+总览的全局RA总数、四M加两L命中条数和问题患者数取同一次短REPEATABLE_READ源视图，退出连接后解析CRP及计算。仅L的患者可资料完整但降低dataQualityRate；百分比仍一位HALF_UP。其余总览指标保持原定义。读源/计算失败传播服务失败，不返回空COMPLETE或上次结果；未建设QC问题表、人工关闭或缓存。
 
 随访周期 90 天可在 `application.properties` 里通过 `ra.followup.cycle-days` 修改。
 
@@ -173,7 +177,9 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | `page` | int | 否 | 页码，从 1 开始，默认 1 | `1` |
 | `size` | int | 否 | 每页条数，默认 20，最大 200；页面下拉 8 / 16 / 32 | `8` |
 
-排序：最近随访日期倒序，无随访的排最后。
+排序：最近非空随访完整时间倒序，无日期排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
+
+同一次短REPEATABLE_READ取得未筛选医生RA范围、原三M/两L、原始bqpg和经keyword/followStatus筛选的完整排序候选；退出后用共享四M政策过滤、计数，再分页。totalPatients/incompleteCount始终取未受keyword/followStatus/completeness影响的医生U；超出末页返回空items并保留total。详情的incomplete/missingItems同政策，DAS复用该快照解析值；详情其他基本字段和时间线不声称获得这一新快照保证。listPatientIds不截首屏，原ExportService只接收该完整筛选ID范围，原始导出内容不变。
 
 #### 调用示例
 
@@ -202,18 +208,19 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `name` | String | 患者信息 · 姓名 | `name` |
 | `gender` | Integer | 性别编码 | `gender`：1 男 / 2 女 |
 | `sex` | String | 患者信息 · 性别 | 男 / 女；其它值为 `null` |
-| `birthYear` | Integer | 患者信息 · 出生年份 | 取身份证号 `card_no` 里的出生日期（18 位第 7–14 位、15 位第 7–12 位）；无有效身份证号时 = 建档年份 − 建档时年龄 `age`；都没有为 `null` |
-| `age` | Integer | 患者信息 · xx 岁（页面显示「1964 年 · 62 岁」） | 有身份证号：按出生日期算周岁；否则 = 今年 − `birthYear` |
+| `birthYear` | Integer | 患者信息 · 出生年份 | 截至本次 Clock 上海日期，由合法 15/18 位格式及日历提取生日（不校验真实性）；无可靠生日为 `null`，不以 legacy age/createYear 估算 |
+| `age` | Integer | 患者信息 · xx 岁（页面显示「1964 年 · 62 岁」） | 截至本次上海日期按有效生日算整周岁；无可靠生日为 `null` |
 | `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
 | `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
-| `subtype` | String | 疾病资料 · 分型 | 按 RF、抗CCP 计算（不落库）：任一阳性 → `血清阳性`；做过且都不阳性 → `血清阴性`；两项都未检测 → `null`（显示「分型未提供」） |
-| `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取**最近一次有结果**的随访 |
-| `rf.status` / `statusLabel` | String | 状态 | `negative` 阴性：值 ≤ ULN，或写「<20」「阴性」「-」；`low_positive` 低滴度阳性：ULN < 值 ≤ 3×ULN，或只写「阳性」「+」；`high_positive` 高滴度阳性：值 > 3×ULN；`untested` 未检测：所有随访都没有结果 |
+| `subtype` | String | 疾病资料 · 分型 | 截至本次日期，有日期的有效 RF/CCP 任一曾经阳性 → `血清阳性`；无阳性且有明确阴性 → `血清阴性`；无可分类证据 → `null` |
+| `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取截至本次日期**最新可分类且有日期**的随访；最新阴性可能与曾经阳性的 subtype 不同 |
+| `rf.status` / `statusLabel` | String | 状态 | `negative` 阴性 / `low_positive` 低滴度阳性 / `high_positive` 高滴度阳性 / `positive` 阳性（滴度未定） / `untested` 无可分类的有日期结果；边界文本见 §7.1 共享政策 |
 | `rf.value` / `uln` / `visitDate` | — | 化验原值 / 判定用的参考上限 / 取自哪次随访 | ULN 老数据没存，统一用配置 `ra.serology.rf-uln`（默认 20 IU/mL）、`ra.serology.ccp-uln`（默认 25 U/mL），待业务确认 |
-| `latestDas28` | number | 疾病资料 · DAS28-CRP | 按原随访顺序取病情评估 `bqpg.result.crpScore` 的首个有效存值；数字/字符串等价，缺组成项仍接纳，0 有效，无医学上限。原值须非负，再两位 HALF_UP canonical；null/空白/未查/非法/负值继续历史查找，ESR 不补 CRP；均无有效值为 `null`（显示「DAS28-CRP 未提供」） |
+| `latestDas28` | number | 疾病资料 · DAS28-CRP | 按本次注入Clock的上海asOfDate，取有日期且≤asOf的最新LocalDate有效 `bqpg.result.crpScore`，同日最大visitId（不按时分秒或SQL输入顺序）；数字/字符串等价，缺组成项仍接纳，0 有效，无医学上限。原值须非负，再两位 HALF_UP canonical；null/空白/未查/非法/负值继续历史查找，ESR 不补 CRP；均无有效值为 `null`（显示「DAS28-CRP 未提供」） |
 | `das28Activity` / `das28ActivityLabel` | String | 疾病资料 · DAS28-CRP 后的活动度标签 | 按同一两位 canonical CRP 分级（当前开发默认，医学发布接收尚待确认）：`remission` 临床缓解 < 2.3；`low` 低疾病活动度 2.3 ~ 2.7；`moderate` 中疾病活动度 > 2.7 且 ≤ 4.1；`high` 高疾病活动度 > 4.1；无有效分值为 `null` |
-| `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
+| `comorbidities[]` | Array | 其他病史 | 保留 `patient_comorbidity` 原记录；空数组仅代表没有记录，不证明阴性 |
+| `fmState` / `asState` | String | FM / AS 三态 | `TRUE` / `FALSE` / `UNKNOWN`；当前正向源缺行只能 UNKNOWN，未来 since_year 不作本次阳性 |
 | `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
 | `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
 | `comorbidities[].status` / `coreItems` / `treatment` | — | 弹窗：当前情况 / 核心指标 / 治疗 | 一期无数据来源，`null` |
@@ -324,7 +331,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `familyHistory` | 家族史 | `jzs` |
 | `pastHistory` | 其他病史 | `jws`（既往史） |
 | `incomplete` / `missingItems` | 其他病史下的「资料待补全」 | 同患者列表 |
-| `comorbidities[]` | 常见相关疾病 | `patient_comorbidity`，同患者列表 |
+| `comorbidities[]` / `fmState` / `asState` | 常见相关疾病及三态 | 同患者列表；无关联记录不证明阴性 |
 | `visitCount` | N 次访视 | 随访记录条数 |
 | `visits[]` | 随访时间线（最近的在前） | `patient_follow_up_history` |
 | `visits[].visitId` / `visitDate` | 随访 ID / 日期 | `id` / `follow_up_date` |
@@ -492,10 +499,10 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 1. 和数据库现值逐项比对，**只写有变化的字段**；没变化不写库（返回 `changedCount = 0`）。
 2. 保持原值类型：原来是数字写数字、是字符串写字符串、是数组写数组；字典外字段、清单行里未显示的字段（如 `id`、`haveBadCost`）原样保留；字段顺序不变。
 3. 清空字段写空串 / 空数组，不删除字段。清单：带 `_row` 的行在原行上修改；不带的是新增行（自动生成 `id`）；没传回的原有行即删除。
-4. **病情评估计算项自动重算**（与老系统同一算法，已用真实数据验证一致）：肿胀 / 压痛关节数、DAS28-CRP、DAS28-ESR、HAQ 得分；只在相关输入（关节、患者总体评分、CRP、血沉、HAQ 各题）有变化时重算。ACR20/50/70 需要对比上次随访，不重算。
+4. **病情评估计算项关联重评**：沿用既有肿胀 / 压痛关节计数和DAS28/HAQ公式，只在相关输入实际变化时重算或失效，不修复未编辑的历史分数。CRP清空、负值或标记未查只失效CRP评分；血沉清空、≤0或标记未查只失效ESR评分，另一评分的原值/类型不变。关节或患者总体评分（仅`ztScoreByPatient`，不以HAQ替代）变化时两项各自重评；明确空关节选择为0，零CRP/总体评分仍是有效输入。HAQ沿用八维各取已回答最大值后平均，某题清空但同维仍有答案可计算；任一维全缺使主`hqaScore`及既存`result.hqaScore`同时失效，别名不重复记修改条目。派生失效保留既存键：旧字符串置空串，其他类型置JSON null，不创建不存在的派生键。ACR20/50/70不重算。
 5. 改随访日期：同时改 `follow_up_date` / `followUpDate`，病史病情里有 `followDate` 的同步修改；老系统的随访次数、首次 / 最近随访日期重算。
-6. 打开表单后数据被别人（含老系统）改过：返回 `409`，提示刷新后重新编辑。
-7. 写一条修改记录：动作「编辑随访」，内容逐项「模块·字段：旧值 → 新值」，自动计算项标「（自动计算）」。
+6. 打开表单后version不匹配在写前返回`409`。读取后保存窗口使用原文乐观比较：比较所有将替换模块；本次DAS重评且病情评估实际写回时，还比较病情评估与辅助检查的读取原文（含SQL NULL、空串、缺字段/只读旧模块及重评分数舍入不变）。仅HAQ/普通病情评估编辑不额外比较辅助检查；非本次写入或派生依赖的模块可独立并发修改且原文保留。JSON比较为null-safe、区分大小写的精确文本，日期编辑比较两套实际原日期而非显示日期；0行更新（含并发物理删除）返回`409`，不重试旧请求、不插入审计。
+7. 写一条修改记录：动作「编辑随访」，内容逐项「模块·字段：旧值 → 新值」，自动计算项标「（自动计算）」。模块、日期/计数及审计在同一事务中提交；校验/SQL/审计失败向外返回失败并回滚，无变化零UPDATE、零审计。
 
 出参 `data`：`changedCount` 修改项数、`changes[]` 修改内容。失败：`400` 格式错误（如数字、日期）、`403` 无权限、`409` 数据已被修改。
 
@@ -594,11 +601,11 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
 
-## 七、AI 队列分析示踪（P01_TRACER）
+## 七、AI 队列临床、治疗与访视评估（P02_QC）
 
 ### 7.1 当前医生 RA 队列
 
-页面：AI 队列分析的首个真实后端切片，当前只交付 RA/now/活动度/内部 id 筛选、人数、四档活动分布及首10。`completion=P01_TRACER` 不代表最终完整分析、统计、分页、保存、比较、AI 或导出已经完成。
+页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、人数、四档活动分布和首10的临床/评估/治疗来源。`completion=P02_QC` 不代表最终完整分析、统计、分页、保存、比较、AI 或导出已经完成。
 
 | 项 | 值 |
 |---|---|
@@ -612,54 +619,100 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | filters 字段 | 支持值与缺省规则 |
 |---|---|
 | `studyCode` | 只支持 `RA`；缺省/null/空串为RA |
-| `at` | 只支持 `now`；缺省/null/空串为now |
+| `at` | 字符串 `now` / `6m`；缺省/null/空串为now；其他枚举/类型SQL前400 |
 | `act` | `target` / `mod-high` / `remission` / `low` / `moderate` / `high`；缺省/null/空串为不限 |
+| `sex` | 字符串 `F` / `M`；缺省/null/空串不限，未知性别不能匹配 |
+| `age` | 字符串 `min-max` / `min-`，0～120、min≤max、两端含；缺省/null/空串不限，未知年龄不能匹配 |
+| `sero` | 仅字符串 `"1"` 匹配截至本次日期曾经阳性；缺省/null/空串不限 |
+| `cm` | 字符串 `FM` / `AS` / `none`；none 仅匹配 FM 与 AS 均 FALSE，当前正向实际源返回空；缺省/null/空串不限 |
+| `tx` | 字符串 `csDMARD` / `bio` / `TNFi` / `JAKi` / `IL-6i` / `Abatacept`；缺省/null/空串不限，bio仅四种明确单靶向类别并集 |
+| `data` | 仅字符串 `complete` / `missing`；缺省/null/空串不限，非法类型/值SQL前400；只使用四M，不混入逻辑L |
 | `ids` | 仅规范正整数十进制字符串数组，最大 long 为9223372036854775807；缺省/null不限，`[]`严格空集合。内部数值去重、排序后与本人范围取交集 |
 
-未知顶层/filters键、重复JSON键、非对象body、非法JSON/类型/枚举或非法id均400。`6m`、sex、age、tx、q、保存来源等未来条件明确拒绝，不能静默退化成无条件分析。原ids数组超过5000项返回413（去重前检查）；原UTF-8 body超过128KiB返回413，解析前最多读取128KiB+1字节。合法但不存在/无权限的id只过滤，不逐项透露原因。
+未知顶层/filters键、重复JSON键、非对象body、非法JSON/类型/枚举或非法id均400。q、duration、保存来源等后续条件明确拒绝，不能静默退化成无条件分析。原ids数组超过5000项返回413（去重前检查）；原UTF-8 body超过128KiB返回413，解析前最多读取128KiB+1字节。合法但不存在/无权限的id只过滤，不逐项透露原因。
 
 #### 范围、源读取与评分口径
 
 - U仅包含当前可信医生在**同一关系行**符合共享RA白名单的 `patient_basic_info.id`；按内部id唯一计数，脱落miss=1不默认排除，相同姓名不同id仍分别计数，孤立关系/访视不创造患者
-- 两条实际SELECT（患者id与必要访视列）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；生产访问仅SELECT，任何失败不回部分数据或旧结果
+- 五条固定批量SELECT（临床患者列、患者id、必要访视列（含zlfa）、合并症行、原三M缺失事实）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；生产访问仅SELECT，任何失败不回部分数据或旧结果
 - 一次请求以注入Clock固定上海asOfDate。now选择日期非空、≤asOfDate且CRP有效的最新临床日期；同日按访视id最大决胜，忽略时刻差异。最新坏值不挡历史有效值；下一新请求重新读取已提交源变化并重新评估Clock
 - CRP仅取 `bqpg.result.crpScore`，数值/字符串保持十进制原标量精度并复用共享两位HALF_UP canonical。0有效；malformed JSON、null/负值/非法值、只有ESR不成为有效CRP，ESR不能补CRP。缺组成项仍可使用存量值，不启用未核实复算或写回历史
-- C=U∩ids限制∩act。无act时无评分患者仍计入n；有act必须有有效CRP。target为canonical≤2.7，mod-high为>2.7；四档为<2.3、2.3～2.7、>2.7且≤4.1、>4.1
+- C=U∩ids限制∩sex∩age∩sero∩cm∩act∩tx∩at资格∩data。at=now无act时无评分患者仍计入n；at=6m仅纳入可靠当前episode且有合格6m评分者，baseline缺失不单独排除；有act必须有所选时点有效CRP。target为canonical≤2.7，mod-high为>2.7；四档为<2.3、2.3～2.7、>2.7且≤4.1、>4.1
 
 #### 成功 data（HTTP200，success=true，code="200"）
 
 | 字段 | 实际含义 |
 |---|---|
-| `n` / `studyTotal` | 当前C人数 / 本医生U人数；studyTotal不受act或ids影响 |
-| `submittedUniqueIdsN` / `effectiveIdsN` | 去重提交数 / 提交集合∩U人数；均在act前计算，未提供ids时两者null |
-| `activity.current` | 恰为remission/low/moderate/high四项，含level/label/count；空队列也有四个0 |
-| `activity.evalN` / `unknownN` | C内有效CRP人数 / n-evalN；缺失与执行失败分开 |
+| `n` / `studyTotal` | 当前C人数 / 本医生U人数；studyTotal不受任何筛选影响 |
+| `submittedUniqueIdsN` / `effectiveIdsN` | 去重提交数 / 提交集合∩U人数；均在临床/act/tx/at/data筛选前计算，未提供ids时两者null |
+| `activity.current` / `base` | 本次at评估点 / baseline四档，均恰为remission/low/moderate/high四项，含level/label/count；空队列也有四个0 |
+| `activity.baseN` / `baseUnknownN` | C内有效baseline人数 / n-baseN |
+| `activity.evalN` / `unknownN` | C内所选at有效DAS28-CRP人数 / n-evalN；缺失与执行失败分开 |
+| `activity.unknownTxN` | 最终C中治疗UNKNOWN/CONFLICT人数；NONE不计未知 |
 | `patients.total` / `items` | total=n，items是patientId数值升序首10，没有后续游标 |
-| `items[]` | patientId字符串、das28At canonical数值或null、activity编码或null、scoreProvenance |
-| `meta` | asOfDate、readStartedAt/readCompletedAt/computedAt ISO instant、policyVersions、traceId、supportedFilters、completion |
+| `items[]` | patientId字符串、das28At/das28Base/das28Current/deltaDas28 canonical数值或null、activity编码或null、scoreProvenance/baselineProvenance、selection、crpAt/crpCurrent、clinical、clinicalProvenance、evaluation、treatment、qc |
+| `meta` | at、asOfDate、readStartedAt/readCompletedAt/computedAt ISO instant、policyVersions、traceId、supportedFilters、completion |
 
 有效值provenance为source=`LEGACY_STORED`、sourceVisitId字符串、sourceField=`bqpg.result.crpScore`、observedAt=`yyyy-MM-dd`、raw原标量文本及quality。存量至少 `LEGACY_UNVERIFIED`；已知TJC/SJC/GH/CRP任一缺失再标 `COMPONENTS_MISSING`，仅作质量说明，不代表医学已核实。无可选值时source/sourceVisitId/sourceField/observedAt/raw均null，missingReason=`NO_VALID_CRP`；quality只保留实际观察到的字段质量（如 `INVALID_JSON`）。不返回姓名、手机、身份证或整份病例JSON。
 
-以下为合成fixture仅act=target（未提供ids）的响应data示例（外层继续使用DataResult，其其他未使用字段为null）：
+#### 实时资料完整性
 
-```json
-{
-  "n": 2, "studyTotal": 5, "submittedUniqueIdsN": null, "effectiveIdsN": null,
-  "activity": {
-    "current": [
-      {"level":"remission","label":"临床缓解","count":1},
-      {"level":"low","label":"低疾病活动度","count":1},
-      {"level":"moderate","label":"中疾病活动度","count":0},
-      {"level":"high","label":"高疾病活动度","count":0}
-    ], "evalN":2, "unknownN":0
-  },
-  "patients": {"total":2,"items":[
-    {"patientId":"1","das28At":2.30,"activity":"low","scoreProvenance":{"source":"LEGACY_STORED","sourceVisitId":"11","sourceField":"bqpg.result.crpScore","observedAt":"2026-10-07","raw":"2.295","quality":["LEGACY_UNVERIFIED","COMPONENTS_MISSING"]}},
-    {"patientId":"7","das28At":0.00,"activity":"remission","scoreProvenance":{"source":"LEGACY_STORED","sourceVisitId":"70","sourceField":"bqpg.result.crpScore","observedAt":"2026-10-07","raw":"0","quality":["LEGACY_UNVERIFIED","COMPONENTS_MISSING"]}}
-  ]},
-  "meta":{"asOfDate":"2026-10-07","readStartedAt":"2026-10-07T02:00:00Z","readCompletedAt":"2026-10-07T02:00:00Z","computedAt":"2026-10-07T02:00:00Z","policyVersions":{"crp":"dev-crp-v04","now":"dev-now-v04"},"traceId":"synthetic-example-trace","supportedFilters":["studyCode","at","act","ids"],"completion":"P01_TRACER"}
-}
-```
+首屏每条 qc={status,missingCodes,ruleVersion}，status 为 COMPLETE/MISSING，missingCodes按规则码稳定升序，ruleVersion=dev-missing-v04。四规则成功完成且无M才COMPLETE；有任一M即MISSING。SQL/程序异常或未完成覆盖不发布成功结果，HTTP503/data=null；不能把失败解释为完整或业务缺失。data与所有已支持条件为AND，U/studyTotal和effectiveIdsN含义不变。
+
+M_DAS28是任意RA随访可用canonical CRP的存在性，独立于now/6m日期资格；仅未来或无日期评分可以QC完整但当前DAS未知。原三M及两L的精确字段/时间/哨兵见总览质控规则。新请求读取当前源重判，补全关闭缺失，删除/改非法重开；无QC持久化或人工关闭。
+
+AI与旧列表/详情CRP、RF/CCP共同读取原始bqpg/fzjc，再交既有canonicalCrp/SerologyUtil；不先经SQL JSON_EXTRACT损失数字精度或接受重复键。严格重复键、malformed、trailing JSON整份模块拒绝，不能从非法fzjc另恢复合法CCP；原三M非空记录存在性不因此改变。旧RF/CCP保持原日期/时刻/id排序、截至asOf曾经阳性及最新可分类检测显示。
+
+#### 共享临床政策与来源
+
+`clinical` 包含 sex（F/M/null）、age、diseaseDurationYears（COALESCE(confirm_date,confirmDate) 至 asOf 整年，缺失/未来为 null）、sero/fm/as（TRUE/FALSE/UNKNOWN）。患者列表/详情实际复用 ClinicalPolicy 的精确年龄、曾经阳性和正向合并症政策；旧中文 sex 映射保留。年龄不缓存整数，不从旧 age/createYear 兜底。
+
+血清学 ULN 共享配置为 RF20/CCP25；只接纳截至 asOf 的有日期有效结果。数字精确比较：≤ULN 阴性、ULN<值≤3×ULN 低阳、>3×ULN 高阳；支持 IU/mL/U/mL 后缀。明确「阴性」/-/—为阴性，历史「阳性」保持 low_positive；单独1～4个+为 positive。全匹配语法拒绝负数、非有限或夹杂文字。ULN20时 <20/≤20为negative；<100、>10、≥20未知；>20/≥21为positive，>60/≥60.1为high_positive；全角符号等价。未来/无日期结果不证明历史阳性。
+
+FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNOWN；未知起年保留已记录阳性并标 DATE_UNSPECIFIED，没有完整阴性来源，不产 FALSE。`clinicalProvenance` 对每个临床值给出 source/sourceField/quality/missingReason；血清学 observations 记录来源访视/字段/日期/分类，合并症 observations 记录行id/起年。来源质量至少 LEGACY_UNVERIFIED；不输出身份证原文或生日。
+
+`evaluation` 的 tjc/sjc/gh/haq/crp/pain 都取 at 选中的同一个有效 DAS28-CRP 访视，绝不拼入较新无CRP访视。每项包含 value/sourceVisitId/sourceField/observedAt/unit/quality/missingReason：
+
+- tjc/sjc：bqpg.result.ytgjs/zzgjs，0～28整数，unit=count
+- gh：bqpg.ztScoreByPatient，0～100；haq：bqpg.hqaScore，0～3；HAQ 不代替 GH。主键存在即优先，null/空/非法不退 alias；仅主键缺省读 result.hqaScore；双方有效且不同保留主值并标 DISCREPANCY
+- crp：fzjc.cfydb，有限非负 mg/L；不新增公式复算
+- pain：bqpg.tjScore 仅保留 scalar raw 文本，value/unit=null，quality 含 SCALE_UNVERIFIED，missingReason=UNVERIFIED_SCALE；尺度未经核实，不可汇总或猜换算
+- 其他项缺失给 MISSING_VALUE/INVALID_VALUE/OUT_OF_RANGE/NON_INTEGER；无可用 CRP 访视时六项均 value=null、missingReason=NO_VALID_CRP
+
+`meta.policyVersions` 为 qc=dev-missing-v04、crp=dev-crp-v04、now=dev-now-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、drugDictionary=dev-drug-v04（注入字典时报告其固定版本）；supportedFilters 为 studyCode/at/act/ids/sex/age/sero/cm/tx/data，completion=P02_QC。真实关节映射、历史质量、疼痛尺度与医学接收尚未确认（AQC-EXT-02 OPEN）；合成证据不关闭该义务。
+
+#### 治疗时间线开发政策
+
+源读取包含同一访视批量SELECT的 `zlfa`，释放连接后只解析一次 `xyList` / `zcyList` 药物行的 drugName/startTime/endTime 与定位。cyList 的 zz/fj/bccy/qtbccy 和 zywzList 不作为此五类药物行；finish、tygc/tyyy、缺行、删行或空模块均不是结构化停药。非法JSON、record型、错误list/row形状为 INVALID_MEDICATION_SOURCE，不伪装空模块或停药。
+
+默认开发字典只按trim后的精确通用名匹配：csDMARD为甲氨蝶呤/来氟米特/柳氮磺吡啶/羟氯喹；TNFi为阿达木单抗/依那西普/英夫利昔单抗/戈利木单抗/赛妥珠单抗；JAKi为托法替布/巴瑞替尼/乌帕替尼；IL-6i为托珠单抗/沙利鲁单抗；Abatacept为阿巴西普。genericId采用明确的 dev:通用名，不是真实旧字典主键。商品名/厂家变化不改变已识别identity；默认无品牌alias，商品名-only、MTX、任意长文本、category自由文字不提供身份。每次请求固定一个不可变字典视图；未映射药与已知DMARD同现亦为UNKNOWN/UNMAPPED_DRUG，字典执行异常仍503。
+
+只用有合法visitDate且≤上海asOf的观察，按visitDate/id稳定排序；同日大id较新，已明确不同靶向generic的历史不丢失。日期须合法yyyy-MM-dd，start>end、非法日期标 INVALID_TREATMENT_DATE，重复实体的相互矛盾日期标 DATE_CONFLICT，不任选首行作为可靠日期。合法显式start须属于本次方案段；仅由合法且无冲突的定义成员end退出形成的新集合，以end次日为estimatedStartDate、startDate=null、startConfidence=ESTIMATED_EXPLICIT_END，并标END_DERIVED_SCHEME_START，保留原始药物日期/来源；较晚重复旧start不升级此段为EXPLICIT。缺起始日以首次观察为 ESTIMATED_FIRST_OBSERVED，可靠startDate为空，不作为可靠基线/6m起点。未来start不提前进入当前方案/已用靶向史，到达Clock日期后新请求重新判断。
+
+有靶向药时方案身份取靶向集合，增减辅助csDMARD不重启；纯传统药按集合变化分段。同generic重复行不增加实体数；单靶向加传统归该靶向，≥2个不同靶向（含两个TNFi）为CONFLICT，无类别/线数且不匹配tx或bio，保留实体和可靠组合日期（所有定义药物显式日期取最晚）。endTime是唯一结构化停止证据，结束当天仍有效，之后不沿用；无明确新方案/停止且未过end的空模块沿用并标 CARRIED_FORWARD，新未知/坏形状不证明延续。已知定义药全部明确结束且没有未知药时NONE；无药物观察是UNKNOWN。
+
+第一种实际观察/起始不在未来的靶向generic为2线，第二种及以后均3线；实际不同generic的targetedDrugHistoryN不封顶。明确停后同generic再启生成新episode而不增加不同药物史；当前csDMARD展示1线并保留targetedDrugHistoryN。新明确方案将前episode边界截在其开始之前；baseline/6m只使用本次current episode的可靠起点，详见下节。
+
+`treatment` 字段：state（ACTIVE/NONE/UNKNOWN/CONFLICT）、category（五类或null）、line、targetedDrugHistoryN、schemeDurationMonths（有效或估算起点至asOf的完整月数，非30天）、startDate（可靠日期）、estimatedStartDate、endDate、startConfidence、episodeKey、genericDrugIds、provenance（visitId/field/observedAt/quality/missingReason/dictionaryVersion）。内部不可变episode序列先按visitDate/id接收观察，再重放已接收事实的start/end次日事件，实际供应本次类别/线数/时长；当前asOf选择不剪掉已结束历史成员，到日无需新访视也能转换。provenance.drugFacts仅保留通用id、原始起止日期及visitId/field/observedAt定位，方案边界不覆盖原药物日期；key由源/实体/episode确定。无确定当前方案的线数/月数为null；不输出整份用药JSON、商品名/厂家或自由文本。
+
+真实旧字典表/主键/别名/维护资料仍待SK及药品负责人提供（AQC-EXT-03 OPEN），开发精确映射与合成alias验证不构成真实字典接收或医学分类批准；医学发布前继续核对Q-11/12。实时四类缺失QC已由P02e接入，完整统计仍由P03交付。
+
+#### 统一访视匹配与配对（开发政策）
+
+所有候选属于同患者、有LocalDate、≤本次上海asOf且有canonical有效DAS28-CRP；先排无效再排序。可靠起点仅取当前ACTIVE/CONFLICT episode的非null显式start，estimatedStart及provenance.drugFacts原药物日期不能升级；NONE/UNKNOWN不借用已结束历史段。可靠CONFLICT可有6m资格，仍不匹配tx/bio并计unknownTxN。
+
+- baseline：可靠s的[s−90天,s+14天]，绝对距离最小、同距较早日期（≤s）、同日最大id；允许s之前的观察指定为本次episode基线，无值不回退入组基线
+- now：截至asOf最新有效LocalDate、同日最大id；无可靠起点亦可展示now。早于当前可靠或估算方案边界时selection.quality标EVAL_BEFORE_SCHEME，不做该方案配对
+- 6m：t=s.plusMonths(6)，[t−60天,t+60天]两端含，最近/同距早/同日大id；不晚于明确episode end（当天可用），下一方案开始前一天为旧段截止。t仍未来而早侧有合格已观察候选时也可入选；无候选eligible6m=false并从at=6m的C排除，U不缩小
+- deltaDas28=baseline−eval，保留两位正/负/零，仅同患者/所评价episode、有效两端、baselineDate≤evalDate且eval在方案范围时计算。起点前baseline允许配对；缺任一条件为null并给deltaMissingReason，不输出自动发现或EULAR等级
+
+selection包含at、episodeKey、baselineVisitId/date、evalVisitId/date、nowVisitId/date、target6mDate、eligible6m、quality、missingReason、deltaMissingReason；其中日期字段名分别为baselineDate/evalDate/nowDate。缺值显式null。baselineProvenance与scoreProvenance采用相同来源结构；基线缺失原因为NO_RELIABLE_START/NO_VALID_BASELINE。配对缺失区分NO_RELIABLE_START、MISSING_BASELINE、MISSING_EVALUATION、PATIENT_MISMATCH、EPISODE_MISMATCH、UNDATED_PAIR、BASELINE_AFTER_EVALUATION、EVAL_BEFORE_SCHEME、EVAL_AFTER_SCHEME。
+
+crpAt是所选eval访视的evaluation.crp；crpCurrent是所有截至asOf有日期/有效非负化验CRP的最新LocalDate/最大id，可来自较新的无DAS访视。二者均为{value,sourceVisitId,sourceField,observedAt,unit,quality,missingReason}，unit=mg/L、有效sourceField=fzjc.cfydb；绝不将DAS分数当化验CRP，也不把当前化验补入旧eval的TJC/SJC/HAQ/GH/CRP。无eval的crpAt理由NO_EVALUATION，无有效当前化验为NO_VALID_CRP_LAB。
+
+独立合成示例：s=2023-08-31→t=2024-02-29；baseline 2023-08-30=3.46，eval Feb29=2.19/HAQ1.25/CRP4，now Mar01=3.90，scoreless Mar02化验CRP12。at=6m返回das28Base3.46、das28At2.19、das28Current3.90、delta1.27、crpAt4@Feb29、crpCurrent12@Mar02。医学/真实字段与字典批准仍未验证。
+
+旧列表listPatients与详情getPatientDetail的latestDas28/current活动分档，使用它们同次asOf和同一VisitMatcher.now；Mapper保留visitId/LocalDate、原范围/RA/SQL排序，原始bqpg改由共同严格标量入口校验，不再用SQL JSON_VALID预筛选。此口径替代旧SQL首有效、未来/无日期及full-datetime优先选择；未改变历史逐访视原值/编辑/导出，亦不宣称旧列表所有其他字段共享新源数据库快照。
 
 每个本入口响应带 `X-Trace-Id`，成功时与meta.traceId相同。时间仅表示本次读取/计算，不是旧系统业务水位。
 

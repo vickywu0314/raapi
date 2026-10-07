@@ -28,9 +28,9 @@ class CohortSnapshotTest extends CohortHttpFixture {
                 statement.execute("UPDATE patient_follow_up_history SET bqpg='{\"result\":{\"crpScore\":8}}' WHERE id=11");
                 statement.execute("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=3");
                 statement.execute("DELETE FROM patient_basic_info WHERE id=5");
-                statement.execute("INSERT INTO patient_basic_info VALUES (20,'synthetic-added')");
+                statement.execute("INSERT INTO patient_basic_info (id,name) VALUES (20,'synthetic-added')");
                 statement.execute("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type) VALUES (101,20,0)");
-                statement.execute("INSERT INTO patient_follow_up_history VALUES (200,20,0,'2026-10-07',null,'{\"result\":{\"crpScore\":3}}',null)");
+                statement.execute("INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,followUpDate,bqpg,fzjc) VALUES (200,20,0,'2026-10-07',null,'{\"result\":{\"crpScore\":3}}',null)");
                 writer.commit(); commits.incrementAndGet(); assertEquals(1,observed.selects);
             } catch(SQLException e) { throw new AssertionError("合成 writer 屏障失败",e); }
         };
@@ -44,11 +44,12 @@ class CohortSnapshotTest extends CohortHttpFixture {
         assertEquals(8.0,data.path("patients").path("items").get(0).path("das28At").asDouble()); assertEquals(3.0,data.path("patients").path("items").get(3).path("das28At").asDouble());
         assertEquals(3,data.path("activity").path("evalN").asInt()); assertSnapshotReleased();
     }
-    private void assertSnapshotReleased() {
-        assertEquals(2,observed.selects); assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
+    private void assertSnapshotReleased() { assertSnapshotReleased(5); }
+    private void assertSnapshotReleased(int selects) {
+        assertEquals(selects,observed.selects); assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
         assertEquals(1,new HashSet<>(observed.queryConnections).size());
-        assertEquals(Arrays.asList(Connection.TRANSACTION_REPEATABLE_READ,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
-        assertEquals(Arrays.asList(false,false),observed.autoCommits);
+        assertEquals(Collections.nCopies(selects,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
+        assertEquals(Collections.nCopies(selects,false),observed.autoCommits);
     }
     @Test void sourceConnectionIsReleasedBeforeParsingComputingAndHttpSuccess() throws Exception {
         AtomicInteger instants=new AtomicInteger();
@@ -65,7 +66,7 @@ class CohortSnapshotTest extends CohortHttpFixture {
         JsonNode envelope=json.readTree(response.getResponse().getContentAsByteArray());
         assertFalse(envelope.path("success").asBoolean()); assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertTrue(envelope.path("data").isNull());
         assertNotNull(response.getResponse().getHeader("X-Trace-Id")); assertTrue(observed.mysqlFailures>0,"故障必须实际到达 MySQL 而非仅提前抛异常");
-        assertSnapshotReleased();
+        assertSnapshotReleased(3);
         String body=response.getResponse().getContentAsString();
         for(String secret:new String[]{"SELECT","p01c_missing_source_table","jdbc:","crpScore","synthetic"}) assertFalse(body.contains(secret));
     }

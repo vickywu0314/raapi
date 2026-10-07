@@ -9,6 +9,7 @@
 	<select id="getVisit" resultType="Map" parameterType="Map">
 		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
 		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
+		       f.follow_up_date AS originalFollowUpDate, f.followUpDate AS originalCamelDate,
 		       f.doctor_id AS doctorId, u.name AS doctorName,
 		       f.research_type AS researchType, f.last_follow_up_id AS lastFollowUpId,
 		       f.bsbq, f.fzjc, f.bqpg, f.zyzd, f.zlfa, f.blsj, f.bblsj
@@ -76,6 +77,17 @@
 			<if test="visitDate != null">follow_up_date = #{visitDate}, followUpDate = #{visitDate},</if>
 		</set>
 		WHERE id = #{visitId}
+		<if test="visitDate != null">
+			AND (follow_up_date &lt;=&gt; #{originalFollowUpDate,jdbcType=TIMESTAMP})
+			AND (followUpDate &lt;=&gt; #{originalCamelDate,jdbcType=TIMESTAMP})
+		</if>
+		<if test="originals.containsKey('bsbq')">AND (BINARY bsbq &lt;=&gt; BINARY #{originals.bsbq,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('fzjc')">AND (BINARY fzjc &lt;=&gt; BINARY #{originals.fzjc,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('bqpg')">AND (BINARY bqpg &lt;=&gt; BINARY #{originals.bqpg,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('zyzd')">AND (BINARY zyzd &lt;=&gt; BINARY #{originals.zyzd,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('zlfa')">AND (BINARY zlfa &lt;=&gt; BINARY #{originals.zlfa,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('blsj')">AND (BINARY blsj &lt;=&gt; BINARY #{originals.blsj,jdbcType=LONGVARCHAR})</if>
+		<if test="originals.containsKey('bblsj')">AND (BINARY bblsj &lt;=&gt; BINARY #{originals.bblsj,jdbcType=LONGVARCHAR})</if>
 	</update>
 
 	<select id="getUserName" resultType="String" parameterType="Map">

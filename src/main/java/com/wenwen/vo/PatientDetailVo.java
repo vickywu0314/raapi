@@ -19,7 +19,7 @@ public class PatientDetailVo {
 	private Integer gender;
 	@ApiModelProperty("性别中文；其他值为 null")
 	private String sex;
-	@ApiModelProperty("出生年份：取身份证号里的出生日期；无有效身份证号时 = 建档年份 − 建档时年龄")
+	@ApiModelProperty("出生年份：取截至本次上海日期有效身份证生日；无可靠生日为 null")
 	private Integer birthYear;
 	@ApiModelProperty("当前年龄")
 	private Integer age;
@@ -29,11 +29,11 @@ public class PatientDetailVo {
 	private String followStatusLabel;
 	@ApiModelProperty("脱落原因（已脱落时），取医患关系的 reason / other_miss_reason / note")
 	private String withdrawReason;
-	@ApiModelProperty("疾病分型（按 RF / 抗CCP 计算）：血清阳性 / 血清阴性；两项都未检测为 null（页面显示「待补充」）")
+	@ApiModelProperty("疾病分型（截至本次日期 RF / 抗CCP 曾经阳性政策）：血清阳性 / 血清阴性；两项都未检测为 null（页面显示「待补充」）")
 	private String subtype;
-	@ApiModelProperty("类风湿因子 RF：随访辅助检查 fzjc.lfsyz，取最近一次有结果的随访")
+	@ApiModelProperty("类风湿因子 RF：随访辅助检查 fzjc.lfsyz，截至本次日期最新可分类的有日期随访")
 	private AntibodyVo rf;
-	@ApiModelProperty("抗CCP抗体：随访辅助检查 fzjc.kccpkt，取最近一次有结果的随访")
+	@ApiModelProperty("抗CCP抗体：随访辅助检查 fzjc.kccpkt，截至本次日期最新可分类的有日期随访")
 	private AntibodyVo ccp;
 	@ApiModelProperty("手机号")
 	private String mobile;
@@ -61,7 +61,7 @@ public class PatientDetailVo {
 	private String nextDueDate;
 	@ApiModelProperty("距下次应随访天数，负数为已逾期")
 	private Integer nextDueDays;
-	@ApiModelProperty("最近有效存量 DAS28-CRP（同患者列表，原值非负、两位 HALF_UP）")
+	@ApiModelProperty("本次上海asOf前最新有效LocalDate/同日最大id的存量 DAS28-CRP（同患者列表，原值非负、两位 HALF_UP）")
 	private BigDecimal latestDas28;
 	@ApiModelProperty("DAS28-CRP 疾病活动度：按两位 canonical：remission 临床缓解（<2.3）/ low 低（2.3~2.7）/ moderate 中（>2.7 且 ≤4.1）/ high 高（>4.1）；无有效分值为 null")
 	private String das28Activity;
@@ -99,6 +99,14 @@ public class PatientDetailVo {
 	private List<String> missingItems;
 	@ApiModelProperty("常见相关疾病")
 	private List<ComorbidityVo> comorbidities;
+    @ApiModelProperty("纤维肌痛三态 TRUE/FALSE/UNKNOWN；无关联不证明阴性")
+    private String fmState="UNKNOWN";
+    @ApiModelProperty("强直性脊柱炎三态 TRUE/FALSE/UNKNOWN；无关联不证明阴性")
+    private String asState="UNKNOWN";
+    public String getFmState() { return fmState; }
+    public void setFmState(String value) { fmState=value; }
+    public String getAsState() { return asState; }
+    public void setAsState(String value) { asState=value; }
 	@ApiModelProperty("访视次数")
 	private int visitCount;
 	@ApiModelProperty("随访时间线，最近的在前")

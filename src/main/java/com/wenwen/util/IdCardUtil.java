@@ -14,6 +14,10 @@ public final class IdCardUtil {
 
 	/** 出生日期；不是有效的 15 / 18 位身份证号或日期不合法时返回 null */
 	public static LocalDate birthDate(String cardNo) {
+        return birthDate(cardNo, LocalDate.now());
+    }
+
+    public static LocalDate birthDate(String cardNo, LocalDate asOf) {
 		if (cardNo == null) {
 			return null;
 		}
@@ -28,7 +32,7 @@ public final class IdCardUtil {
 		}
 		try {
 			LocalDate d = LocalDate.of(Integer.parseInt(ymd.substring(0, 4)), Integer.parseInt(ymd.substring(4, 6)), Integer.parseInt(ymd.substring(6, 8)));
-			if (d.getYear() < 1900 || d.isAfter(LocalDate.now())) {
+			if (d.getYear() < 1900 || d.isAfter(asOf)) {
 				return null;
 			}
 			return d;
