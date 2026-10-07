@@ -6,7 +6,7 @@
 |---|---|
 | 本地地址 | `http://localhost:8065`（端口 `server.port`） |
 | 路径规则 | `/api/<病种>/<业务>/<接口名>`，如 `/api/ra/project/projectsData` |
-| 请求方式 | 所有接口均为 `POST`，参数放在 URL 查询串或 `application/x-www-form-urlencoded` 表单里 |
+| 请求方式 | 所有接口均为 `POST`，参数格式按各接口说明；AI 队列示踪入口使用 JSON 对象 |
 | 在线文档 | 启动后访问 `http://localhost:8065/swagger-ui.html`，可直接在页面上调接口 |
 
 ### 统计范围：只含 RA
@@ -211,8 +211,8 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取**最近一次有结果**的随访 |
 | `rf.status` / `statusLabel` | String | 状态 | `negative` 阴性：值 ≤ ULN，或写「<20」「阴性」「-」；`low_positive` 低滴度阳性：ULN < 值 ≤ 3×ULN，或只写「阳性」「+」；`high_positive` 高滴度阳性：值 > 3×ULN；`untested` 未检测：所有随访都没有结果 |
 | `rf.value` / `uln` / `visitDate` | — | 化验原值 / 判定用的参考上限 / 取自哪次随访 | ULN 老数据没存，统一用配置 `ra.serology.rf-uln`（默认 20 IU/mL）、`ra.serology.ccp-uln`（默认 25 U/mL），待业务确认 |
-| `latestDas28` | number | 疾病资料 · DAS28-CRP | 最近一次随访病情评估 `bqpg` 的 `result.crpScore`（老系统算好存的），2 位小数；该次为空则往前找；都没有为 `null`（显示「DAS28-CRP 未提供」） |
-| `das28Activity` / `das28ActivityLabel` | String | 疾病资料 · DAS28-CRP 后的活动度标签 | 按 `latestDas28` 分级（EULAR 通用切点）：`remission` 临床缓解 < 2.6；`low` 低疾病活动度 2.6 ~ 3.2；`moderate` 中疾病活动度 3.2 ~ 5.1（不含 3.2）；`high` 高疾病活动度 > 5.1；无分值为 `null` |
+| `latestDas28` | number | 疾病资料 · DAS28-CRP | 按原随访顺序取病情评估 `bqpg.result.crpScore` 的首个有效存值；数字/字符串等价，缺组成项仍接纳，0 有效，无医学上限。原值须非负，再两位 HALF_UP canonical；null/空白/未查/非法/负值继续历史查找，ESR 不补 CRP；均无有效值为 `null`（显示「DAS28-CRP 未提供」） |
+| `das28Activity` / `das28ActivityLabel` | String | 疾病资料 · DAS28-CRP 后的活动度标签 | 按同一两位 canonical CRP 分级（当前开发默认，医学发布接收尚待确认）：`remission` 临床缓解 < 2.3；`low` 低疾病活动度 2.3 ~ 2.7；`moderate` 中疾病活动度 > 2.7 且 ≤ 4.1；`high` 高疾病活动度 > 4.1；无有效分值为 `null` |
 | `comorbidities[]` | Array | 其他病史 | 读 `patient_comorbidity`；空数组显示「无」 |
 | `comorbidities[].code` / `name` | String | 病种编码 / 病名 | 如 `FM` / 纤维肌痛 |
 | `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
@@ -314,7 +314,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `followStartDate` | 随访观察起始 | 基线访视（最早一次随访）日期；无随访取建档日期 |
 | `confirmDate` / `happenDate` | 确诊日期 / 发病时间 | `confirm_date` / `happen_date` |
 | `followCycle` / `nextDueDate` / `nextDueDays` | 随访周期 · 下次随访 · 已逾期 N 天 / N 天后 | `follow_cycle`；下次 = 最近随访 + 周期；`nextDueDays` 负数为已逾期 |
-| `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表 |
+| `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表的存值接纳、两位 HALF_UP canonical 与 CRP 分层；不改 ESR |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `acrEularScore` / `acrEularLabel` | ACR/EULAR 2010 分类标准总分 / 结论 | `acr_eular_score`（空则 `acrEularScore`）；≥6 分「符合 RA 分类」，<6 分「暂不符合 RA 分类」，未评估为 `null`。老系统没存各部分选项（`acr_eular_info` 全空） |
 | `waistline` / `heartRate` | 腰围（cm）/ 心率（次/分） | `waistline`、`xl` |
@@ -593,6 +593,85 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `OTHER_DISEASE` | 不新建患者行：只更新医生填了且与原值不同的字段（不清空原有信息），没有研究编号的补上；新增 RA 医患关系；原病种（已确认的：6 = AS）记入 `patient_comorbidity`（source=auto）；修改记录写改了哪些字段 |
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
+
+## 七、AI 队列分析示踪（P01_TRACER）
+
+### 7.1 当前医生 RA 队列
+
+页面：AI 队列分析的首个真实后端切片，当前只交付 RA/now/活动度/内部 id 筛选、人数、四档活动分布及首10。`completion=P01_TRACER` 不代表最终完整分析、统计、分页、保存、比较、AI 或导出已经完成。
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ai/cohort` |
+| 请求 | UTF-8 JSON 对象，例如 `{"filters":{"studyCode":"RA","at":"now","act":"target","ids":["1","7"]}}` |
+| 代码 | `AiCohortController` → `AiCohortServiceImpl` → `CohortSourceAdapter` → `AiCohortSourceMapper.xml` |
+| 身份 | `PrincipalProvider.requireCurrent()` 提供映射过的正 long 医生 id；默认生产 bean 一律401，真实登录 Adapter 尚未接入 |
+
+顶层仅接收 `filters` 与可选 `doctorId`；`filters` 缺省/null 按空对象处理。`doctorId` 缺省/null 不校验，否则必须是规范正整数十进制字符串且与可信医生相同；不一致403。请求 doctorId、伪造 header 和未经映射的 principal.name 都不能提供认证或扩权。
+
+| filters 字段 | 支持值与缺省规则 |
+|---|---|
+| `studyCode` | 只支持 `RA`；缺省/null/空串为RA |
+| `at` | 只支持 `now`；缺省/null/空串为now |
+| `act` | `target` / `mod-high` / `remission` / `low` / `moderate` / `high`；缺省/null/空串为不限 |
+| `ids` | 仅规范正整数十进制字符串数组，最大 long 为9223372036854775807；缺省/null不限，`[]`严格空集合。内部数值去重、排序后与本人范围取交集 |
+
+未知顶层/filters键、重复JSON键、非对象body、非法JSON/类型/枚举或非法id均400。`6m`、sex、age、tx、q、保存来源等未来条件明确拒绝，不能静默退化成无条件分析。原ids数组超过5000项返回413（去重前检查）；原UTF-8 body超过128KiB返回413，解析前最多读取128KiB+1字节。合法但不存在/无权限的id只过滤，不逐项透露原因。
+
+#### 范围、源读取与评分口径
+
+- U仅包含当前可信医生在**同一关系行**符合共享RA白名单的 `patient_basic_info.id`；按内部id唯一计数，脱落miss=1不默认排除，相同姓名不同id仍分别计数，孤立关系/访视不创造患者
+- 两条实际SELECT（患者id与必要访视列）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；生产访问仅SELECT，任何失败不回部分数据或旧结果
+- 一次请求以注入Clock固定上海asOfDate。now选择日期非空、≤asOfDate且CRP有效的最新临床日期；同日按访视id最大决胜，忽略时刻差异。最新坏值不挡历史有效值；下一新请求重新读取已提交源变化并重新评估Clock
+- CRP仅取 `bqpg.result.crpScore`，数值/字符串保持十进制原标量精度并复用共享两位HALF_UP canonical。0有效；malformed JSON、null/负值/非法值、只有ESR不成为有效CRP，ESR不能补CRP。缺组成项仍可使用存量值，不启用未核实复算或写回历史
+- C=U∩ids限制∩act。无act时无评分患者仍计入n；有act必须有有效CRP。target为canonical≤2.7，mod-high为>2.7；四档为<2.3、2.3～2.7、>2.7且≤4.1、>4.1
+
+#### 成功 data（HTTP200，success=true，code="200"）
+
+| 字段 | 实际含义 |
+|---|---|
+| `n` / `studyTotal` | 当前C人数 / 本医生U人数；studyTotal不受act或ids影响 |
+| `submittedUniqueIdsN` / `effectiveIdsN` | 去重提交数 / 提交集合∩U人数；均在act前计算，未提供ids时两者null |
+| `activity.current` | 恰为remission/low/moderate/high四项，含level/label/count；空队列也有四个0 |
+| `activity.evalN` / `unknownN` | C内有效CRP人数 / n-evalN；缺失与执行失败分开 |
+| `patients.total` / `items` | total=n，items是patientId数值升序首10，没有后续游标 |
+| `items[]` | patientId字符串、das28At canonical数值或null、activity编码或null、scoreProvenance |
+| `meta` | asOfDate、readStartedAt/readCompletedAt/computedAt ISO instant、policyVersions、traceId、supportedFilters、completion |
+
+有效值provenance为source=`LEGACY_STORED`、sourceVisitId字符串、sourceField=`bqpg.result.crpScore`、observedAt=`yyyy-MM-dd`、raw原标量文本及quality。存量至少 `LEGACY_UNVERIFIED`；已知TJC/SJC/GH/CRP任一缺失再标 `COMPONENTS_MISSING`，仅作质量说明，不代表医学已核实。无可选值时source/sourceVisitId/sourceField/observedAt/raw均null，missingReason=`NO_VALID_CRP`；quality只保留实际观察到的字段质量（如 `INVALID_JSON`）。不返回姓名、手机、身份证或整份病例JSON。
+
+以下为合成fixture仅act=target（未提供ids）的响应data示例（外层继续使用DataResult，其其他未使用字段为null）：
+
+```json
+{
+  "n": 2, "studyTotal": 5, "submittedUniqueIdsN": null, "effectiveIdsN": null,
+  "activity": {
+    "current": [
+      {"level":"remission","label":"临床缓解","count":1},
+      {"level":"low","label":"低疾病活动度","count":1},
+      {"level":"moderate","label":"中疾病活动度","count":0},
+      {"level":"high","label":"高疾病活动度","count":0}
+    ], "evalN":2, "unknownN":0
+  },
+  "patients": {"total":2,"items":[
+    {"patientId":"1","das28At":2.30,"activity":"low","scoreProvenance":{"source":"LEGACY_STORED","sourceVisitId":"11","sourceField":"bqpg.result.crpScore","observedAt":"2026-10-07","raw":"2.295","quality":["LEGACY_UNVERIFIED","COMPONENTS_MISSING"]}},
+    {"patientId":"7","das28At":0.00,"activity":"remission","scoreProvenance":{"source":"LEGACY_STORED","sourceVisitId":"70","sourceField":"bqpg.result.crpScore","observedAt":"2026-10-07","raw":"0","quality":["LEGACY_UNVERIFIED","COMPONENTS_MISSING"]}}
+  ]},
+  "meta":{"asOfDate":"2026-10-07","readStartedAt":"2026-10-07T02:00:00Z","readCompletedAt":"2026-10-07T02:00:00Z","computedAt":"2026-10-07T02:00:00Z","policyVersions":{"crp":"dev-crp-v04","now":"dev-now-v04"},"traceId":"synthetic-example-trace","supportedFilters":["studyCode","at","act","ids"],"completion":"P01_TRACER"}
+}
+```
+
+每个本入口响应带 `X-Trace-Id`，成功时与meta.traceId相同。时间仅表示本次读取/计算，不是旧系统业务水位。
+
+| 失败code | HTTP | 说明 |
+|---|---|---|
+| `UNAUTHENTICATED` | 401 | 可信身份不可用；默认生产配置明确拒绝 |
+| `FORBIDDEN` | 403 | doctorId断言与可信身份不一致 |
+| `INVALID_FILTER` | 400 | 不支持/非法JSON条件、重复或未知键 |
+| `LIMIT_EXCEEDED` | 413 | 原数组>5000或原body>128KiB |
+| `SERVICE_UNAVAILABLE` | 503 | 数据库或程序失败；不降为n=0/缺评分或旧结果 |
+
+失败success=false、data=null、message为安全通用提示，不暴露SQL/病例/连接或凭据。认证及输入拒绝发生在业务源SQL前。真实登录、目标生产库/隔离配置、医学与发布接收仍待对应owner，合成验证不能替代这些接入证据。
 
 ## 新增接口时的维护约定
 

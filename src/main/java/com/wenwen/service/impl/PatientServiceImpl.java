@@ -307,7 +307,7 @@ public class PatientServiceImpl implements PatientService {
 		}
 	}
 
-	/** 最近一次 DAS28-CRP：每个患者取最近一次随访里能转成数字的 result.crpScore，保留 2 位小数；并按 EULAR 切点给出疾病活动度 */
+	/** 最近一次 DAS28-CRP：每个患者按原顺序取首个非负有效 result.crpScore，统一两位 canonical 与 CRP 分层；缺失继续历史查找 */
 	private void attachDas28(Map<Long, PatientItemVo> byId) {
 		if (byId.isEmpty()) {
 			return;
@@ -317,13 +317,13 @@ public class PatientServiceImpl implements PatientService {
 			if (item == null || item.getLatestDas28() != null) {
 				continue;
 			}
-			try {
-				item.setLatestDas28(new BigDecimal(String.valueOf(row.get("das28")).trim()).setScale(2, RoundingMode.HALF_UP));
-				item.setDas28Activity(Das28Util.activity(item.getLatestDas28()));
-				item.setDas28ActivityLabel(Das28Util.label(item.getDas28Activity()));
-			} catch (Exception e) {
-				// 空值或非数字，看下一次随访
+			BigDecimal score = Das28Util.canonicalCrp(str(row.get("das28")));
+			if (score == null) {
+				continue;
 			}
+			item.setLatestDas28(score);
+			item.setDas28Activity(Das28Util.activity(score));
+			item.setDas28ActivityLabel(Das28Util.label(item.getDas28Activity()));
 		}
 	}
 

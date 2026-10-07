@@ -21,7 +21,7 @@ public interface PatientMapper {
 	/** 当前页患者，入参同 countPatients，另加 offset / size */
 	List<Map<String, Object>> listPatients(Map<String, Object> map);
 
-	/** 指定患者各次随访的 DAS28-CRP（patientId、das28 文本），每个患者最近的在前 */
+	/** 指定患者 RA 随访的存量 DAS28-CRP（patientId、das28 文本）；合法 JSON 空白排版等价，按原双日期/id顺序，值政策由 Service 接纳 */
 	List<Map<String, Object>> listDas28(@Param("patientIds") List<Long> patientIds);
 
 	/** 指定患者各次随访的 RF / 抗CCP 原值（patientId、visitDate、rf、ccp），每个患者最近的在前 */

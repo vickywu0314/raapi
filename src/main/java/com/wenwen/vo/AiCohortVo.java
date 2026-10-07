@@ -1,0 +1,22 @@
+package com.wenwen.vo;
+
+import java.util.*;
+import lombok.Value;
+
+/** P01 真实示踪响应；后续完整分析能力不以占位字段冒充。 */
+@Value
+public class AiCohortVo {
+    int n;
+    int studyTotal;
+    Integer submittedUniqueIdsN;
+    Integer effectiveIdsN;
+    Map<String,Object> activity;
+    Map<String,Object> patients;
+    Map<String,Object> meta;
+
+    public static Map<String,Object> object(Object... fields) {
+        Map<String,Object> result = new LinkedHashMap<>();
+        for (int i=0; i<fields.length; i+=2) result.put((String)fields[i], fields[i+1]);
+        return Collections.unmodifiableMap(result);
+    }
+}

@@ -61,9 +61,9 @@ public class PatientDetailVo {
 	private String nextDueDate;
 	@ApiModelProperty("距下次应随访天数，负数为已逾期")
 	private Integer nextDueDays;
-	@ApiModelProperty("最近一次 DAS28-CRP（同患者列表）")
+	@ApiModelProperty("最近有效存量 DAS28-CRP（同患者列表，原值非负、两位 HALF_UP）")
 	private BigDecimal latestDas28;
-	@ApiModelProperty("DAS28-CRP 疾病活动度：remission 临床缓解（<2.6）/ low 低（2.6~3.2）/ moderate 中（3.2~5.1）/ high 高（>5.1）；无分值为 null")
+	@ApiModelProperty("DAS28-CRP 疾病活动度：按两位 canonical：remission 临床缓解（<2.3）/ low 低（2.3~2.7）/ moderate 中（>2.7 且 ≤4.1）/ high 高（>4.1）；无有效分值为 null")
 	private String das28Activity;
 	@ApiModelProperty("疾病活动度中文：临床缓解 / 低疾病活动度 / 中疾病活动度 / 高疾病活动度")
 	private String das28ActivityLabel;
