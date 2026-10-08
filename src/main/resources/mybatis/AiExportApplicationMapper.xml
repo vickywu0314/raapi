@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wenwen.mapper.AiExportApplicationMapper">
+ <select id="find" parameterType="Map" resultType="com.wenwen.ai.export.ExportApplicationRecord">
+ SELECT r.owner_doctor_id AS owner, r.request_id AS requestId,r.request_sha256 AS requestHash,r.application_id AS applicationId,
+ r.source,r.reference_id AS referenceId,r.purpose_code AS purposeCode,r.verified_summary AS summary,r.created_at_ms AS createdAt,
+ r.mail_state AS mailState,r.attempt_id AS attemptId,r.attempt_no AS attemptNo,r.attempt_started_at_ms AS attemptStartedAt,r.decided_at_ms AS decidedAt,r.mail_from AS mailFrom,r.last_error AS lastError,
+ a.id AS legacyId,a.doctor_id AS legacyOwner,DATE_FORMAT(a.start_date,'%Y-%m-%d') AS startDate,DATE_FORMAT(a.end_date,'%Y-%m-%d') AS endDate,a.reason,a.mail_to AS mailTo,a.mail_sent AS mailSent
+ FROM ra_ai_export_request r LEFT JOIN export_application a ON a.id=r.application_id
+ WHERE r.owner_doctor_id=#{owner}
+ <choose><when test="requestId != null">AND r.request_id=#{requestId}</when><otherwise>AND r.application_id=#{applicationId}</otherwise></choose>
+ <if test="lock == true">FOR UPDATE</if>
+ </select>
+ <insert id="reserve" parameterType="Map">
+ INSERT INTO ra_ai_export_request(owner_doctor_id,request_id,request_sha256,application_id,source,reference_id,purpose_code,verified_summary,created_at_ms,mail_state,attempt_no)
+ VALUES(#{owner},#{requestId},#{requestHash},NULL,#{source},#{referenceId},#{purposeCode},#{summary},#{createdAt},'PENDING',0)
+ </insert>
+ <update id="attach" parameterType="Map">UPDATE ra_ai_export_request SET application_id=#{applicationId} WHERE owner_doctor_id=#{owner} AND request_id=#{requestId} AND application_id IS NULL</update>
+ <update id="claim" parameterType="Map">UPDATE ra_ai_export_request SET mail_state='UNKNOWN',attempt_id=#{attemptId},attempt_no=#{nextAttemptNo},attempt_started_at_ms=#{now},decided_at_ms=NULL,last_error='IN_PROGRESS_OR_UNCERTAIN',mail_from=#{mailFrom} WHERE owner_doctor_id=#{owner} AND application_id=#{applicationId} AND mail_state=#{oldState} AND attempt_no=#{attemptNo}</update>
+ <update id="bindRecipient" parameterType="Map">UPDATE export_application SET mail_to=#{mailTo} WHERE doctor_id=#{owner} AND id=#{applicationId} AND mail_to IS NULL AND mail_sent=0</update>
+ <update id="accepted" parameterType="Map">UPDATE export_application SET mail_sent=1 WHERE doctor_id=#{owner} AND id=#{applicationId} AND mail_sent=0</update>
+ <update id="settle" parameterType="Map">UPDATE ra_ai_export_request SET mail_state=#{newState},last_error=#{lastError},decided_at_ms=#{now} WHERE owner_doctor_id=#{owner} AND application_id=#{applicationId} AND mail_state='UNKNOWN' AND attempt_id=#{attemptId} AND attempt_no=#{attemptNo}</update>
+</mapper>

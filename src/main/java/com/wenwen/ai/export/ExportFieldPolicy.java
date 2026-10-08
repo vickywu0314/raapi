@@ -1,0 +1,25 @@
+package com.wenwen.ai.export;
+import com.wenwen.ai.query.CohortException;
+import java.time.*;
+import java.util.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+/** 上海月首六自然月；只认可对应字段真实来源日期。 */
+@Component public final class ExportFieldPolicy {
+    public static final String VERSION="dev-export-v01";
+    private final int freeMonths;
+    public ExportFieldPolicy(@Value("${ra.export.free-months:6}") int months){freeMonths=months;}
+    public void validate(){if(freeMonths!=6)throw new CohortException(503,"SERVICE_UNAVAILABLE","导出暂不可用");}
+    public static final class Window {public final LocalDate today,freeStart;public Window(Instant at){today=at.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();freeStart=today.withDayOfMonth(1).minusMonths(6);}}
+    public static final class NeedApply extends RuntimeException {public final Map<String,Object> data;public NeedApply(Map<String,Object> d){super("所选导出内容需要申请");data=d;}}
+    public List<Map<String,Object>> blocked(AiExportQuery q,Map<String,Object> payload,Window w){return "COMPARE".equals(q.source)?comparisonBlocked(q.requested,payload,w):blocked(q.requested,payload,w);}
+    @SuppressWarnings("unchecked") private List<Map<String,Object>> blocked(List<String> requested,Map<String,Object> payload,Window w){
+        List<Map<String,Object>> blocked=new ArrayList<>();for(String field:requested){LinkedHashMap<String,Integer> counts=new LinkedHashMap<>();for(Object item:(List<?>)payload.get("rows")){Map<String,Object> row=(Map<String,Object>)item;String source=date(row,field);String reason=Arrays.asList("treatmentCategory","genericDrugIds","line","schemeDurationMonths","fm","as","completeness").contains(field)?"INCOMPLETE_SOURCE_EVIDENCE":source==null?"MISSING_SOURCE_DATE":LocalDate.parse(source).isBefore(w.freeStart)?"SOURCE_BEFORE_WINDOW":LocalDate.parse(source).isAfter(w.today)?"SOURCE_AFTER_TODAY":null;if(reason!=null)counts.put(reason,counts.getOrDefault(reason,0)+1);}for(String reason:Arrays.asList("INCOMPLETE_SOURCE_EVIDENCE","MISSING_SOURCE_DATE","SOURCE_BEFORE_WINDOW","SOURCE_AFTER_TODAY"))if(counts.containsKey(reason)){Map<String,Object> b=new LinkedHashMap<>();b.put("field",field);b.put("side",null);b.put("reason",reason);b.put("affectedN",counts.get(reason));blocked.add(b);}}
+        return blocked;
+    }
+    public Map<String,Object> rejection(AiExportQuery q,Map<String,Object> payload,Window w,List<Map<String,Object>> blocked){Map<String,Object> d=new LinkedHashMap<>();d.put("decision","NEED_APPLY");d.put("source",q.source);d.put("referenceId",q.referenceId);d.put("selectionMode",q.selectionMode);d.put("requested",q.requested);List<String> eligible=new ArrayList<>();for(String f:"COMPARE".equals(q.source)?AiExportQuery.METRICS:AiExportQuery.FIELDS)if(("COMPARE".equals(q.source)?comparisonBlocked(Collections.singletonList(f),payload,w):blocked(Collections.singletonList(f),payload,w)).isEmpty())eligible.add(f);d.put("eligible",eligible);d.put("blocked",blocked);d.put("freeStart",w.freeStart.toString());d.put("today",w.today.toString());d.put("policyVersion",VERSION);return d;}
+    @SuppressWarnings("unchecked") private static Map<String,Object> map(Object o){return (Map<String,Object>)o;}
+    private List<Map<String,Object>> comparisonBlocked(List<String> selected,Map<String,Object> p,Window w){List<Map<String,Object>> out=new ArrayList<>();Map<String,Object> coverage=map(map(p.get("meta")).get("sourceDateCoverage"));for(String metric:selected){if("n".equals(metric))continue;for(String side:Arrays.asList("a","b")){int n=((Number)map(p.get(side)).get("n")).intValue();if(n==0)continue;Map<String,Object> c=map(map(coverage.get(side)).get(metric));int valid=((Number)c.get("validN")).intValue(),undated=((Number)c.get("undatedN")).intValue();if(valid==0){block(out,metric,side,"NO_VALID_CONTRIBUTION",n);continue;}if(undated>0)block(out,metric,side,Arrays.asList("sero","complete","line").contains(metric)?"INCOMPLETE_SOURCE_EVIDENCE":"MISSING_SOURCE_DATE",undated);if(c.get("minDate")!=null&&LocalDate.parse((String)c.get("minDate")).isBefore(w.freeStart))block(out,metric,side,"SOURCE_BEFORE_WINDOW",valid);if(c.get("maxDate")!=null&&LocalDate.parse((String)c.get("maxDate")).isAfter(w.today))block(out,metric,side,"SOURCE_AFTER_TODAY",valid);}}return out;}
+    private static void block(List<Map<String,Object>> out,String field,String side,String reason,int affected){Map<String,Object> b=new LinkedHashMap<>();b.put("field",field);b.put("side",side.toUpperCase(Locale.ROOT));b.put("reason",reason);b.put("affectedN",affected);out.add(b);}
+    @SuppressWarnings("unchecked") private static String date(Map<String,Object> row,String field){String object,key;if("das28Current".equals(field)){object="selection";key="nowDate";}else if("crpCurrent".equals(field)){object="crpCurrent";key="observedAt";}else if("das28At".equals(field)){object="scoreProvenance";key="observedAt";}else if("das28Base".equals(field)){object="baselineProvenance";key="observedAt";}else return null;return (String)((Map<String,Object>)row.get(object)).get(key);}
+}

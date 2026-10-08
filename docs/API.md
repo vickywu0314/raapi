@@ -35,7 +35,7 @@
 
 ### 统一返回结构 `DataResult`
 
-所有接口都返回下面这个外层结构，业务数据在 `data` 里。
+JSON响应使用下面这个外层结构，业务数据在 `data` 里；文件成功响应按对应接口说明直接返回bytes。
 
 | 字段 | 类型 | 中文含义 |
 |---|---|---|
@@ -945,6 +945,76 @@ fallbackReason有限为AI_NOT_ENABLED、AI_NOT_APPROVED、AI_CONFIG_UNAVAILABLE�
 HTTP与数据库无共同事务。正常HTTP owner退出后才进入原短审计，原文/模型notice/key不进事件；超时native残留的规则事件也不授予旧owner进展权。模型外发已经交给OS的字节不能撤回，随后真实INSERT后/precommit故障必须503/null且rollback、旧事件不变/DB资源退出，绝不重发模型。commit后HTTP写回故障保留完整事件，仍无跨网络/DB原子或幂等承诺。
 
 [P05开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p05-gate)已接收规则解析、受控单次AI协议与原cohort/短审计的合成组合及证明边界；真实模型、外发政策和生产启用仍由AQC-EXT-05在P07接收，普通xlsx及申请通知由P06交付。
+
+### 7.7 授权保留引用到普通同步 XLSX
+
+`POST /api/ra/export/xlsx`，UTF8 JSON body最多16KiB。先可信身份，再严格对象/重复键/尾随token/所有字符串及键的Unicode、引用和选择器校验；匿名401且不读body/SQL。客户端不能提交doctorId、患者数组、filters、日期覆盖、policy、申请或邮件凭据。
+
+```json
+{"source":"COHORT","analysisId":"00000000-0000-0000-0000-000000000001","fields":["das28Current","crpCurrent"]}
+```
+
+```json
+{"source":"COMPARE","compareResultId":"00000000-0000-0000-0000-000000000001","metrics":["n","das28At","crpAt","haqAt","target","activity"]}
+```
+
+每种source仅接收示例中的键；选择器可省略，不得显式null、空数组、重复、未知或非字符串，两引用/选择器不可混带。省略为DEFAULT完整目录，显式数组为EXPLICIT并按目录排序；不自动补ID、不自动替换为免费列。内容直接消费同一已验run的固定payload/hash/完整U指纹，不取首屏、不重新analyze/统计、不读姓名/研究号或SAVED名称/备注。完整U包含当前C或A/B以外的本人RA患者，读取时和完整文件生成后均重验；最后再以新的Clock瞬时检验expiry。每个结果/范围/审计事务在POI和输出前退出，不宣称最后检查与外部源/网络强原子。
+
+COHORT默认目录：`patientId,sex,age,studyNo,treatmentCategory,genericDrugIds,line,schemeDurationMonths,das28Base,das28At,das28Current,crpCurrent,fm,as,completeness`。每保留患者一行、原顺序和值不变；无ID子集仍保留全C。`das28At`标题明确now或6m，真正6m来自原selected访视，不新增独立six列。四个日期列分别取baselineProvenance.observedAt、scoreProvenance.observedAt、selection.nowDate、crpCurrent.observedAt，不互借日期。ID/sex/age/studyNo无可靠来源日；治疗/QC/病史缺完整复合来源证据，非空默认通常NEED_APPLY。任一患者被选字段缺日或越窗，阻断整次，不删行或把旧值抹空。可靠来源日期存在而值缺失可BLANK；空C只输出原表头、EMPTY和rowN=0。
+
+COMPARE默认12指标：`n,age,duration,das28At,crpAt,haqAt,female,sero,target,complete,activity,line`；默认非空完整表会因age/female等undated需申请。显式六指标示例在真实coverage完整且窗内时成功，保留原A/B人数、unknown/known/validN、numerator/denominator、分布、差值、raw P/显示P和检验状态，不复算/二次排重。非空侧validN=0阻断；空侧不阻断，结构计数/原NO_DATA信息保留，不造P。
+
+窗口固定本次上海today与`today.withDayOfMonth(1).minusMonths(6)`，含起点，不按180天，也不以查询/计算/生日/确诊日补来源。新接口复用`ra.export.free-months`的既有int绑定，缺省6且只允许绑定值6；5/12/0/负数在引用SQL前503。空串/非法文本/int越界保持真实Spring装配失败，不承诺可服务HTTP503。容量仅调用共享`AnalysisSettings.maxBytes()`，默认8388608、合法1..16777215；非法配置引用SQL前503，不调用无关cursor key/TTL校验。完整序列化bytes超过上限413/RESULT_TOO_LARGE，零文件输出，不截行/ZIP。
+
+合法但需申请返回409、success=false、code=NEED_APPLY、message=“所选导出内容需要申请”。data恰含`decision,source,referenceId,selectionMode,requested,eligible,blocked,freeStart,today,policyVersion`，policyVersion=dev-export-v01。requested按目录列出本次内容；eligible是完整保留数据/同次窗口检查通过的目录代码（也包括未请求项），不包含临床值。客户端须重新显式选择，服务端不自动采用eligible。blocked只包含requested未通过项，每项恰`field,side,reason,affectedN`；COHORT side=null、COMPARE A/B，按内容目录/side/原因排序。有限原因是NO_VALID_CONTRIBUTION、INCOMPLETE_SOURCE_EVIDENCE、MISSING_SOURCE_DATE、SOURCE_BEFORE_WINDOW、SOURCE_AFTER_TODAY。COHORT affectedN为该原因实际行数；比较缺日/证据不全为undatedN，无有效贡献为非空侧n；比较窗前/未来为整个受阻聚合的validN，不能标作实际越窗人数。缺日与窗外原因可并存，人数不可相加。NEED_APPLY不记录申请、不发SMTP、不授权下载；伴随审计失败仍保留原409/data。
+
+成功200直接返回`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，固定安全UUID/UTC时刻文件名、Cache-Control:no-store和X-Trace-Id。COHORT sheets为cohort/metadata；COMPARE为comparison/metadata，不附明细。比较宽表列序为：
+
+`metric,kind,category,aN,bN,aValidN,bValidN,aUnknownN,bUnknownN,aDenominator,bDenominator,aKnownN,bKnownN,aNumerator,bNumerator,aQ1,aMedian,aQ3,aIqr,bQ1,bMedian,bQ3,bIqr,aValue,bValue,aCount,bCount,difference,pValue,displayP,method,testStatus,reason,nA,nB,testDenominator,warnings`。
+
+每distribution category按原groups一行，只有指标第一物理行放整体test，其余类别test格BLANK；默认12指标对应17物理行，示例六指标9行。metadata与审计分别记录实际物理rowN、所选指标数与原A/B人数，文件行数不是患者数。metadata保存实际选择/模式、引用、来源读取/计算/生成时间、at/asOf、窗口/政策/CRP阈值、单位/缺失、原探索性说明与Excel限制。安全条件只保规范filters和ids选择模式/去重及有效数量，SAVED只保UUID/version，不放ID数组、name/note/原JSON/问句。
+
+数字为标准OOXML NUMERIC格，原Number直接canonicalDecimal到raw `<v>`，不先double舍入；raw P为数值、displayP为独立文本。POI raw-value及ZIP原值保留现有临床/Type7精度，但Excel计算/再次保存仍受双精度和有效位限制。非有限double范围/非零下溢到0失败，不改为文本或零。日期/条件/代码为STRING，=、+、−、@文本不成为FORMULA；缺失BLANK，没有宏、外部链接或隐藏患者列，不保磁盘文件/公开URL。
+
+专用[审计DDL](../src/main/resources/sql/20261008_ai_export_audit.sql)只新增ra_ai_export_audit，25列/InnoDB/无旧表外键，id复用服务器trace UUID。每次请求是一条独立尝试，无下载幂等或审计grant。8个INSERT/UPDATE操作各REQUIRES_NEW短事务且必须影响1行；UPDATE绑定原id/可信owner和精确前态CAS。ALLOW先PREPARING/NOT_STARTED提交才允许POI；完整生成且Workbook关闭后READY保留generated/file_rows/file_bytes；最终scope/TTL拒绝尽力REJECTED，补记失败不覆盖原409/410/503。STARTED成功提交确认后才设二进制头/write/flush；其后错误终止容器输出，不拼JSON、不重发、不close容器stream。正常write/flush返回后WRITTEN仅证明服务器写出，delivery仍UNKNOWN；失败/提交确认丢失可能已提交，不能猜回滚、反向状态或重发。生成容量失败的伴随FAILED更新出错仍原413；中断保flag，不借新JDBC补记。
+
+其它错误data=null：输入400/INVALID_REQUEST，body超限413/LIMIT_EXCEEDED，缺行/跨owner404/RESOURCE_NOT_FOUND；未清理的expiry边界410/ANALYSIS_EXPIRED或COMPARE_EXPIRED；完整U变化409/SCOPE_CHANGED；codec/SQL/配置/程序503/SERVICE_UNAVAILABLE。没有文件bytes时返回JSON，无伪.xlsx。技术验证仅合成Java8/MySQL/HTTP/POI；真实身份/目标DB/医学统计和AQC-REL-02字段/日期对外批准仍OPEN，申请通知技术接口见§7.8，真实SMTP/收件仍由EXT-06接收，不代表生产启用。
+
+### 7.8 唯一导出申请、一次通知与同申请安全重试
+
+`POST /api/ra/export/applyAnalysis` 接收UTF8 JSON≤16KiB，根恰含以下六键，全部必填；export只接受§7.7的COHORT/COMPARE引用及显式非空fields/metrics，不接受DEFAULT、客户端人数/hash/blocked/filters/身份。可信Principal先于body，服务器产生X-Trace-Id。先严格UTF8及迭代token浅结构预检（apply最多3层，retry最多1层），再严格重复键、尾随、Unicode与固定shape校验；普通错误400/INVALID_REQUEST，超限413/LIMIT_EXCEEDED，匿名401/body与SQL均0。
+
+```json
+{"requestId":"00000000-0000-4000-8000-000000000001","export":{"source":"COHORT","analysisId":"00000000-0000-4000-8000-000000000002","fields":["patientId","sex"]},"startDate":"2026-01-01","endDate":"2026-10-07","purposeCode":"RESEARCH","reason":"合成本地申请说明"}
+```
+
+requestId为canonical小写UUID，按可信owner隔离。日期为1000..9999年四位ISO日期，start≤end；首次申请end不晚于本次上海today。日期表示申请范围，不重新筛/扩展引用数据。用途仅RESEARCH/DATA_CHECK/OTHER；reason仅trim首尾后1..1000合法Unicode码点，保存旧表，不入邮件/响应/应用日志。规范hash固定source/reference/目录顺序selected/date/purpose/reason，排除requestId、动态源和邮件配置；键序/JSON空白/字段数组重排同参，说明内部字符、字段、日期、用途或引用变化409/IDEMPOTENCY_CONFLICT。
+
+静态解析后先按owner/requestId短读已提交回执。同参只回原applicationId及当前通知状态，不重读TTL/U/窗口，不新申请或隐式发信；异参409先于旧引用失效。首次才校验6个月政策与同owner/TTL/hash/完整U引用、实际blocked非空；ALLOW为409/APPLICATION_NOT_REQUIRED，缺行/非owner404，到期410，U变更409，损坏/SQL/配置503。申请链不调用xlsx prepare、POI或导出审计，不获取文件权利。
+
+首次创建在REQUIRES_NEW短事务内预约新[ra_ai_export_request](../src/main/resources/sql/20261008_ai_export_request.sql)（owner/requestId主键、applicationId唯一），调用现有ExportMapper真实INSERT旧export_application，再回填正ID；提交只能两表完整，故障回滚。新companion仅保存dev-export-apply-v01安全摘要/条件选择计数/政策/人数与通知事实；无患者值/ID数组/姓名/备注/病例或自由说明。旧doctor_name/mail_to初始null、status保持pending；旧pending/approved/rejected不参与新授权或通知。仅本片创建的旧行允许mail_to/mail_sent更新；旧DDL、CSV/apply接口保持。
+
+`POST /api/ra/export/retryNotification` 根恰`{"applicationId":"正long十进制文本"}`，body≤4096。非owner/只有旧行而无companion404。PENDING或明确FAILED才竞争一次claim；SENT/UNKNOWN只返回现态，零SMTP。retry消费原合法安全摘要，不回读临床/TTL/U，不生成历史文件。唯一竞争败者仅明确duplicate-key回滚后短读同参胜者；提交确认丢失不猜回滚、当次不进入SMTP。
+
+已明确提交的申请返回200/success=true/code=200/message=申请已记录；data恰如下，无reason自由说明、审批/grant/downloadUrl：
+
+```json
+{"applicationId":"7","status":"APPLICATION_RECORDED","notification":{"mailStatus":"FAILED","attemptId":"00000000-0000-4000-8000-000000000003","retryable":true,"smtpAccepted":false,"statusConfirmed":true,"reason":"NOT_CONFIGURED","deliveryStatus":"UNKNOWN"}}
+```
+
+通知claim单独短事务锁定两表并CAS：PENDING/FAILED→UNKNOWN，新attempt UUID、attemptNo+1（禁止溢出）且先提交才网络。同申请并发最多一个claim；初次apply只有create胜者尝试，同参replay不触retry。首次有效配置绑定唯一管理员mail_to及发件mail_from，后续更换to/from为FAILED/RECIPIENT_CHANGED；修复host/端口/TLS配置不会改变requestHash。未配置/无容量/确定预DATA失败为FAILED可明确retry；进入DATA后不明、deadline/中断/停止为UNKNOWN且不可普通重发。真实finishData最终250后、实际网络worker退出后，caller短事务把旧mail_sent=1与同attempt SENT同时提交；只证明SMTP受理，delivery始终UNKNOWN。
+
+claim/settle提交未确认返回已记录+UNKNOWN/statusConfirmed=false/retryable=false，保留本次已知smtpAccepted，不反向写状态或再发。下次短读反映实际已提交行；create提交未确认仍503/data=null/当次SMTP0。caller中断保flag，不能清flag补JDBC。HTTP写回失败不撤回已记录/已受理事实，重放只读取同申请。UNKNOWN无租约重置、后台恢复、重发开关或outbox。
+
+服务器配置：ra.export.apply-mail-to唯一管理员；ra.export.smtp.enabled默认false、host、port、from、username、password、mode默认STARTTLS。以String调用时验证，坏SMTP配置不使全应用启动失败。地址必须单个InternetAddress.parse(true)+validate，无group/显示名/CRLF/CC/BCC；凭据同时有或同时无。STARTTLS强制enable/required、默认JVM信任链及hostname验证，认证只在TLS之后。LOOPBACK_PLAIN仅字面127.0.0.1/::1且禁auth，专供受控合成试验；无trust-all或任意主机明文开关，不支持隐式SMTPS。
+
+邮件固定RA导出申请 #ID、UTF8 text/plain，无附件/处理URL。正文只含申请编号、可信医生ID、有限用途、申请日期范围、结果类型/UUID、引用人数、目录代码和“不表示审批或已生成历史文件”的固定说明；不含reason、条件取值、患者内容或P值。Message-ID固定&lt;ra-export-ID@notification.invalid&gt;仅关联，不承诺服务器去重；body≤4096/MIME≤16384实际计数。
+
+SMTP由专用最多1线程/SynchronousQueue无队列executor及exact Flight真实raw socket拥有。一次networkDeadline9500ms、callerDeadline10000ms，最后500ms等退出；不含DB/入口/响应SLA。deadline、真实caller interrupt或bean destroy先CAS终止原因、close owned raw socket、interrupt worker，再最多500ms且不越callerDeadline等待exact OwnedTask.afterExecute；Future取消/network finally不替代退出。未退者保持原真实容量、UNKNOWN和禁重试；native DNS不可强杀，不增线程替换或伪释放。生产先close raw再在worker自身Transport.close，关闭异常不覆盖ACCEPTED，QUIT不拖住已受理流程。
+
+reason仅null或NOT_CONFIGURED/INVALID_MAIL_CONFIG/RECIPIENT_CHANGED/NOTIFICATION_BUSY/PRE_DATA_REJECTED/PRE_DATA_IO_FAILED/DATA_OUTCOME_UNKNOWN/DEADLINE/CALLER_INTERRUPTED/SERVICE_STOPPED/STATE_UPDATE_UNCONFIRMED/IN_PROGRESS_OR_UNCERTAIN。不返回SMTP原异常/响应文本、host/user/password。技术仅合成Java8/真实MySQL/loopback SMTP及测试context独立CA的STARTTLS；真实收件、生产信任/配置/留存与EXT-06、REL-02/P07接收仍OPEN，无医学/部署/真实身份保证。
+
+[P06开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p06-gate)已接收普通同步XLSX、真实NEED_APPLY→唯一申请/受控通知及无文件授予的合成组合；真实SMTP收件、目标数据库、医学统计和对外字段日期政策仍由八项OPEN义务在P07逐项接收，不代表发布就绪。
 
 ## 新增接口时的维护约定
 

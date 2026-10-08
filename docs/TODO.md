@@ -41,6 +41,13 @@
 
 ## 上线前
 
+- [ ] **接收P06b申请companion DDL与状态留存**：[20261008_ai_export_request.sql](../src/main/resources/sql/20261008_ai_export_request.sql)仅新增InnoDB/utf8mb4专表，无患者/旧表FK或后台恢复。与现存export_application同短事务创建，主键owner/requestId与applicationId唯一；仅本片旧行mail_to/mail_sent可更新，旧status/CSV/apply不变。DBA接收目标引擎/索引/权限/摘要与自由reason访问留存，再安装表/启用新入口；回滚先关新applyAnalysis/retryNotification和SMTP，不删除旧申请/companion或把UNKNOWN改FAILED。AQC-EXT-04仍OPEN。
+- [ ] **接收P06b真实SMTP和管理员收件**：ra.export.smtp.enabled默认false，生产仅强制STARTTLS/默认信任与hostname；host/port/from与唯一ra.export.apply-mail-to、安全凭据渠道、有限模板由SK/管理员/运维批准。凭据不入仓库/消息/日志；测试PKCS12及LOOPBACK_PLAIN不用于生产。首次绑定to/from后改地址会RECIPIENT_CHANGED。真实无患者通知的SMTP受理与管理员收件分别确认，不能以loopback或SENT自闭AQC-EXT-06；文件字段/日期发布AQC-REL-02仍OPEN。
+- [ ] **接收P06b不可逆/退出边界**：申请/claim明确提交后当前caller最多一次SMTP，UNKNOWN无普通重发或后台复活。9500/10000ms仅单网络调用预算；socket主动close及真实afterExecute在≤500ms窗口退出，native DNS未退保原容量/BUSY。不保证真实TCP写永久阻塞试验、强杀native DNS或浏览器断连；邮件SENT不证明送达、审批或文件权利。
+
+- [ ] **接收P06a普通XLSX审计DDL与对外字段/日期政策**：[20261008_ai_export_audit.sql](../src/main/resources/sql/20261008_ai_export_audit.sql)只新增ra_ai_export_audit（25列/InnoDB/无旧表外键），记录PREPARING/NEED_APPLY/READY生成事实与NOT_STARTED/REJECTED/STARTED/WRITTEN/FAILED传输事实，不是下载许可或送达证明。DBA接收目标版本/权限、索引、访问/留存，再安装新表与入口；回滚先停新xlsx入口，保留已提交审计，不自动删表/事件。AQC-EXT-04保持OPEN。
+- [ ] **接收P06a真实对外发布**：业务/数据负责人确认实际默认15字段/比较12指标、ID/静态字段无日不豁免、显式日期子集、上海月首减6自然月及比较窗外affectedN=整个validN（非实际越窗人数）、metadata/精度/隐私与网络UNKNOWN边界；AQC-REL-02仍OPEN。缺省/绑定6可用，其他可绑定整数仅新接口503；坏文本保持真实bean装配失败。仅共享maxBytes容量，生产旧CSV/申请流程不因开发证据获得新权限；无本片SMTP/后台文件/下载重试。
+
 - [ ] **接收规则解析专用追加审计DDL与访问/留存政策**：[20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql)只新增ra_ai_parse_audit（InnoDB、无旧表外键），保存可信actor/action、白名单普通条件摘要/状态/版本/trace，禁止原问句、其hash、ids/其hash、病例或notice。部署先由DBA核目标版本/权限/留存，再安装表和两路API；缺表时parse/apply失败503、不回部分候选。回滚先停止两路入口，保留已提交事件供审计接收，不自动删表/丢事件；后续受控移除须另行批准留存方案。AQC-EXT-04保持OPEN；模型网关默认禁出站，仅合成loopback协议已验证；真实AI/原文政策仍由AQC-EXT-05接收，技术验证不关闭生产义务。
 
 - [ ] **接收P05b真实AI启用与外发政策**：默认ra.ai.gateway.enabled=false/outbound-approved=false；真实启用前由GY/数据安全负责人在安全渠道接收固定endpoint/model/额度与凭据，以及批准的文本范围、部署、原文访问/留存（可明确不存）决定。受控p05b-synthetic-model/p05b-loopback-key只用于字面127.0.0.1，不配置真实key或以合成测试关闭AQC-EXT-05。凭据仅服务器安全注入，禁止仓库/消息/审计/异常/日志保存；不得扩大到自由中文、患者上下文或任意URL。
@@ -84,7 +91,7 @@
 
 ## 后续接口
 
-- [ ] 导出申请发邮件：提交后发到 `ra.export.apply-mail-to`（申请已记录在 export_application，mail_sent 标记是否已发）；审批流程待定
+- [ ] 导出申请真实SMTP/管理员收件接收：P06b两入口及受控单次通知/安全FAILED重试已实现，实际服务器/TLS/身份/配置及受理、收件分别由AQC-EXT-06接收。UNKNOWN不可盲重发；本Flow不含审批或历史文件交付
 - [ ] OCR识别录入（患者列表、患者详情、访视详情的按钮，目前提示开发中）：百度医疗 OCR
 
 - [ ] 新建患者 / 编辑档案：写入 `study_no`（`StudyNoUtil` 生成）、`follow_cycle`、`patient_comorbidity`（医生勾选）
