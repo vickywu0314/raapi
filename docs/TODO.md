@@ -43,6 +43,12 @@
 
 ## 上线前
 
+- [ ] **接收规则解析专用追加审计DDL与访问/留存政策**：[20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql)只新增ra_ai_parse_audit（InnoDB、无旧表外键），保存可信actor/action、白名单普通条件摘要/状态/版本/trace，禁止原问句、其hash、ids/其hash、病例或notice。部署先由DBA核目标版本/权限/留存，再安装表和两路API；缺表时parse/apply失败503、不回部分候选。回滚先停止两路入口，保留已提交事件供审计接收，不自动删表/丢事件；后续受控移除须另行批准留存方案。AQC-EXT-04保持OPEN；模型网关默认禁出站，仅合成loopback协议已验证；真实AI/原文政策仍由AQC-EXT-05接收，技术验证不关闭生产义务。
+
+- [ ] **接收P05b真实AI启用与外发政策**：默认ra.ai.gateway.enabled=false/outbound-approved=false；真实启用前由GY/数据安全负责人在安全渠道接收固定endpoint/model/额度与凭据，以及批准的文本范围、部署、原文访问/留存（可明确不存）决定。受控p05b-synthetic-model/p05b-loopback-key只用于字面127.0.0.1，不配置真实key或以合成测试关闭AQC-EXT-05。凭据仅服务器安全注入，禁止仓库/消息/审计/异常/日志保存；不得扩大到自由中文、患者上下文或任意URL。
+- [ ] **接收P05b部署生命周期边界**：正常/可终止socket先真实owner退出再短审计，caller中断503且保flag/无成功事件；最多2个daemon、无队列/重试。5秒是单次网关预算，不是入口/审计/写回SLA。native DNS不可强杀，未退者保真实容量和未terminated状态；不得以RULE/TIMEOUT事件或容器关闭返回误称所有平台资源已退。现成DDL仅版本列实填，无新增表；模型已外发后的审计失败不能撤回HTTP或自动重发。真实身份/目标DB/医学统计/通知与发布义务继续由对应接收owner关闭。
+
+
 - [ ] **执行建表 / 改表 SQL**（按文件名日期顺序）
   - `src/main/resources/sql/20261003_patient_list.sql`：患者表加 `study_no`、`follow_cycle`；新建 `patient_comorbidity`
   - `src/main/resources/sql/20261003_backfill_study_no.sql`：老患者补研究编号

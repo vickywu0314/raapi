@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@org.springframework.context.annotation.Import(AiParseGatewayConfiguration.class)
 public class AiCohortConfiguration {
     @Bean public com.wenwen.ai.result.AnalysisSettings cohortAnalysisSettings(
         @org.springframework.beans.factory.annotation.Value("${ra.ai.analysis.result-ttl-seconds:900}") String ttl,
