@@ -13,6 +13,7 @@ public final class RuleParser {
     private static final String NEUTRAL_PATTERN=String.join("|",NEUTRAL);
     private static final Pattern AGE=Pattern.compile("(?<![0-9])(-?[0-9]+)(?:[-~至](-?[0-9]+)岁?|岁以上)(?![0-9])");
     private static final List<Word> WORDS=new ArrayList<>();
+    private static final List<Word> OUTBOUND_WORDS;
     static {
         words("sex","F","女性","女患者","女");
         words("sex","M","男性","男患者");
@@ -31,7 +32,13 @@ public final class RuleParser {
         words("sero","1","血清阳性","RF","ACPA","抗CCP");
         words("at","6m","6个月","六个月","半年");
         words("data","missing","缺失","待补全","不完整");
+        // 原出站语言独立保留；本地新增完整词不授予原文外发许可。
+        OUTBOUND_WORDS=new ArrayList<>(WORDS);
+        words("tx","TNFi","TNFi");
+        words("at","6m","6个月后");
+        words("act","mod-high","仍处于中高疾病活动");
         WORDS.sort((a,b)->Integer.compare(b.text.length(),a.text.length()));
+        OUTBOUND_WORDS.sort((a,b)->Integer.compare(b.text.length(),a.text.length()));
     }
     private static void words(String field,String value,String... texts){for(String text:texts)WORDS.add(new Word(field,value,text));}
     private static boolean asciiWord(char c){return c>='a'&&c<='z'||c>='0'&&c<='9'||c=='_';}
@@ -67,7 +74,7 @@ public final class RuleParser {
             char c=input.charAt(i);
             if(c==' '||c=='\t'||c=='\r'||c=='\n'||",，、;；:：。.!！?？()（）".indexOf(c)>=0){i++;continue;}
             int end=i;
-            for(Word word:WORDS){if("女".equals(word.text)&&input.contains("男"))continue;if(input.startsWith(word.text,i)&&boundary(input,i,word)){end=i+word.text.length();break;}}
+            for(Word word:OUTBOUND_WORDS){if("女".equals(word.text)&&input.contains("男"))continue;if(input.startsWith(word.text,i)&&boundary(input,i,word)){end=i+word.text.length();break;}}
             if(end>i){i=end;continue;}
             Matcher age=AGE.matcher(input).region(i,input.length()).useTransparentBounds(true);
             if(age.lookingAt())try{

@@ -41,6 +41,11 @@
 
 ## 上线前
 
+- [ ] **接收P07c启动准入与运行材料**：[发布与回滚手册](AI队列发布与回滚手册.md)拥有两键关闭/重启生效、准确15路身份优先/503/零副作用、六份DDL共7新表逐文件hash及旧申请兼容前置、目标只读核查/逐statement预演与部分成功续作入口。目标host/账号/受控认证、MySQL/InnoDB/短RR/时区/索引、访问留存及已批准当前/回退工件hash/配置版本/真实部署渠道仍须AQC-EXT-04接收；本片不执行目标SQL或生产发布。
+- [ ] **接收P07c整组回退与恢复前提**：先关闭新增API/普通XLSX并复用LLM/SMTP原开关，经运维真实渠道生效，再按原进程关闭语义及已核整组工件回退；CRP阈值与全部共享消费者不能局部回退。保留旧患者/访视、新表、定义/回执/有期payload/审计/申请及attempt/from/to，不倒写历史CRP、不drop/recreate或盲重放DDL、UNKNOWN/SENT不开门重发。恢复仍需原TTL/U/权限/医学与外发政策；[API §7.9](API.md#79-启动配置准入与关闭边界)的默认true不是发布批准。八项接收进度只见[唯一登记](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务)。
+
+下方原业务/旧迁移待办保持原有归属；P07c的SQL清单只选择六份新DDL及旧申请兼容核查，不把已有旧迁移/回填列表变成本Flow自动执行清单。
+
 - [ ] **接收P06b申请companion DDL与状态留存**：[20261008_ai_export_request.sql](../src/main/resources/sql/20261008_ai_export_request.sql)仅新增InnoDB/utf8mb4专表，无患者/旧表FK或后台恢复。与现存export_application同短事务创建，主键owner/requestId与applicationId唯一；仅本片旧行mail_to/mail_sent可更新，旧status/CSV/apply不变。DBA接收目标引擎/索引/权限/摘要与自由reason访问留存，再安装表/启用新入口；回滚先关新applyAnalysis/retryNotification和SMTP，不删除旧申请/companion或把UNKNOWN改FAILED。AQC-EXT-04仍OPEN。
 - [ ] **接收P06b真实SMTP和管理员收件**：ra.export.smtp.enabled默认false，生产仅强制STARTTLS/默认信任与hostname；host/port/from与唯一ra.export.apply-mail-to、安全凭据渠道、有限模板由SK/管理员/运维批准。凭据不入仓库/消息/日志；测试PKCS12及LOOPBACK_PLAIN不用于生产。首次绑定to/from后改地址会RECIPIENT_CHANGED。真实无患者通知的SMTP受理与管理员收件分别确认，不能以loopback或SENT自闭AQC-EXT-06；文件字段/日期发布AQC-REL-02仍OPEN。
 - [ ] **接收P06b不可逆/退出边界**：申请/claim明确提交后当前caller最多一次SMTP，UNKNOWN无普通重发或后台复活。9500/10000ms仅单网络调用预算；socket主动close及真实afterExecute在≤500ms窗口退出，native DNS未退保原容量/BUSY。不保证真实TCP写永久阻塞试验、强杀native DNS或浏览器断连；邮件SENT不证明送达、审批或文件权利。
