@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wenwen.mapper.AiAnalysisRunMapper">
+ <delete id="deleteExpired">DELETE FROM ra_ai_analysis_run WHERE expires_at_ms &lt;= #{now} ORDER BY expires_at_ms,id LIMIT 1000</delete>
+ <insert id="insert">INSERT INTO ra_ai_analysis_run(id,owner_doctor_id,scope_fingerprint,sort_key,payload_version,payload,payload_sha256,created_at_ms,expires_at_ms) VALUES(#{id},#{ownerDoctorId},#{scopeFingerprint},#{sortKey},#{payloadVersion},#{payload},#{payloadSha256},#{createdAtMs},#{expiresAtMs})</insert>
+ <select id="find" resultType="com.wenwen.ai.result.AnalysisRun">SELECT id,owner_doctor_id AS ownerDoctorId,scope_fingerprint AS scopeFingerprint,sort_key AS sortKey,payload_version AS payloadVersion,payload,payload_sha256 AS payloadSha256,created_at_ms AS createdAtMs,expires_at_ms AS expiresAtMs FROM ra_ai_analysis_run WHERE id=#{id}</select>
+</mapper>

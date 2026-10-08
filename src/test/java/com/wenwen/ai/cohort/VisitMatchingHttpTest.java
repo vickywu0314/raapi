@@ -22,7 +22,7 @@ class VisitMatchingHttpTest extends VisitMatchingHttpFixture {
         assertEquals("6m",row.path("selection").path("at").asText()); assertTrue(row.path("selection").path("eligible6m").asBoolean());
         assertEquals(1.25,row.path("evaluation").path("haq").path("value").asDouble());
         assertEquals("LEGACY_STORED",row.path("baselineProvenance").path("source").asText());
-        assertEquals("6m",data.path("meta").path("at").asText()); assertEquals("P02_QC",data.path("meta").path("completion").asText());
+        assertEquals("6m",data.path("meta").path("at").asText()); assertEquals("P03_RESULT",data.path("meta").path("completion").asText());
         assertEquals("dev-visit-match-v04",data.path("meta").path("policyVersions").path("visitMatcher").asText());
         assertEquals(1,data.path("activity").path("baseN").asInt()); assertEquals(0,data.path("activity").path("baseUnknownN").asInt());
         assertEquals(1,data.path("activity").path("current").get(0).path("count").asInt());
@@ -76,9 +76,9 @@ class VisitMatchingHttpTest extends VisitMatchingHttpFixture {
         error("{\"filters\":{\"at\":\"6m\"}}",503,"SERVICE_UNAVAILABLE"); assertTrue(observed.mysqlFailures>0);
         assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
         observed.reset(); dictionary().view=new com.wenwen.ai.treatment.DrugDictionary.Snapshot("synthetic-failure",java.util.Collections.emptyMap()) {
-            @Override public com.wenwen.ai.treatment.DrugDictionary.Drug identify(String name) { released(); throw new IllegalStateException("synthetic calculation failure"); }
+            @Override public com.wenwen.ai.treatment.DrugDictionary.Drug identify(String name) { sourceReleased(); throw new IllegalStateException("synthetic calculation failure"); }
         };
-        error("{\"filters\":{\"at\":\"6m\"}}",503,"SERVICE_UNAVAILABLE"); released();
+        error("{\"filters\":{\"at\":\"6m\"}}",503,"SERVICE_UNAVAILABLE"); sourceReleased();
         dictionary().view=new com.wenwen.ai.treatment.DevelopmentDrugDictionary().snapshot(); observed.reset();
         assertEquals(2.19,item(success("{\"filters\":{\"at\":\"6m\"}}"),1).path("das28At").asDouble()); released();
     }

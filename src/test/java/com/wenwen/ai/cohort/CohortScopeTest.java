@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CohortScopeTest extends CohortHttpFixture {
     @Test void activityFiltersConsumeCanonicalScoresAndKeepStudyTotal() throws Exception {
         String[] filters={"target","mod-high","remission","low","moderate","high"};
-        String[][] expected={{"1","7"},{"3","5"},{"7"},{"1"},{"3"},{"5"}};
+        String[][] expected={{"1","7"},{"5","3"},{"7"},{"1"},{"3"},{"5"}};
         for(int i=0;i<filters.length;i++) {
             JsonNode data = success("{\"filters\":{\"act\":\""+filters[i]+"\"}}");
             assertEquals(Arrays.asList(expected[i]),ids(data));
@@ -19,7 +19,7 @@ class CohortScopeTest extends CohortHttpFixture {
     @Test void idsIntersectScopeBeforeActivityAndEmptyNeverWidens() throws Exception {
         String submitted = "[\"1\",\"3\",\"4\",\"999\",\"1\"]";
         JsonNode data = success("{\"filters\":{\"ids\":"+submitted+"}}");
-        assertEquals(Arrays.asList("1","3"),ids(data)); assertEquals(4,data.path("submittedUniqueIdsN").asInt()); assertEquals(2,data.path("effectiveIdsN").asInt());
+        assertEquals(Arrays.asList("3","1"),ids(data)); assertEquals(4,data.path("submittedUniqueIdsN").asInt()); assertEquals(2,data.path("effectiveIdsN").asInt());
         data = success("{\"filters\":{\"ids\":"+submitted+",\"act\":\"target\"}}");
         assertEquals(Collections.singletonList("1"),ids(data)); assertEquals(2,data.path("effectiveIdsN").asInt()); assertEquals(5,data.path("studyTotal").asInt());
         for(String list : new String[]{"[]","[\"4\",\"999\"]"}) {
@@ -42,8 +42,8 @@ class CohortScopeTest extends CohortHttpFixture {
             visit(1000+id,1,type,"{\"result\":{\"crpScore\":99}}","2026-10-07",null,null); id++;
         }
         visit(800,8,0,"{\"result\":{\"crpScore\":99}}","2026-10-07",null,null);
-        JsonNode data=success("{}"); assertEquals(Arrays.asList("1","3","5","6","7"),ids(data));
-        assertEquals(5,data.path("studyTotal").asInt()); assertEquals(2.30,data.path("patients").path("items").get(0).path("das28At").asDouble());
+        JsonNode data=success("{}"); assertEquals(Arrays.asList("5","3","1","7","6"),ids(data));
+        assertEquals(5,data.path("studyTotal").asInt()); assertEquals(2.30,patientById(data,1).path("das28At").asDouble());
         context.getBean(FakePrincipalProvider.class).doctor=202;
         data=success("{}"); assertEquals(Arrays.asList("2","4"),ids(data)); assertEquals(2,data.path("studyTotal").asInt());
         assertEquals(0,data.path("activity").path("evalN").asInt()); assertEquals(2,data.path("activity").path("unknownN").asInt());

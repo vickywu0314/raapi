@@ -7,6 +7,8 @@ import lombok.Setter;
 @Getter @Setter
 public final class PatientRow {
     private long id;
+    private String name;
+    private String studyNo;
     private Integer gender;
     private String cardNo;
     private String confirmDate;

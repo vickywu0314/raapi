@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface AiCohortSourceMapper {
     List<java.util.Map<String,Object>> missingIssues(java.util.Map<String,Object> scope);
+    List<com.wenwen.ai.source.PatientDisplayRow> displays(@Param("doctorId") long doctorId,@Param("ids") List<Long> ids);
     List<Long> patientIds(@Param("doctorId") long doctorId);
     List<com.wenwen.ai.source.PatientRow> patients(@Param("doctorId") long doctorId);
     List<com.wenwen.ai.source.ComorbidityRow> comorbidities(@Param("doctorId") long doctorId);

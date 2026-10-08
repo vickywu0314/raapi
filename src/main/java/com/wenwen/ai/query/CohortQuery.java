@@ -24,6 +24,11 @@ public final class CohortQuery {
     private final Set<Long> ids;
     private CohortQuery(String act, Set<Long> ids, String sex, String age, String sero, String cm, String tx, String at, String data) { this.data=data; this.at=at==null?"now":at; this.tx=tx; this.cm=cm; this.sero=sero; this.sex=sex; this.age=age; this.act = act; this.ids = ids == null ? null : Collections.unmodifiableSet(ids); }
     public Set<Long> getIds() { return ids; }
+    public Map<String,Object> normalizedFilters() {
+        List<String> normalizedIds=null;
+        if(ids!=null){normalizedIds=new ArrayList<>();for(long id:new TreeSet<>(ids))normalizedIds.add(Long.toString(id));}
+        return com.wenwen.vo.AiCohortVo.object("studyCode","RA","at",at,"act",act,"ids",normalizedIds,"sex",sex,"age",age,"sero",sero,"cm",cm,"tx",tx,"data",data);
+    }
     public String getAct() { return act; }
     public static CohortQuery read(InputStream input, TrustedDoctor doctor) throws IOException {
         JsonNode body;

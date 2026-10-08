@@ -36,6 +36,7 @@ abstract class CohortHttpFixture {
     DriverManagerDataSource raw;
     MutableClock clock;
     ObservedDataSource observed;
+    String syntheticCursorKey="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
     final ObjectMapper json = new ObjectMapper();
     final List<String> ownedTables = new ArrayList<>();
 
@@ -48,7 +49,7 @@ abstract class CohortHttpFixture {
             throw new IllegalStateException("仅允许 loopback/ra_synthetic_test");
     }
     @Configuration @EnableWebMvc
-    @Import({AiCohortConfiguration.class, AiCohortController.class, AiCohortServiceImpl.class, CohortSourceAdapter.class})
+    @Import({AiCohortConfiguration.class, AiCohortController.class, AiCohortServiceImpl.class, CohortSourceAdapter.class, com.wenwen.ai.result.AnalysisResultStore.class,com.wenwen.ai.result.AnalysisPageReader.class})
     static class Infrastructure {
         @Bean public DriverManagerDataSource dataSource() {
             String url = System.getenv("RA_TEST_MYSQL_URL"), user = System.getenv("RA_TEST_MYSQL_USER"), password = System.getenv("RA_TEST_MYSQL_PASSWORD");
@@ -60,12 +61,13 @@ abstract class CohortHttpFixture {
         @Bean public PlatformTransactionManager transactions(DataSource dataSource) { return new DataSourceTransactionManager(dataSource); }
         @Bean public org.apache.ibatis.session.SqlSessionFactory sqlSessionFactory(DataSource dataSource) throws Exception {
             SqlSessionFactoryBean factory = new SqlSessionFactoryBean(); factory.setDataSource(dataSource);
-            factory.setMapperLocations(new org.springframework.core.io.Resource[] {new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/PatientMapper.xml")});
+            factory.setMapperLocations(new org.springframework.core.io.Resource[] {new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/PatientMapper.xml"),new ClassPathResource("mybatis/AiAnalysisRunMapper.xml")});
             return factory.getObject();
         }
         @Bean public AiCohortSourceMapper sourceMapper(org.apache.ibatis.session.SqlSessionFactory factory) {
             return new SqlSessionTemplate(factory).getMapper(AiCohortSourceMapper.class);
         }
+        @Bean public com.wenwen.mapper.AiAnalysisRunMapper runMapper(org.apache.ibatis.session.SqlSessionFactory factory) { return new SqlSessionTemplate(factory).getMapper(com.wenwen.mapper.AiAnalysisRunMapper.class); }
         @Bean @Primary public MutableClock testClock() { return new MutableClock(); }
     }
     @Configuration static class TrustedIdentity {
@@ -85,6 +87,7 @@ abstract class CohortHttpFixture {
     void buildContext(boolean trusted) {
         context = new AnnotationConfigWebApplicationContext();
         context.setServletContext(new MockServletContext());
+        if(syntheticCursorKey!=null)context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("synthetic-analysis",Collections.singletonMap("ra.ai.analysis.cursor-key-base64",syntheticCursorKey)));
         context.register(Infrastructure.class);
         if (trusted) context.register(TrustedIdentity.class);
         beforeRefresh();
@@ -112,6 +115,10 @@ abstract class CohortHttpFixture {
             }
             try (ResultSet engines = s.executeQuery("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('patient_basic_info','patient_relation_doctor','patient_follow_up_history','patient_comorbidity')")) {
                 int count=0; while(engines.next()) { assertEquals("InnoDB",engines.getString(1)); count++; } assertEquals(4,count);
+            }
+            try (InputStream in = getClass().getResourceAsStream("/ai-cohort/p03c/schema.sql")) {
+                String ddl = new Scanner(in, StandardCharsets.UTF_8.name()).useDelimiter("\\A").next();
+                s.execute(ddl.trim()); ownedTables.add("ra_ai_analysis_run");
             }
             for (int i = 1; i <= 7; i++) s.execute("INSERT INTO patient_basic_info (id,name) VALUES (" + i + ",'synthetic-same-name')");
             s.execute("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,1,0,0),(101,1,1,0),(202,1,5,0),(101,2,6,0),(202,2,2,0),(101,3,3,1),(202,4,4,0),(101,5,7,0),(101,6,2,0),(101,7,4,0),(101,8,0,0)");
@@ -153,6 +160,10 @@ abstract class CohortHttpFixture {
         assertNotNull(result.getResponse().getHeader("X-Trace-Id"));
         assertEquals(result.getResponse().getHeader("X-Trace-Id"),envelope.path("data").path("meta").path("traceId").asText());
         return envelope.path("data");
+    }
+    JsonNode patientById(JsonNode data,long id) {
+        for(JsonNode item:data.path("patients").path("items"))if(Long.toString(id).equals(item.path("patientId").asText()))return item;
+        fail("未找到患者 "+id);return null;
     }
     List<String> ids(JsonNode data) {
         List<String> ids = new ArrayList<>();

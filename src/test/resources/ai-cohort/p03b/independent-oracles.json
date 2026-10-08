@@ -1,0 +1,906 @@
+{
+  "metadata": {
+    "purpose": "P03 独立统计对拍；仅为开发默认的技术基准，不是统计/医学批准或产品状态决策",
+    "oracleSource": "本机 Python + SciPy/NumPy；未调用 Java 生产实现",
+    "python": "3.12.14",
+    "scipy": "1.17.0",
+    "numpy": "2.3.5",
+    "mpmath": "1.3.0",
+    "pandas": "2.2.3",
+    "scope": "P03b实际byTx/FM消费的确定性输入；不包含P04 Type7；FM TRUE/FALSE来自明确合成derived事实",
+    "numericTolerance": {
+      "absolute": 1e-12,
+      "relativeNonzero": 1e-10,
+      "zero": "仅绝对检查"
+    },
+    "commonsVersion": "1.3",
+    "policyVersion": "dev-stats-v04"
+  },
+  "cases": [
+    {
+      "id": "fisher_2x2_expected_below_5",
+      "policyBranch": "每组 n>=5；2x2 任一 expected<5 时双侧 Fisher",
+      "input": {
+        "table": [
+          [
+            1,
+            7
+          ],
+          [
+            6,
+            2
+          ]
+        ],
+        "groupN": [
+          8,
+          8
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.fisher_exact",
+        "alternative": "two-sided"
+      },
+      "expected": {
+        "expectedFrequencies": [
+          [
+            3.5,
+            4.5
+          ],
+          [
+            3.5,
+            4.5
+          ]
+        ],
+        "pValue": 0.040559440559440565,
+        "oddsRatio": 0.047619047619047616,
+        "significantRawAtAlpha005": true
+      },
+      "rationalCrossCheck": {
+        "fixedMargins": {
+          "rowTotals": [
+            8,
+            8
+          ],
+          "columnTotals": [
+            7,
+            9
+          ],
+          "sampleSpaceDenominator": "C(16,8)=12870"
+        },
+        "topLeftKProbabilityNumerators": {
+          "0": 9,
+          "1": 252,
+          "2": 1764,
+          "3": 4410,
+          "4": 4410,
+          "5": 1764,
+          "6": 252,
+          "7": 9
+        },
+        "observedProbability": "252/12870 = 14/715",
+        "probabilitiesAtMostObserved": "(9+252+252+9)/12870 = 522/12870 = 29/715 = 0.04055944055944056",
+        "includedTopLeftK": [
+          0,
+          1,
+          6,
+          7
+        ]
+      }
+    },
+    {
+      "id": "pearson_2x2_all_expected_at_least_5",
+      "policyBranch": "2x2 每个 expected>=5 时 Pearson，不作 Yates 校正",
+      "input": {
+        "table": [
+          [
+            14,
+            6
+          ],
+          [
+            6,
+            14
+          ]
+        ],
+        "groupN": [
+          20,
+          20
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.chi2_contingency",
+        "correction": false
+      },
+      "expected": {
+        "expectedFrequencies": [
+          [
+            10.0,
+            10.0
+          ],
+          [
+            10.0,
+            10.0
+          ]
+        ],
+        "chiSquare": 6.4,
+        "degreesOfFreedom": 1,
+        "pValue": 0.01141203638600166,
+        "significantRawAtAlpha005": true
+      }
+    },
+    {
+      "id": "rxc_prune_zero_margins_sparse_warning",
+      "policyBranch": "RxC 去全零边际；去除后保留 3x2 Pearson overall p；超过20% expected<5加 warning",
+      "input": {
+        "originalTable": [
+          [
+            10,
+            0,
+            0
+          ],
+          [
+            9,
+            1,
+            0
+          ],
+          [
+            8,
+            2,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "rowLabels": [
+          "activity-A",
+          "activity-B",
+          "activity-C",
+          "zero-row"
+        ],
+        "columnLabels": [
+          "outcome-0",
+          "outcome-1",
+          "zero-column-2"
+        ]
+      },
+      "pruning": {
+        "removedRows": [
+          3
+        ],
+        "removedColumns": [
+          2
+        ],
+        "prunedTable": [
+          [
+            10,
+            0
+          ],
+          [
+            9,
+            1
+          ],
+          [
+            8,
+            2
+          ]
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.chi2_contingency",
+        "correction": false
+      },
+      "expected": {
+        "expectedFrequencies": [
+          [
+            9.0,
+            1.0
+          ],
+          [
+            9.0,
+            1.0
+          ],
+          [
+            9.0,
+            1.0
+          ]
+        ],
+        "chiSquare": 2.2222222222222223,
+        "degreesOfFreedom": 2,
+        "pValue": 0.3291929878079054,
+        "expectedBelow5Cells": 3,
+        "expectedCellCount": 6,
+        "fractionBelow5": 0.5,
+        "smallSampleWarning": true
+      }
+    },
+    {
+      "id": "mw_exact_complete_separation",
+      "policyBranch": "无 ties 且 min(nA,nB)<=8、max<=50，显式 exact",
+      "input": {
+        "A": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "B": [
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "method": "exact",
+        "use_continuity": true
+      },
+      "expected": {
+        "nA": 5,
+        "nB": 5,
+        "U_A": 0.0,
+        "pValue": 0.007936507936507936,
+        "swappedPValue": 0.007936507936507936,
+        "significantRawAtAlpha005": true
+      },
+      "manualCrossCheck": "U=0 的极端表及其反向对称极端表，共 2 个；所有分配 C(10,5)=252；双侧 p=2/252=1/126"
+    },
+    {
+      "id": "mw_ties_asymptotic_continuity_small_sample",
+      "policyBranch": "ties 时显式 asymptotic + continuity；任组<10时 SMALL_SAMPLE_TIES warning",
+      "input": {
+        "A": [
+          1,
+          2,
+          2,
+          4,
+          5
+        ],
+        "B": [
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "method": "asymptotic",
+        "use_continuity": true
+      },
+      "expected": {
+        "nA": 5,
+        "nB": 5,
+        "U_A": 7.0,
+        "pValue": 0.2873330696714993,
+        "swappedUA": 18.0,
+        "swappedPValue": 0.2873330696714993,
+        "warning": "SMALL_SAMPLE_TIES"
+      }
+    },
+    {
+      "id": "mw_min_n_9_boundary",
+      "policyBranch": "无 ties，min=9 超过 exact 小组界，显式 asymptotic + continuity",
+      "input": {
+        "A": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "B": [
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "method": "asymptotic",
+        "use_continuity": true
+      },
+      "expected": {
+        "nA": 9,
+        "nB": 9,
+        "U_A": 0.0,
+        "pValue": 0.00041229480206169127
+      }
+    },
+    {
+      "id": "mw_max_n_51_boundary",
+      "policyBranch": "无 ties，min=5 但 max=51 超过 exact 大组界，显式 asymptotic + continuity",
+      "input": {
+        "A": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "B": [
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "method": "asymptotic",
+        "use_continuity": true
+      },
+      "expected": {
+        "nA": 5,
+        "nB": 51,
+        "U_A": 0.0,
+        "pValue": 0.00026315152533834416
+      }
+    },
+    {
+      "id": "mw_all_values_identical_degenerate",
+      "policyBranch": "冻结开发默认：有效n>=5且pooled只有一个compareTo distinct值，先返回不可检验",
+      "input": {
+        "A": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "B": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "method": "asymptotic",
+        "use_continuity": true
+      },
+      "expected": {
+        "scipyUA": 12.5,
+        "scipyPValue": 1.0,
+        "productStatus": "DEGENERATE",
+        "productReason": "ZERO_RANK_VARIANCE",
+        "productPValue": null
+      },
+      "adapterCaution": "Java8 Commons1.3隔离实跑为NaN，SciPy为1；产品选择先守卫不可检验，不把数值差异伪装已医学批准"
+    },
+    {
+      "id": "display_formatting_protocol_only",
+      "policyBranch": "显示 p 仅作协议 oracle；significant 按 raw p<.05",
+      "input": {
+        "alpha": 0.05,
+        "rawPValues": [
+          0.0496,
+          0.0009,
+          0.0521
+        ]
+      },
+      "expected": [
+        {
+          "rawP": 0.0496,
+          "displayP": "0.050",
+          "significant": true
+        },
+        {
+          "rawP": 0.0009,
+          "displayP": "<0.001",
+          "significant": true
+        },
+        {
+          "rawP": 0.0521,
+          "displayP": "0.052",
+          "significant": false
+        }
+      ],
+      "notice": "纯格式化/判定协议样例，不声称这些值来自任一检验样本"
+    },
+    {
+      "id": "mw_inclusive_8_50",
+      "input": {
+        "A": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "B": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "use_continuity": true,
+        "method": "exact"
+      },
+      "expected": {
+        "pValue": 1.0434071398799036e-09,
+        "U_A": 0,
+        "method": "MANN_WHITNEY_EXACT"
+      },
+      "manualCrossCheck": "双侧极端分配2/C(58,8)"
+    },
+    {
+      "id": "mw_large_ties_60_60",
+      "input": {
+        "A": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "B": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "use_continuity": true,
+        "method": "asymptotic"
+      },
+      "expected": {
+        "pValue": 4.2751119533928335e-08,
+        "swappedPValue": 4.2751119533928335e-08,
+        "warnings": []
+      }
+    },
+    {
+      "id": "mw_precise_decimal_order",
+      "input": {
+        "A": [
+          ".300000000000000001",
+          ".300000000000000003",
+          ".300000000000000005",
+          ".300000000000000007",
+          ".300000000000000009"
+        ],
+        "B": [
+          ".300000000000000011",
+          ".300000000000000013",
+          ".300000000000000015",
+          ".300000000000000017",
+          ".300000000000000019"
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "use_continuity": true,
+        "method": "exact"
+      },
+      "expected": {
+        "pValue": 0.007936507936507936,
+        "method": "MANN_WHITNEY_EXACT"
+      },
+      "manualCrossCheck": "BigDecimal严格分离秩等价A1..5/B6..10；不能先转double"
+    },
+    {
+      "id": "mw_compareTo_scale_ties",
+      "input": {
+        "A": [
+          ".2",
+          ".30",
+          ".300",
+          ".5",
+          ".6"
+        ],
+        "B": [
+          ".300",
+          ".4",
+          ".50",
+          ".6",
+          ".7"
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.mannwhitneyu",
+        "alternative": "two-sided",
+        "use_continuity": true,
+        "method": "asymptotic"
+      },
+      "expected": {
+        "pValue": 0.2873330696714993,
+        "warnings": [
+          "SMALL_SAMPLE_TIES"
+        ]
+      },
+      "manualCrossCheck": "compareTo下仿射保序等价原ties样例；.30和.300数值相等"
+    },
+    {
+      "id": "expected_exactly_five",
+      "input": {
+        "tables": [
+          [
+            [
+              5,
+              5
+            ],
+            [
+              5,
+              5
+            ]
+          ],
+          [
+            [
+              5,
+              72
+            ],
+            [
+              5,
+              72
+            ]
+          ]
+        ]
+      },
+      "parameters": {
+        "scipy": "scipy.stats.chi2_contingency",
+        "correction": false
+      },
+      "expected": {
+        "pValue": 1,
+        "method": "CHI_SQUARE",
+        "expectedBelow5Cells": 0
+      },
+      "manualCrossCheck": "第二表行77、列10/144、总154；77*10/154=5，另列72；比例相同chiSquare=0"
+    },
+    {
+      "id": "non_testable_guards",
+      "input": {
+        "zeroTables": [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          [
+            [
+              8,
+              0
+            ],
+            [
+              8,
+              0
+            ]
+          ],
+          [
+            [
+              0,
+              0
+            ],
+            [
+              3,
+              4
+            ]
+          ]
+        ],
+        "smallTable": [
+          [
+            1,
+            3
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "fmSmallN": [
+          3,
+          3
+        ],
+        "fmMissingFieldN": [
+          4,
+          5
+        ],
+        "painN": [
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "zeroReason": "ZERO_MARGIN",
+        "smallReason": "VALID_N_LT_5",
+        "pValue": null,
+        "significant": null,
+        "displayP": "—",
+        "warnings": []
+      }
+    },
+    {
+      "id": "bytx_selection",
+      "input": {
+        "table": [
+          [
+            1,
+            7
+          ],
+          [
+            6,
+            2
+          ],
+          [
+            4,
+            0
+          ]
+        ],
+        "missingSecondGroupScores": 4,
+        "unknownN": 1,
+        "noneN": 1
+      },
+      "expected": {
+        "included": [
+          "csDMARD",
+          "TNFi"
+        ],
+        "excludedSmallTx": "JAKi",
+        "pValue": 0.040559440559440565,
+        "afterMissingStatus": "INSUFFICIENT_SAMPLE",
+        "afterMissingReason": "ELIGIBLE_GROUPS_LT_2"
+      },
+      "note": "小组描述不删；资格按evalN；UNKNOWN/NONE不入检验；U研究基准独立"
+    },
+    {
+      "id": "display_alpha_equality",
+      "input": {
+        "rawP": 0.05
+      },
+      "expected": {
+        "displayP": "0.050",
+        "significant": false
+      }
+    }
+  ],
+  "officialSources": {
+    "release": "https://commons.apache.org/proper/commons-statistics/release-history.html",
+    "coordinates": "https://commons.apache.org/proper/commons-statistics/commons-statistics-inference/dependency-info.html",
+    "Fisher": "https://commons.apache.org/proper/commons-statistics/commons-statistics-docs/apidocs/org/apache/commons/statistics/inference/FisherExactTest.html",
+    "Pearson": "https://commons.apache.org/proper/commons-statistics/commons-statistics-docs/apidocs/org/apache/commons/statistics/inference/ChiSquareTest.html",
+    "MW": "https://commons.apache.org/proper/commons-statistics/commons-statistics-docs/apidocs/org/apache/commons/statistics/inference/MannWhitneyUTest.html"
+  }
+}
