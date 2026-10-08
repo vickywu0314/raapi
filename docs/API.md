@@ -605,7 +605,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ### 7.1 当前医生 RA 队列
 
-页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、五卡四图/FM描述、人数和首10的姓名/研究编号及临床/评估/治疗来源。`completion=P03_RESULT` 表示描述/推断与单次数值保留、签名分页已接入；授权相似条件入口见§7.3，仍须由客户端显式调用本接口完成分析。私有定义保存/元数据生命周期与动态重开见§7.4，同源完整比较与有期重读见§7.5；AI与导出由后续切片交付。
+页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、五卡四图/FM描述、人数和首10的姓名/研究编号及临床/评估/治疗来源。`completion=P03_RESULT` 表示描述/推断与单次数值保留、签名分页已接入；授权相似条件入口见§7.3，仍须由客户端显式调用本接口完成分析。私有定义保存/元数据生命周期与动态重开见§7.4，同源完整比较与有期重读见§7.5；规则解析及显式应用见§7.6；受控AI网关与导出由后续切片交付。
 
 | 项 | 值 |
 |---|---|
@@ -814,7 +814,7 @@ Controller先要求可信Principal，再固定入口Clock.instant，随后读bod
 
 canApply=true时客户端将filters原样包装成`{"filters":...}`调用7.1标准cohort；可显式追加/调整其普通条件，本入口不接收隐式合并。索引本人默认不排除，按自然条件匹配。候选只是当次授权事实产生的条件，不是权限凭证或analysis结果；两次HTTP各自固定asOf并重新读当前U/事实，后一次cohort不重新推断相似条件，也不保证index继续授权。旧候选不能让已撤权患者进入U。空C仍保留完整零桶/NO_DATA/null和真实analysisId，后页继续7.2当前范围复查、到期和保留数值规则。
 
-本片提供SIMILAR与现有完整cohort/分页组合，私有定义另见§7.4，比较另见§7.5；q/AI入口仍属后续能力；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
+本片提供SIMILAR与现有完整cohort/分页组合，私有定义另见§7.4，比较另见§7.5；规则问题解析及显式应用见§7.6，受控AI网关仍属后续能力；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
 
 ### 7.4 私有不可变条件定义与动态重开
 
@@ -886,6 +886,65 @@ sourceDateCoverage恰含a/b，各有除n外11指标；每项 `{validN,datedN,und
 read除meta.traceId为本次并追加comparisonTraceId为创建trace外，a/b/rows/交集/原时间政策和保留值一致。两接口均DataResult及新的X-Trace-Id；SQL/库/程序/损坏503/SERVICE_UNAVAILABLE、data=null，底层信息不外泄。定义失效404/RESOURCE_NOT_FOUND，范围变化409；不回旧值或部分结果。所有短事务/连接在成功或失败公开响应前退出；不承诺定义/源/当前U/网络跨多个owner的强原子性。
 
 本片仅Java8、真实HTTP/MyBatis与隔离合成MySQL开发验证；八项真实身份/源/字典/目标DB/医学统计/发布义务未关闭，没有CI、生产DDL/部署、AI/SMTP或文件发送。[P04开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p04-gate)已接收私有定义与比较的组合及证明边界；普通xlsx仍由P06验收。
+
+### 7.6 规则与受控AI候选、显式应用及安全追加审计
+
+`POST /api/ra/ai/parse` 根恰为 `{"question":"女性35-45岁"}`。question必须为字符串，空/纯空白合法，最多200 Unicode码点。原body最多4096 UTF8字节；applyParse最多128KiB，均最多读取上限+1 byte。两路沿可信Principal-first、DataResult及每请求新X-Trace-Id；匿名401且不读取body或借连接。未知根键、重复键、尾随JSON、非对象/错误类型、非法UTF8及所有键/字符串内不成对surrogate返回400/INVALID_REQUEST；字节超限413/LIMIT_EXCEEDED。请求header、doctorId或principal.name不能赋权。
+
+parse只产生候选，不接currentFilters、不读患者、不运行分析；缺省不发模型请求，只有下述服务器门全部通过时才尝试一次受控HTTP。成功data恰含questionRef、candidateFilters、parseStatus、applyMode、engine、matched、unrecognized、rejectedFields、warnings、notice、fallbackReason、meta。questionRef是新canonical小写UUID，仅供事件关联；不是原文检索键、权限票据或幂等保证。candidateFilters仅8个普通字段sex/age/sero/tx/at/act/cm/data的稀疏合法条件或null，没有ids/studyCode/doctorId/SQL/URL。默认engine=RULE、fallbackReason=AI_NOT_ENABLED；正常AI为engine=AI、fallbackReason=null，故障完整取本地规则决定，不混入失败模型半成品。
+
+规则表按完整最长词跨度识别，独立条件只用三个有限子集关系留窄值：high⊂mod-high、remission⊂target、四个明确靶向类别⊂bio。例：“仍有高活动”→high、“中高活动”→mod-high、“缓解且已达标”→remission、“TNF生物制剂”→TNFi；不会先到先得或把未知“仍有明显活动”吞成活动条件。未消费实质文本使已有候选PARTIAL、无候选UNRECOGNIZED；空白EMPTY。OR/非白名单否定、真冲突、越域/反向年龄为UNSUPPORTED且无候选；“未达标”“不完整”是正向完整词例外。中性语法仅请/帮我/筛选/筛出/查找/看看/当前/治疗/年龄/的/患者/人群/且/并且/和及标点。普通筛选值仍由§7.1同一CohortQuery校验。
+
+matched每项恰{field,value}，规范字符串、每field最多一项，按tx/at/act/sex/age/cm/sero/data顺序，没有原文或位置。unrecognized至多一项{reason:UNMAPPED_TEXT,count:正整数}，count是剩余Unicode码点数，不回显未知文本。RULE的rejectedFields固定[]；正常AI只输出服务器过滤得到的{field,reason}，field限8普通键、ids/studyCode/doctorId/sql/url/OTHER，未知真实名统一OTHER；reason限FORBIDDEN_FIELD/UNKNOWN_FIELD/INVALID_TYPE/INVALID_VALUE/OUT_OF_RANGE/CONFLICT，每原字段至多一项、总数≤16并去重。warnings顺序为非空fallbackReason同名码、正常AI实际拒字段的MODEL_FIELDS_REJECTED、实际PARTIAL的PARTIAL_REQUIRES_CONFIRMATION，再按UNSUPPORTED_OR、UNSUPPORTED_NEGATION、CONFLICTING_CONDITIONS、AGE_OUT_OF_RANGE列真实规则原因并去重；无原文/异常消息。
+
+notice是≤200码点纯文本。默认disabled以“AI未启用，已使用规则解析。”开头，其它AI故障以“AI解析未完成，已使用规则解析。”开头，安全阻断用“该问题未发送至AI，已使用规则解析。”；随后只接真实本地状态的固定规则说明。正常AI的合格notice来自同次模型HTTP，完整校验后逐字展示；不trim、脱敏拼接或再发解释请求。OK说明尚未应用，PARTIAL要求明确确认，未知/不支持保持旧条件并给有限格式示例。没有患者人数、诊疗结论、身份线索、原文或站外链接。meta恰为traceId（同响应头）、ruleVersion=dev-parse-rules-v01、schemaVersion=dev-parse-schema-v01、modelVersion/promptVersion默认null、durationMs非负整数。正常AI及实际已接收HTTP owner的TIMEOUT/HTTP_ERROR/IO_ERROR/INVALID_RESPONSE尝试使用已校验服务器model和dev-parse-ai-prompt-v01，外层自报model/usage不作真值；版本不证明对端收到。未接收owner时版本均null，包括编码/提交前耗尽的TIMEOUT；apply仍null。durationMs从身份成功后/读body前至决定及安全摘要完成、审计append前，以单调时钟向下取整；不包含INSERT/commit或HTTP写回，响应与审计冻结同值。Clock只提供事件createdAtMs。
+
+`POST /api/ra/ai/applyParse` 根必需currentFilters对象、candidateFilters对象/null、parseStatus字符串、questionRef canonical UUID；仅可追加boolean confirmPartial（缺省false）。currentFilters必须显式对象，不把丢失/null当全体。current与候选通过现存CohortQuery.read校验；候选严格拒绝ids/studyCode/doctorId/SQL/未知键及非法值（400/INVALID_FILTER），即使PARTIAL未确认也先校验。OK/PARTIAL至少有一个非空有效普通条件；EMPTY/UNRECOGNIZED/UNSUPPORTED必须没有候选条件，状态/形状矛盾400/INVALID_REQUEST。
+
+| parseStatus | applyMode | 显式applyParse结果 |
+|---|---|---|
+| OK | REPLACE_EXCEPT_IDS | applied=true |
+| PARTIAL | REQUIRE_CONFIRMATION | 只有confirmPartial=true才applied=true，否则当前规范filters原样 |
+| EMPTY / UNRECOGNIZED / UNSUPPORTED | KEEP_CURRENT | 即使confirmPartial=true仍applied=false、保当前规范filters |
+
+apply成功data恰含questionRef、parseStatus、applyMode、applied、filters、meta。应用时用候选替换普通旧条件，不merge；未出现条件回默认（at=now、其它null），studyCode=RA，ids从可信校验后的currentFilters保留，严格区分null/[]/非空排序去重集合。未确认PARTIAL不会将候选F覆盖旧M或清除旧tx。questionRef不验证候选历史/来源，不读取原文，不重新解析；返回无人数、patient、analysisId或统计。调用方将完整filters原样包装为 `{"filters":...}` 独立调用§7.1，仍按本医生实时U/完整分析链消费。SIMILAR入口仍仅接受原专用协议，不能传question/q/filters/ids。
+
+两路每个有效操作（含EMPTY/未识别/不支持及applied=false）成功响应前持久追加一个专用事件。新[审计DDL](../src/main/resources/sql/20261008_ai_parse_audit.sql)仅建ra_ai_parse_audit，无旧患者外键或旧表写入。事件只有eventId/questionRef/trace、可信actor/action、白名单candidate/effective普通条件摘要、engine/状态/应用标志/故障原因、冻结耗时/版本及Clock时间；永不存原文、原问句hash、ids/其hash、病例、notice或模型原文。仅INSERT，没有查询/删除/重放管理API、缓存或后台任务。
+
+ParseAuditStore使用REQUIRES_NEW独立短事务，实际INSERT/commit完成并退出connection/session/statement/result后才公开成功。认证/格式拒绝无事件。SQL或真实INSERT后/precommit失败503/SERVICE_UNAVAILABLE、data=null，不回成功候选或filters，本次事件回滚、旧事件/源表不变。commit成功但HTTP响应写出丢失时完整事件保留；重试可以另追加事件，无跨DB/HTTP原子或幂等承诺。两路本地可用不依赖分析签名key或模型配置。
+
+本片仅Java8/真实DispatcherServlet/MyBatis/loopback合成MySQL及下述合成HTTP验证，未调用生产/真实模型或启用真实AI外发。AQC-EXT-04生产DDL/留存/访问接收、AQC-EXT-05真实服务及外发/原文政策、真实身份/医学统计与其它发布义务仍开放；受控网关不关闭这些接收条件。
+
+
+#### 7.6.1 一次AI尝试的服务器配置与有限安全语言
+
+配置仅由服务器读取，parse输入不能指定endpoint/model/key。ra.ai.gateway.enabled与outbound-approved均默认false，只接受规范true/false；非法值降级AI_CONFIG_UNAVAILABLE，不使Spring本地解析服务启动失败。决定顺序是原身份/输入与本地规则B、已观察真实caller中断、enabled、批准、完整配置、EMPTY/UNSUPPORTED、完整安全语言、容量与唯一deadline。
+
+生产endpoint固定https://api.deepseek.com/chat/completions；无其它host/path、userinfo/query/fragment。model须非空ASCII [A-Za-z0-9._-]{1,64}；api-key须非空可打印ASCII、无空白/CR/LF且≤512，只进入Authorization，可由RA_AI_API_KEY安全注入。密钥不进入日志、异常、响应或审计，也不保存至仓库。仅受控开发可设置synthetic-loopback=true，此时必须是字面http://127.0.0.1:显式端口/chat/completions，且model=p05b-synthetic-model、api-key=p05b-loopback-key；与真实provider配置互斥，localhost及其它IP/DNS不获准。
+
+安全门完整消费原始连续词跨度，只按Locale.ROOT折大小写，不先删除/拼接空白或做NFKC/URL/HTML解码。共享规则的完整词、ASCII词界、合法0～120年龄及中性词，再额外接完整“吸烟”。允许空白仅ASCII空格/TAB/CR/LF，独立标点仅,，、;；:：。.!！?？()（）；斜杠/连字号/波浪号仅在既有b/tsDMARD、IL-6或完整年龄词内消费。任何未知残余整体不出站，不先删片段后外发；未获准不代表已判断它一定敏感。女性45至65岁、TNF治疗6个月、仍有高活动、女性且吸烟、吸烟人群可尝试；女性张三/宿舍/病例A、电话号码/URL/命令、女性仍有明显活动、“女 性”等跨空白拼词、U+3000/零宽或其它Unicode空白均不获准完整原句外发。本地规则仍可返回其原合法候选。
+
+至多一个POST /chat/completions；UTF8固定JSON≤16384，messages只有固定版本系统指令与完整获准question，没有患者、医生、ids、currentFilters、questionRef、历史对话或浏览器headers。响应候选与notice来自同一次请求。私有OkHttp实例禁retry、redirect、认证follow-up、proxy、cookie/cache/日志拦截器，HTTP/1.1与one-shot固定length body防重放，503+Retry-After:0也只有一次；不改TLS默认校验。错误正文不读取/记录，先cancel再由唯一owner关闭。
+
+仅200与application/json（无charset或UTF8）接收；identity或库透明gzip解压后实际body≤16384，最多读取上限+1，缺length/chunked/gzip也累计，压缩Content-Length不能绕过。两层严格UTF8/禁BOM/成对surrogate/单根/重复与尾随拒绝，streaming先限外层depth8/tokens512/单数值16字符；内content≤4096、depth4/tokens128。只接受固定官方envelope/一条stop assistant choice及恰5键inner，tool/function/reasoning文本不接受。
+
+模型普通字段先白名单、再由真实ParseQuery.normalize在caller重验。有效稀疏候选C必须恰等于本地B全部可表达条件，不漏窄条件、不新增默认at；matched/unrecognized由服务器重建，模型声明只用于一致性检查。过滤字段的R非空或原问题未映射时，有候选的实际状态为PARTIAL；status/matched/unrecognized任一不一致整体AI_INVALID_RESPONSE。正常“女性”携额外ids只能正常过滤为AI/PARTIAL并报告有限拒绝码，模型仍称OK则整体RULE降级。
+
+正常“女性且吸烟”的同次模型notice可逐字为“仅生成部分候选条件，尚未应用；需明确确认是否只应用这些候选。“吸烟”不在当前支持的筛选字段中。可用问法示例：女性45至65岁；这只是格式示例，不保留原问题的全部要求。”；“吸烟人群”可逐字为“未生成可用候选条件，当前条件保持不变。“吸烟”不在当前支持的筛选字段中。可用问法示例：TNF治疗6个月；这只是格式示例，不保留原问题的全部要求。”，分别REQUIRE_CONFIRMATION/KEEP_CURRENT。原因句必须符合本次B/R；即使句子在有限集合中，配错状态/事实也拒绝。任何追加姓名、URL、人数、诊疗、已应用、换行/零宽或前后缀使整个AI失败。
+
+fallbackReason有限为AI_NOT_ENABLED、AI_NOT_APPROVED、AI_CONFIG_UNAVAILABLE、AI_NOT_APPLICABLE、AI_SAFETY_BLOCKED、AI_BUSY、AI_TIMEOUT、AI_HTTP_ERROR、AI_IO_ERROR、AI_INVALID_RESPONSE。正常AI仍null。
+
+#### 7.6.2 单一预算、中断、owner与审计边界
+
+网关获准尝试后、编码前仅建立一次单调t0；网络/解码截止N=t0+4500ms，caller域校验与取消收尾使用同一D=t0+5s。connect/read/write上限1000/4500/1000ms并受N截断，不为每阶段重新分配5秒，也不是整个parse含入口、审计、响应写回的SLA。仅最多2个具名daemon网络worker、SynchronousQueue无出站等待队列；满额立即RULE/AI_BUSY。容量由真正仍执行的runnable持有，Future超时/取消标志不能释放它。
+
+网络worker只产出有界不可变结构或有限故障码，唯一caller负责域校验、公开选择与独立审计，无callback/DB权。正常完成先关闭body且实际runnable返回，再在D内选一次NORMAL；超时/真实中断/容器关闭幂等取消同一Call并用D剩余时间等同一未cancel的Future及owner退出。迟到完成没有发布/apply/追加事件权，正常已选择后的迟信号不改原因。实际Spring destroy关闭准入、取消已有Call、shutdown/evict私有pool并有限等待；准入已关闭是BUSY/null版本，已接收owner因关闭而退休为IO_ERROR/固定版本。
+
+真实DispatcherServlet/service caller进入网关前已中断，或等待/正常选择前观察到Thread.interrupt，均503/SERVICE_UNAVAILABLE、data=null，不再成功规则审计；取消socket后有界收尾可暂清flag，finally恢复interrupt=true，不延长D。没有浏览器断连感知承诺。系统native DNS不能强杀：最多2个daemon owner可能仍占容量，到D caller可记录自己的RULE/TIMEOUT决定，但不能把该事件当作网络退出证明；DNS未退时关闭后的executor仍未terminated，如实保有状态，不伪清容量/重发/新增DNS平台。
+
+HTTP与数据库无共同事务。正常HTTP owner退出后才进入原短审计，原文/模型notice/key不进事件；超时native残留的规则事件也不授予旧owner进展权。模型外发已经交给OS的字节不能撤回，随后真实INSERT后/precommit故障必须503/null且rollback、旧事件不变/DB资源退出，绝不重发模型。commit后HTTP写回故障保留完整事件，仍无跨网络/DB原子或幂等承诺。
+
+[P05开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p05-gate)已接收规则解析、受控单次AI协议与原cohort/短审计的合成组合及证明边界；真实模型、外发政策和生产启用仍由AQC-EXT-05在P07接收，普通xlsx及申请通知由P06交付。
 
 ## 新增接口时的维护约定
 

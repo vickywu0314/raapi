@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wenwen.mapper.AiParseAuditMapper">
+  <insert id="insert">INSERT INTO ra_ai_parse_audit (event_id,question_ref,trace_id,actor_doctor_id,action,condition_summary,engine,parse_status,applied,fallback_reason,duration_ms,schema_version,rule_version,model_version,prompt_version,created_at_ms) VALUES (#{eventId},#{questionRef},#{traceId},#{actorDoctorId},#{action},#{conditionSummary},#{engine},#{parseStatus},#{applied},#{fallbackReason},#{durationMs},#{schemaVersion},#{ruleVersion},#{modelVersion},#{promptVersion},#{createdAtMs})</insert>
+</mapper>
