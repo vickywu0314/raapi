@@ -6,11 +6,16 @@
             WHERE r.patient_id = p.id AND r.doctor_id = #{doctorId}
             AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
     </sql>
+    <select id="displays" resultType="com.wenwen.ai.source.PatientDisplayRow">
+        SELECT p.id,p.name,p.study_no AS studyNo FROM patient_basic_info p
+        WHERE <include refid="ownedRaPatient"/> AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach> ORDER BY p.id
+    </select>
     <select id="patientIds" resultType="java.lang.Long">
         SELECT p.id FROM patient_basic_info p WHERE <include refid="ownedRaPatient"/> ORDER BY p.id
     </select>
     <select id="patients" resultType="com.wenwen.ai.source.PatientRow">
-        SELECT p.id, p.gender, p.card_no AS cardNo,
+        SELECT p.id, p.gender, p.card_no AS cardNo, p.name, p.study_no AS studyNo,
             DATE_FORMAT(COALESCE(p.confirm_date,p.confirmDate), '%Y-%m-%d') AS confirmDate
         FROM patient_basic_info p WHERE <include refid="ownedRaPatient"/> ORDER BY p.id
     </select>

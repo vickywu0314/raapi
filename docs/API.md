@@ -601,11 +601,11 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
 
-## 七、AI 队列临床、治疗与访视评估（P02_QC）
+## 七、AI 队列完整分析与有期结果分页（P03_RESULT）
 
 ### 7.1 当前医生 RA 队列
 
-页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、人数、四档活动分布和首10的临床/评估/治疗来源。`completion=P02_QC` 不代表最终完整分析、统计、分页、保存、比较、AI 或导出已经完成。
+页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、五卡四图/FM描述、人数和首10的姓名/研究编号及临床/评估/治疗来源。`completion=P03_RESULT` 表示描述/推断与单次数值保留、签名分页已接入；授权相似条件入口见§7.3，仍须由客户端显式调用本接口完成分析。私有定义保存、比较、AI与导出由后续切片交付。
 
 | 项 | 值 |
 |---|---|
@@ -634,7 +634,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 #### 范围、源读取与评分口径
 
 - U仅包含当前可信医生在**同一关系行**符合共享RA白名单的 `patient_basic_info.id`；按内部id唯一计数，脱落miss=1不默认排除，相同姓名不同id仍分别计数，孤立关系/访视不创造患者
-- 五条固定批量SELECT（临床患者列、患者id、必要访视列（含zlfa）、合并症行、原三M缺失事实）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；生产访问仅SELECT，任何失败不回部分数据或旧结果
+- 五条固定批量SELECT（临床患者列、患者id、必要访视列（含zlfa）、合并症行、原三M缺失事实）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；旧源表访问仅SELECT；新增结果表的独立事务见7.2，任何失败不回部分数据或旧结果
 - 一次请求以注入Clock固定上海asOfDate。now选择日期非空、≤asOfDate且CRP有效的最新临床日期；同日按访视id最大决胜，忽略时刻差异。最新坏值不挡历史有效值；下一新请求重新读取已提交源变化并重新评估Clock
 - CRP仅取 `bqpg.result.crpScore`，数值/字符串保持十进制原标量精度并复用共享两位HALF_UP canonical。0有效；malformed JSON、null/负值/非法值、只有ESR不成为有效CRP，ESR不能补CRP。缺组成项仍可使用存量值，不启用未核实复算或写回历史
 - C=U∩ids限制∩sex∩age∩sero∩cm∩act∩tx∩at资格∩data。at=now无act时无评分患者仍计入n；at=6m仅纳入可靠当前episode且有合格6m评分者，baseline缺失不单独排除；有act必须有所选时点有效CRP。target为canonical≤2.7，mod-high为>2.7；四档为<2.3、2.3～2.7、>2.7且≤4.1、>4.1
@@ -645,15 +645,57 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 |---|---|
 | `n` / `studyTotal` | 当前C人数 / 本医生U人数；studyTotal不受任何筛选影响 |
 | `submittedUniqueIdsN` / `effectiveIdsN` | 去重提交数 / 提交集合∩U人数；均在临床/act/tx/at/data筛选前计算，未提供ids时两者null |
-| `activity.current` / `base` | 本次at评估点 / baseline四档，均恰为remission/low/moderate/high四项，含level/label/count；空队列也有四个0 |
+| `activity.current` / `base` | 本次at评估点 / baseline四档，均恰为remission/low/moderate/high四项，含level/label/count/value/status/displayText；value分母分别为evalN/baseN，空队列也有四个0/NO_DATA |
 | `activity.baseN` / `baseUnknownN` | C内有效baseline人数 / n-baseN |
 | `activity.evalN` / `unknownN` | C内所选at有效DAS28-CRP人数 / n-evalN；缺失与执行失败分开 |
 | `activity.unknownTxN` | 最终C中治疗UNKNOWN/CONFLICT人数；NONE不计未知 |
-| `patients.total` / `items` | total=n，items是patientId数值升序首10，没有后续游标 |
-| `items[]` | patientId字符串、das28At/das28Base/das28Current/deltaDas28 canonical数值或null、activity编码或null、scoreProvenance/baselineProvenance、selection、crpAt/crpCurrent、clinical、clinicalProvenance、evaluation、treatment、qc |
-| `meta` | at、asOfDate、readStartedAt/readCompletedAt/computedAt ISO instant、policyVersions、traceId、supportedFilters、completion |
+| `analysisId` | 每次实时新分析成功提交后的canonical UUID；不按filters复用结果 |
+| `patients` | total=n，完整C按das28At降序/null末尾/数值patientId升序；首10，含items/returnedCount/nextCursor/hasMore，后页见7.2 |
+| `items[]` | name/studyNo来自同一源事务的patient_basic_info.name/study_no，缺失为null；patientId字符串、das28At/das28Base/das28Current/deltaDas28 canonical数值或null、activity编码或null、scoreProvenance/baselineProvenance、selection、crpAt/crpCurrent、clinical、clinicalProvenance、evaluation、treatment、qc |
+| `stats` / `metricMeta` | 平面描述数值 / 对应七指标的分母、未知数、状态及显示文本，详见下节 |
+| `byTx` / `lines` / `fm` | 治疗达标组 / 固定三线占比 / FM逐指标描述或诚实不足，详见下节 |
+| `meta` | at、asOfDate、readStartedAt/readCompletedAt/computedAt ISO instant、policyVersions、traceId、supportedFilters、completion=P03_RESULT、expiresAt（UTC Instant）、patientProjection=LIVE_SOURCE_V04 |
 
-有效值provenance为source=`LEGACY_STORED`、sourceVisitId字符串、sourceField=`bqpg.result.crpScore`、observedAt=`yyyy-MM-dd`、raw原标量文本及quality。存量至少 `LEGACY_UNVERIFIED`；已知TJC/SJC/GH/CRP任一缺失再标 `COMPONENTS_MISSING`，仅作质量说明，不代表医学已核实。无可选值时source/sourceVisitId/sourceField/observedAt/raw均null，missingReason=`NO_VALID_CRP`；quality只保留实际观察到的字段质量（如 `INVALID_JSON`）。不返回姓名、手机、身份证或整份病例JSON。
+有效值provenance为source=`LEGACY_STORED`、sourceVisitId字符串、sourceField=`bqpg.result.crpScore`、observedAt=`yyyy-MM-dd`、raw原标量文本及quality。存量至少 `LEGACY_UNVERIFIED`；已知TJC/SJC/GH/CRP任一缺失再标 `COMPONENTS_MISSING`，仅作质量说明，不代表医学已核实。无可选值时source/sourceVisitId/sourceField/observedAt/raw均null，missingReason=`NO_VALID_CRP`；quality只保留实际观察到的字段质量（如 `INVALID_JSON`）。仅在当次医生授权名单显示姓名/研究编号，不返回手机、身份证、生日或整份病例JSON；本片显示不授权导出姓名。
+
+#### 描述统计与显示（开发政策）
+
+同一请求先为U每患者派生一次治疗时间线与baseline/now/6m事实，然后筛C；研究基准只取同at的U，不继承ids、sex、age、sero、cm、tx、data或act条件。at=6m时C的资格规则不改变U人数，U中无合格评估者只增加研究基准unknownN。每次实时计算全C数值及聚合，再显式投影并保存完整排序结果；成功提交才发布新的analysisId/首屏游标，后页不重算旧数值。
+
+| stats键 | 分子、分母与缺失 |
+|---|---|
+| cohortRate | C.n/U.n，unknownN=0；空C或U为0/NO_DATA，仍保留真实U分母 |
+| ageMedian / durationMedian | C内已知年龄/确诊病程整年的精确中位；奇数取中间值，偶数两中间值平均，无有效值为null/NO_DATA |
+| femaleRate | 已知F人数/C.n；sex=null计unknownN，未知仍留分母 |
+| seroRate | 明确TRUE人数/C.n；UNKNOWN计unknownN，阴性与未知分开 |
+| targetRate / evaluable | canonical所选DAS≤2.7人数/C.evalN / C.evalN；unknownN=C.n−evalN；无评分为0/NO_DATA，不把缺评分当零值 |
+| completeRate / incompleteCount / qcUnknownN | COMPLETE人数/C.n / MISSING人数 / 明确QC UNKNOWN人数；当前覆盖政策仅COMPLETE/MISSING，qcUnknownN=0，源或程序失败不伪装UNKNOWN |
+
+metricMeta恰含cohortRate、ageMedian、femaleRate、durationMedian、seroRate、targetRate、completeRate七键。比例元信息含numerator/denominator/unknownN/status/displayText；中位元信息含validN/unknownN/status/displayText。比例原值为JSON数值0～1，BigDecimal按至少16位HALF_UP保留，显示整数百分比HALF_UP；中位原值精确，显示1位HALF_UP并去整数尾零；无中位显示“—”。显示值不覆盖数值。
+
+activity.current/base仍固定四档及原count，每行新增value/status/displayText，分母分别evalN/baseN；unknownN/baseUnknownN仍按C.n扣有效n。byTx.groups按csDMARD/TNFi/JAKi/IL-6i/Abatacept顺序，仅有成员的ACTIVE已知组出现，含tx/n/evalN/targetN/rate/status/displayText。已知治疗但无评分仍保留n并显示rate=0/NO_DATA；unknownTxN仅UNKNOWN/CONFLICT，NONE只增加noCurrentTxN。studyTargetRate与studyTargetMeta为同at的U研究基准（meta形状同targetRate）。
+
+lines.groups固定line=1/2/3，含line/count/value/status/displayText，分母C.n；unknownLineN独立，未知不补1线且不将已知线占比归一化。第一种靶向2线、第二种及以后3线的已有政策不变，真实药物史不封顶。
+
+fm含nFM/nOther/unknownN/status/reason/rows，仅明确TRUE/FALSE进入两组，UNKNOWN不并入FALSE。任组成员<3则INSUFFICIENT_SAMPLE/GROUP_SIZE_LT_3且rows=[]；足够时OK/reason=null，固定das28/tjc/sjc/crp/pain/haq六行。每行包含metric/meanFM/meanOther/nFMValid/nOtherValid/difference/highlight/status/reason/displayFM/displayOther/displayDifference，仅取同eval访视合法value；无有效值的均值为null/显示“—”，双方有值才有差值和高亮，否则NO_DATA/MISSING_METRIC、difference/highlight=null。差方向FM−Other，均值至少16位；高亮用未舍入总和/人数的交叉乘比较绝对差，pain≥5、haq≥0.2、其余≥0.5；显示DAS/TJC/SJC/CRP1位、pain0位、HAQ2位。显示0.5或0.20不会将真实0.49999/0.19999升级为高亮。存在的每行追加下述test；描述差值/高亮保持原阈值，与P显著性独立。
+
+真实FM源仍只有TRUE/UNKNOWN，真实HTTP诚实抑制比较表；真实pain.value仍null，不能猜尺度。明确合成derived FALSE与已确认尺度pain只能证明实际Service聚合器分支，不能证明真实临床源/医学接收。源显示随五SELECT一致读，独立writer在首SELECT后改姓名/编号时当前响应保持旧值、下一请求新值，无第六查询或N+1。
+
+独立合成六人示例：U.n=6，ageMedian=50(valid5)、durationMedian=3(valid5)、femaleRate=0.5、seroRate=0.3333333333333333(unknown2)、targetRate=0.4(2/5/unknown1)、completeRate=0.6666666666666667(4/6)、incompleteCount=2。sex=F后排序C=[3,1,6]，n=3、cohortRate=0.5、ageMedian=55(valid2)、targetRate=0.5(1/2)，studyTargetRate仍0.4。显式ids=[]返回空C，studyTotal仍6，全部C比例0/NO_DATA、中位null、固定零活动/线桶、空groups/rows/items；无授权U时studyTotal=0。
+
+#### 统计推断（dev-stats-v04开发政策）
+
+实际cohort输出在源短事务结束后计算统计。byTx追加test与comparisonNotice="组间基线不同，差异不代表疗效差异"；fm存在的每描述行追加test，全部原描述字段/研究基准/高亮保留。meta.policyVersions追加statistics，completion=P03_RESULT，statisticalDisclosure="探索性分析，未作多重比较校正；组间差异不代表疗效或因果关系"。不做多重比较校正，不对U研究基准、活动或线数生成P。
+
+test核心字段：method/status/pValue/displayP/significant/nA/nB/reason/warnings/policyVersion/testDenominator。OK时method为FISHER_EXACT、CHI_SQUARE、MANN_WHITNEY_EXACT或MANN_WHITNEY_ASYMPTOTIC；raw P有限且在[0,1]，双侧alpha=.05，significant仅按raw P<.05。P<.001显示<0.001，否则3位HALF_UP；.0496显示0.050仍显著，.05显示0.050且不显著。所有非OK的method/P/significant均null、displayP=—，reason明确；非有限/越界P及程序/库异常沿原503失败，不伪装正常缺失或返回旧值。
+
+byTx.testDenominator=EVALUABLE_KNOWN_TREATMENT。按原五类顺序只纳入evalN≥5的已知治疗组，至少两组才可检验，否则INSUFFICIENT_SAMPLE/ELIGIBLE_GROUPS_LT_2。includedGroups是tx数组；excludedGroups是有描述行但evalN<5的{tx,n,evalN,reason:VALID_N_LT_5}数组；groupNs是纳入组{tx,n}数组，n=evalN。小组描述仍显示，UNKNOWN/CONFLICT/NONE及缺评分不补入任一组。恰两纳入组的nA/nB对应顺序有效n，多组或不足两组时二者null。
+
+列联表为每组[canonical所选DAS≤2.7人数,其余有效人数]。engine先剔全零边际，剩不足2行/2列或总数0为DEGENERATE/ZERO_MARGIN；剩余非零行n<5为INSUFFICIENT_SAMPLE/VALID_N_LT_5。2×2任一期望频数<5用双侧Fisher，否则Pearson独立性检验（无Yates）；多组用Pearson整体P。用整数交叉乘精确比较期望与5，避免除法舍入或乘法溢出；数学期望恰5不判<5。实际RxC且超过20%期望格<5加SPARSE_EXPECTED_COUNTS，2×2无此警告。expectedBelow5Cells/expectedCellCount在正常计算表时是真实格数，不足或退化时null；不能宣称全部治疗组均入检验。
+
+FM的三人描述门槛不变。testDenominator=NON_MISSING_EVALUATION_METRIC，A为明确FM TRUE、B为明确FALSE，UNKNOWN排除；每指标只取同evaluation访视，DAS取score，其余取该evaluation的value，逐字段剔缺后任何组n<5为INSUFFICIENT_SAMPLE/VALID_N_LT_5。3/3可有描述而无P。BigDecimal pooled compareTo排序/去重后把不同数值编码为1..k整数double交库，避免极近小数转double损失秩；.30/.300作为真实ties。描述原值/均值/差值不使用秩码。合格后仅一distinct值为DEGENERATE/ZERO_RANK_VARIANCE，无P/warning。无ties且min(nA,nB)≤8/max≤50显式EXACT，否则显式ASYMPTOTIC，双侧、tie及continuity校正开启，禁止AUTO；ties且任组n<10加SMALL_SAMPLE_TIES。无样本/退化warnings为空。
+
+Java8使用唯一显式依赖org.apache.commons:commons-statistics-inference:1.3。独立输入/参数/期望及SciPy1.17.0版本记录见[测试资源](../src/test/resources/ai-cohort/p03b/independent-oracles.json)及[测试指南](测试运行指南.md#p03b真实统计消费与独立数值)。真实FM源仍无FALSE，pain尺度仍未核实，HTTP继续诚实不足；合成derived事实只证明实际聚合器数值，不代替临床源或最终医学/统计批准。
 
 #### 实时资料完整性
 
@@ -679,7 +721,7 @@ FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNO
 - pain：bqpg.tjScore 仅保留 scalar raw 文本，value/unit=null，quality 含 SCALE_UNVERIFIED，missingReason=UNVERIFIED_SCALE；尺度未经核实，不可汇总或猜换算
 - 其他项缺失给 MISSING_VALUE/INVALID_VALUE/OUT_OF_RANGE/NON_INTEGER；无可用 CRP 访视时六项均 value=null、missingReason=NO_VALID_CRP
 
-`meta.policyVersions` 为 qc=dev-missing-v04、crp=dev-crp-v04、now=dev-now-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、drugDictionary=dev-drug-v04（注入字典时报告其固定版本）；supportedFilters 为 studyCode/at/act/ids/sex/age/sero/cm/tx/data，completion=P02_QC。真实关节映射、历史质量、疼痛尺度与医学接收尚未确认（AQC-EXT-02 OPEN）；合成证据不关闭该义务。
+`meta.policyVersions` 为 statistics=dev-stats-v04、descriptive=dev-descriptive-v04、qc=dev-missing-v04、crp=dev-crp-v04、now=dev-now-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、drugDictionary=dev-drug-v04（注入字典时报告其固定版本）；supportedFilters 为 studyCode/at/act/ids/sex/age/sero/cm/tx/data，completion=P03_RESULT。真实关节映射、历史质量、疼痛尺度与医学接收尚未确认（AQC-EXT-02 OPEN）；合成证据不关闭该义务。
 
 #### 治疗时间线开发政策
 
@@ -695,7 +737,7 @@ FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNO
 
 `treatment` 字段：state（ACTIVE/NONE/UNKNOWN/CONFLICT）、category（五类或null）、line、targetedDrugHistoryN、schemeDurationMonths（有效或估算起点至asOf的完整月数，非30天）、startDate（可靠日期）、estimatedStartDate、endDate、startConfidence、episodeKey、genericDrugIds、provenance（visitId/field/observedAt/quality/missingReason/dictionaryVersion）。内部不可变episode序列先按visitDate/id接收观察，再重放已接收事实的start/end次日事件，实际供应本次类别/线数/时长；当前asOf选择不剪掉已结束历史成员，到日无需新访视也能转换。provenance.drugFacts仅保留通用id、原始起止日期及visitId/field/observedAt定位，方案边界不覆盖原药物日期；key由源/实体/episode确定。无确定当前方案的线数/月数为null；不输出整份用药JSON、商品名/厂家或自由文本。
 
-真实旧字典表/主键/别名/维护资料仍待SK及药品负责人提供（AQC-EXT-03 OPEN），开发精确映射与合成alias验证不构成真实字典接收或医学分类批准；医学发布前继续核对Q-11/12。实时四类缺失QC已由P02e接入，完整统计仍由P03交付。
+真实旧字典表/主键/别名/维护资料仍待SK及药品负责人提供（AQC-EXT-03 OPEN），开发精确映射与合成alias验证不构成真实字典接收或医学分类批准；医学发布前继续核对Q-11/12。实时四类缺失QC和本节描述聚合已接入；推断统计及有期结果分页已接入，仍不代表真实字典、医学统计或生产部署接收。
 
 #### 统一访视匹配与配对（开发政策）
 
@@ -725,6 +767,54 @@ crpAt是所选eval访视的evaluation.crp；crpCurrent是所有截至asOf有日�
 | `SERVICE_UNAVAILABLE` | 503 | 数据库或程序失败；不降为n=0/缺评分或旧结果 |
 
 失败success=false、data=null、message为安全通用提示，不暴露SQL/病例/连接或凭据。认证及输入拒绝发生在业务源SQL前。真实登录、目标生产库/隔离配置、医学与发布接收仍待对应owner，合成验证不能替代这些接入证据。
+
+### 7.2 同次结果授权稳定分页
+
+`POST /api/ra/ai/cohortPatients` 仍先可信Principal，根仅接收非空字符串analysisId与cursor。UTF-8 body最多4096字节（最多读取4097），cursor最多2048 ASCII字符；未知/重复键、尾随JSON、缺项/类型错误400/INVALID_REQUEST，超body413/LIMIT_EXCEEDED，游标语法/签名或偏移错误400/CURSOR_INVALID。
+
+成功data恰为analysisId、patients、meta。patients含total/items/returnedCount/nextCursor/hasMore；首屏10，后页20，真实offset10→30→50，不采用page×20。可重复读取同一签名游标；末页不足20按实际返回，无剩余则nextCursor=null/hasMore=false。空C也保存完整空结果，items=[]/total=returnedCount=0，绝不扩为U。
+
+meta保留分析at/asOfDate/readStartedAt/readCompletedAt/computedAt/policyVersions/expiresAt，当前traceId与X-Trace-Id一致，原trace另作为analysisTraceId，增加displayReadCompletedAt；completion=P03_RESULT、patientProjection=RETAINED_NUMERIC_V1。旧访视/临床/治疗/图表数值与政策保持创建时快照，新cohort仍实时读取并新建ID；后页只返回名单，不重复返回统计图表。
+
+#### 当前范围、显示与保留隐私
+
+- 新表ra_ai_analysis_run存owner、全U范围指纹、sort_key、payload_version=1、完整UTF-8数值JSON及SHA256、epoch毫秒created/expires；不与旧患者表建外键
+- 指纹为SHA256(医生十进制ID+LF+RA+LF+完整U去重数值升序每ID+LF)，不是C或本页。后页先核资源owner，再于独立短REQUIRES_NEW/REPEATABLE_READ只读视图读取当前完整U并比对；删除/撤权/新增U成员均409/SCOPE_CHANGED，含C外成员，miss不默认排除
+- U匹配后同一视图仅一次批量查询最多20个id/name/study_no，用绑定参数及相同doctor+RA EXISTS限制。读完释放后组装，名称/研究编号取当前显示，列null可返回；覆盖缺行或SQL错误503，不能用空姓名冒充记录。无card_no/病例JSON查询或N+1
+- 载荷用逐层显式allowlist，保留全C合法数值、baseline/eval/now访视ID/日期、资格/缺失/质量、临床来源结构、映射通用药ID和合法日期、聚合、规范filters、分析时间/政策/trace；永不保存name/studyNo、身份证/生日、RF/CCP原文、未知药名、原病例JSON或任意pain.raw
+- 原live首屏仍保留既有raw诊断。后页score/baseline raw仅留已验证合法数值标量文本，精确长小数不经double；未核实pain仍value/unit=null、原质量/UNVERIFIED_SCALE保留，raw=null且rawRetention=OMITTED。任意源raw调试字段不保证跨页持久化。小数从最初解码使用BigDecimal，必要类型/行数/合法唯一ID/排序或hash损坏503，不补0、不回源重建
+
+#### 配置、签名、时间与错误优先级
+
+部署注入ra.ai.analysis.result-ttl-seconds（默认900，正数且乘法/时间加法不溢出）、ra.ai.analysis.result-max-bytes（默认8388608，正数且≤16777215）、ra.ai.analysis.cursor-key-base64（默认空，标准Base64解码至少32字节）。不生成/配置/记录生产key；缺key/配置错误让本功能503/SERVICE_UNAVAILABLE且cohort读源SQL前拒绝，不阻其它bean启动。容量按最终UTF-8字节超限413/RESULT_TOO_LARGE，不能写run或发布ID；缩小当前容量不重新计算旧有效run。key轮换会使旧游标签名无效。
+
+cursor为Base64url无padding的固定JSON载荷加点号加HMAC-SHA256，含v=1、analysisId、doctorId、nextOffset、固定sort=DAS28_AT_DESC_NULL_LAST_ID_ASC、expiresAtMs；签名覆盖原载荷全部字节、MAC常量时间比较，不把请求字段替换为签名字段或让客户端owner授予权限。
+
+顺序：可信身份→有界body/游标语法及MAC（400）→签名doctor不符404/RESOURCE_NOT_FOUND且零DB→请求入口时已到签名expiry则410/ANALYSIS_EXPIRED且零DB（行已清走亦同）→持久行缺失/非owner404→行到期410→行与签名版本/sort/expiry不符、hash/载荷/SQL/程序损坏503→offset非法400→全U改变409→同视图显示并返回。不存在部分页、跨run恢复、旧源回退或对外SQL/载荷/key信息。
+
+created_at_ms取本次computedAt的epoch毫秒，expires_at_ms加TTL毫秒，expiresAt从该最终毫秒值转UTC Instant；now≥expiresAt即到期，入口前1ms可读。源五SELECT事务先结束，全C计算/排序/allowlist编码及容量检查之后，独立写事务先DELETE expires_at_ms≤创建时点 ORDER BY expires_at_ms,id LIMIT 1000再INSERT，commit成功才构造成功响应。INSERT/commit前失败一并回滚新行与此轮清理，源表及有效旧结果不变；结果读亦是短独立只读事务，首次MyBatis SQL错误翻译的metadata读取共用该owner，异常返回前归还。
+
+每次新创建只清理本新表最多1000条过期记录，下一创建继续；不读/输出其他医生载荷，不删有效run/旧患者，没有新增scheduler，无请求时不承诺整点物理清除，但过期永不能分页。commit后的HTTP写出/网络失败不能回滚数据库，可能留下无客户端成功ID的完整TTL孤立行，由后续清理收走，不自动重用该结果。合成验收实际覆盖HTTP writeInternal抛IOException，不宣称真实网络断连。
+
+本接口不授予私有队列保存、下载、邮件、共享或AI访问权限。生产DDL/key/真实身份、目标隔离与数据保留政策仍须AQC-EXT-01/04及最终接收，不因本次合成开发完成而关闭；医学/统计批准和其余外部义务保持原边界。
+
+### 7.3 授权相似患者条件入口
+
+`POST /api/ra/ai/resolveEntry` 使用JSON根对象，恰接收两个非空字符串：`source="SIMILAR"`、`indexPatientId`。索引id采用现有规范正long十进制文本，不接受number、0、负值、前零、空白或溢出；source大小写精确，不接受数组、多source或其他类型。未知字段（包括doctorId、cohortId、compare、q、filters、ids）、重复键、尾随JSON、非对象/缺项/null/非法类型均400/INVALID_REQUEST，非UTF8编码或非法UTF8同样拒绝。body最多4096 UTF8字节，最多读取4097；超限413/LIMIT_EXCEEDED。上述拒绝在SQL前发生。
+
+Controller先要求可信Principal，再固定入口Clock.instant，随后读body；匿名401/UNAUTHENTICATED且不读取body、不借连接，header/请求doctorId/principal.name不提供权限。以入口时刻固定Asia/Shanghai日期，沿现有SourceAdapter的本人doctor+RA同关系完整U、五条批量SELECT及短REPEATABLE_READ视图读取；先检查index在U，再查其PatientClinical。不存在、他人、非RA、物理删除或撤权统一404/RESOURCE_NOT_FOUND。SQL/程序错误503/SERVICE_UNAVAILABLE、data=null，不回退旧候选或解释为缺失。源owner在解析临床事实/条件装配及公开响应前退出，resolver只读，不创建或清理analysis run，也不需要结果签名key；cohort缺key仍按7.2返回503。
+
+成功data恰含source、filters、missingBasis、status、canApply、reason、meta。source固定SIMILAR；meta恰含asOf（上海ISO日期）、readStartedAt/readCompletedAt（UTC Instant）、traceId（同X-Trace-Id）、policyVersion=`dev-similar-v01`。不会返回indexPatientId、姓名/研究编号、身份证/生日、病例JSON或临床provenance。
+
+- sex为F/M则保留条件；未知不生成，missingBasis列sex
+- 已知age在0～120则产生闭区间`max(0,age-5)-min(120,age+5)`；未知不估算，missingBasis列age。已知超出此域时UNSUPPORTED_BASIS、canApply=false、filters=null、reason=AGE_OUT_OF_SUPPORTED_RANGE，不静默删去年龄限制；missingBasis仍只列真实未知事实。既有临床事实可大于120，本接口不改ClinicalPolicy
+- sero明确TRUE才生成字符串`"1"`；FALSE不生成且不是缺失，UNKNOWN不生成并列sero。沿原截至asOf曾经阳性政策，历史阳性后最新阴性仍TRUE，未来/无日期阳性不提供依据
+- missingBasis按sex/age/sero固定顺序。至少生成一项限制时canApply=true，缺失表空为READY，否则PARTIAL_BASIS；filters经现有CohortQuery校验/规范化，全部键为studyCode/at/act/ids/sex/age/sero/cm/tx/data，studyCode=RA、at=now、其余未生成键为null
+- 没有任何可生成限制时NO_BASIS、canApply=false、filters=null；全未知列三项，只有血清阴性且无sex/age时只列sex/age。不自动分析整体U或塞空ids。除UNSUPPORTED_BASIS外reason=null
+
+canApply=true时客户端将filters原样包装成`{"filters":...}`调用7.1标准cohort；可显式追加/调整其普通条件，本入口不接收隐式合并。索引本人默认不排除，按自然条件匹配。候选只是当次授权事实产生的条件，不是权限凭证或analysis结果；两次HTTP各自固定asOf并重新读当前U/事实，后一次cohort不重新推断相似条件，也不保证index继续授权。旧候选不能让已撤权患者进入U。空C仍保留完整零桶/NO_DATA/null和真实analysisId，后页继续7.2当前范围复查、到期和保留数值规则。
+
+本片只提供SIMILAR与现有完整cohort/分页组合，保存/比较及q/AI入口仍属后续能力；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
 
 ## 新增接口时的维护约定
 

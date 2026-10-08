@@ -20,7 +20,7 @@ class MissingDataHttpTest extends MissingDataHttpFixture {
         assertEquals(Collections.singletonList("1"),ids(complete));
         assertEquals("COMPLETE",complete.path("patients").path("items").get(0).path("qc").path("status").asText());
         assertEquals("dev-missing-v04",complete.path("meta").path("policyVersions").path("qc").asText());
-        assertEquals("P02_QC",complete.path("meta").path("completion").asText());
+        assertEquals("P03_RESULT",complete.path("meta").path("completion").asText());
         assertTrue(complete.path("meta").path("supportedFilters").toString().contains("data"));
         for(String filter:new String[]{"{}","{\"filters\":{\"data\":null}}","{\"filters\":{\"data\":\"\"}}"}) assertEquals(Arrays.asList("1","2"),ids(success(filter)));
         JsonNode and=success("{\"filters\":{\"data\":\"missing\",\"act\":\"target\",\"ids\":[\"1\",\"2\",\"99\"]}}");
@@ -38,10 +38,10 @@ class MissingDataHttpTest extends MissingDataHttpFixture {
         assertEquals(1,commits.get());assertEquals(Collections.singletonList("2"),ids(current));assertEquals(2,current.path("studyTotal").asInt());
         JsonNode old=current.path("patients").path("items").get(0);
         assertTrue(old.path("das28At").isNull());assertEquals(json.readTree("[\"M_DAS28\"]"),old.path("qc").path("missingCodes"));
-        assertEquals(5,observed.selects);assertEquals(1,observed.borrowed);snapshotQueries(5);
+        assertEquals(5,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(5);
         observed.reset();JsonNode next=success("{\"filters\":{\"data\":\"missing\"}}").path("patients").path("items").get(0);
         assertEquals(2.30,next.path("das28At").asDouble());assertEquals(json.readTree("[\"M_BASELINE_LAB\",\"M_COMORBIDITY\",\"M_MEDICATION\"]"),next.path("qc").path("missingCodes"));
-        assertEquals(5,observed.selects);assertEquals(1,observed.borrowed);snapshotQueries(5);
+        assertEquals(5,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(5);
     }
     @Test void realQcSqlFailureReturns503AndReleasesBeforeRecovery() throws Exception {
         observed.failQcSql=true; org.springframework.test.web.servlet.MvcResult result=request("{\"filters\":{\"data\":\"complete\"}}");

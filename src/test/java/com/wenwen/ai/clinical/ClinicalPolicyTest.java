@@ -23,7 +23,10 @@ class ClinicalPolicyTest {
     }
     @Test void sourceValuesDefensivelyCopyNestedCollections() {
         List<Long> ids=new ArrayList<>(Arrays.asList(1L)); List<ScoreVisit> visits=new ArrayList<>(); Map<Long,PatientClinical> patients=new HashMap<>();
-        SourceBatch batch=new SourceBatch(ids,visits,Instant.EPOCH,patients,Collections.emptyMap()); ids.clear();
+        Map<Long,PatientDisplay> displays=new HashMap<>();displays.put(1L,new PatientDisplay(null,"SYNTHETIC-STUDY"));
+        SourceBatch batch=new SourceBatch(ids,visits,Instant.EPOCH,patients,Collections.emptyMap(),displays); ids.clear();displays.clear();
+        assertEquals("SYNTHETIC-STUDY",batch.getDisplay().get(1L).getStudyNo());assertNull(batch.getDisplay().get(1L).getName());
+        assertThrows(UnsupportedOperationException.class,() -> batch.getDisplay().clear());
         assertEquals(1,batch.getPatientIds().size()); assertThrows(UnsupportedOperationException.class,() -> batch.getPatientIds().clear());
         List<String> quality=new ArrayList<>(Arrays.asList("LEGACY_UNVERIFIED")); Map<String,Object> component=new HashMap<>(); component.put("quality",quality);
         Map<String,Map<String,Object>> evaluation=new HashMap<>(); evaluation.put("haq",component);

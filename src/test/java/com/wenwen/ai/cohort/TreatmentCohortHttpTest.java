@@ -166,10 +166,10 @@ class TreatmentCohortHttpTest extends TreatmentHttpFixture {
         java.util.concurrent.atomic.AtomicInteger failures=new java.util.concurrent.atomic.AtomicInteger();
         dictionary().view=new com.wenwen.ai.treatment.DrugDictionary.Snapshot("synthetic-failure",java.util.Collections.emptyMap()) {
             @Override public com.wenwen.ai.treatment.DrugDictionary.Drug identify(String name) {
-                released(); failures.incrementAndGet(); throw new IllegalStateException("合成字典执行失败");
+                sourceReleased(); failures.incrementAndGet(); throw new IllegalStateException("合成字典执行失败");
             }
         };
-        error("{}",503,"SERVICE_UNAVAILABLE"); assertEquals(1,failures.get()); released();
+        error("{}",503,"SERVICE_UNAVAILABLE"); assertEquals(1,failures.get()); sourceReleased();
         dictionary().view=new com.wenwen.ai.treatment.DevelopmentDrugDictionary().snapshot(); observed.reset(); observed.failSecondSql=true;
         error("{}",503,"SERVICE_UNAVAILABLE"); assertTrue(observed.mysqlFailures>0); assertEquals(3,observed.selects);
         assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());

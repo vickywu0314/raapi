@@ -49,7 +49,9 @@ public final class CohortSourceAdapter {
             if ("TRUE".equals(ClinicalPolicy.association(row.getSinceYear(),asOf)))
                 associations.computeIfAbsent(row.getPatientId(),key -> new HashSet<>()).add(row.getCode());
         }
+        Map<Long,PatientDisplay> display=new LinkedHashMap<>();
         for (PatientRow row : raw.patients) {
+            display.put(row.getId(),new PatientDisplay(row.getName(),row.getStudyNo()));
             String sex=ClinicalPolicy.sex(row.getGender()); Integer age=ClinicalPolicy.age(row.getCardNo(),asOf);
             Integer duration=ClinicalPolicy.duration(row.getConfirmDate(),asOf);
             String sero=serology.getOrDefault(row.getId(),"UNKNOWN");
@@ -70,7 +72,7 @@ public final class CohortSourceAdapter {
                 "as",associationProvenance(row.getId(),"AS",raw.comorbidities,asOf));
             clinical.put(row.getId(),new PatientClinical(sex,age,duration,sero,fm,as,provenance));
         }
-        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing));
+        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing),display);
     }
     private static Map<String,Object> fact(String field,String missing) {
         return object("source","LEGACY_RECORDED","sourceField",field,"quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason",missing);

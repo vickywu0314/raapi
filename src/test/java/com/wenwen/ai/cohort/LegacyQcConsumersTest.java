@@ -94,13 +94,13 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
     }
     @Test void crossConsumersShareIndependentFourMissingTableAndAllFilteredIds() throws Exception {
         sixPatientTable();
-        assertEquals(Arrays.asList("2","3","4","5","6"),ids(success("{\"filters\":{\"data\":\"missing\"}}")));
+        assertEquals(Arrays.asList("3","4","5","2","6"),ids(success("{\"filters\":{\"data\":\"missing\"}}")));
         assertEquals(Collections.singletonList("1"),ids(success("{\"filters\":{\"data\":\"complete\"}}")));
         String[][] codes={{},{"M_DAS28"},{"M_BASELINE_LAB"},{"M_COMORBIDITY"},{"M_MEDICATION"},{"M_BASELINE_LAB","M_COMORBIDITY","M_DAS28","M_MEDICATION"}};
         String[][] labels={{},{"缺 DAS28 评分"},{"缺基线检验"},{"缺合并疾病记录"},{"缺用药史"},{"缺基线检验","缺合并疾病记录","缺 DAS28 评分","缺用药史"}};
-        JsonNode all=success("{}").path("patients").path("items");
+        JsonNode allData=success("{}");
         for(int i=0;i<6;i++) {
-            assertEquals(json.valueToTree(codes[i]),all.get(i).path("qc").path("missingCodes"));
+            assertEquals(json.valueToTree(codes[i]),patientById(allData,i+1).path("qc").path("missingCodes"));
             PatientDetailVo detail=legacy().getPatientDetail(101L,(long)i+1);
             assertEquals(Arrays.asList(labels[i]),detail.getMissingItems()); assertEquals(i!=0,detail.isIncomplete());
         }

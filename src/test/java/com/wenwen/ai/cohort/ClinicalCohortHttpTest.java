@@ -48,7 +48,7 @@ class ClinicalCohortHttpTest extends ClinicalHttpFixture {
         assertFalse(data.toString().contains("110101198610070011")); assertFalse(provenance.toString().contains("1986-10-07"));
         assertEquals("dev-clinical-v04",data.path("meta").path("policyVersions").path("clinical").asText());
         assertEquals("dev-ever-serology-v04",data.path("meta").path("policyVersions").path("serology").asText());
-        assertEquals("P02_QC",data.path("meta").path("completion").asText());
+        assertEquals("P03_RESULT",data.path("meta").path("completion").asText());
         assertEquals(json.readTree("[\"studyCode\",\"at\",\"act\",\"ids\",\"sex\",\"age\",\"sero\",\"cm\",\"tx\",\"data\"]"),data.path("meta").path("supportedFilters"));
     }
     @Test void realPatientSerologySqlAcceptsJsonWhitespaceAndRetainsAuthorizedIdsAndRa() throws Exception {

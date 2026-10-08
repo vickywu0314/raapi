@@ -9,15 +9,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CohortSnapshotTest extends CohortHttpFixture {
     @Test void eachNewHttpReadSeesCommittedUpdatesAndDeletions() throws Exception {
-        assertEquals(2.30,success("{}").path("patients").path("items").get(0).path("das28At").asDouble());
+        assertEquals(2.30,patientById(success("{}"),1).path("das28At").asDouble());
         sql("UPDATE patient_follow_up_history SET bqpg='{\"result\":{\"crpScore\":4.105}}' WHERE id=11");
-        JsonNode data=success("{}"); assertEquals(4.11,data.path("patients").path("items").get(0).path("das28At").asDouble());
+        JsonNode data=success("{}"); assertEquals(4.11,patientById(data,1).path("das28At").asDouble());
         sql("DELETE FROM patient_follow_up_history WHERE id=11");
-        data=success("{}"); assertEquals(9.0,data.path("patients").path("items").get(0).path("das28At").asDouble());
+        data=success("{}"); assertEquals(9.0,patientById(data,1).path("das28At").asDouble());
         sql("DELETE FROM patient_basic_info WHERE id=5");
-        data=success("{}"); assertEquals(Arrays.asList("1","3","6","7"),ids(data)); assertEquals(4,data.path("studyTotal").asInt());
+        data=success("{}"); assertEquals(Arrays.asList("1","3","7","6"),ids(data)); assertEquals(4,data.path("studyTotal").asInt());
         sql("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=3");
-        data=success("{}"); assertEquals(Arrays.asList("1","6","7"),ids(data)); assertEquals(3,data.path("studyTotal").asInt());
+        data=success("{}"); assertEquals(Arrays.asList("1","7","6"),ids(data)); assertEquals(3,data.path("studyTotal").asInt());
     }
     @Test void betweenSelectWriterCannotTearSnapshotAndNextReadSeesNewView() throws Exception {
         AtomicInteger commits=new AtomicInteger();
@@ -35,18 +35,18 @@ class CohortSnapshotTest extends CohortHttpFixture {
             } catch(SQLException e) { throw new AssertionError("合成 writer 屏障失败",e); }
         };
         JsonNode data=success("{}"); assertEquals(1,commits.get());
-        assertEquals(Arrays.asList("1","3","5","6","7"),ids(data)); assertEquals(5,data.path("n").asInt());
+        assertEquals(Arrays.asList("5","3","1","7","6"),ids(data)); assertEquals(5,data.path("n").asInt());
         JsonNode items=data.path("patients").path("items");
-        assertEquals(2.30,items.get(0).path("das28At").asDouble()); assertEquals(2.71,items.get(1).path("das28At").asDouble()); assertEquals(4.11,items.get(2).path("das28At").asDouble());
+        assertEquals(2.30,patientById(data,1).path("das28At").asDouble()); assertEquals(2.71,patientById(data,3).path("das28At").asDouble()); assertEquals(4.11,patientById(data,5).path("das28At").asDouble());
         assertEquals(4,data.path("activity").path("evalN").asInt()); assertEquals(1,data.path("activity").path("unknownN").asInt());
         assertSnapshotReleased();
-        observed.reset(); data=success("{}"); assertEquals(Arrays.asList("1","6","7","20"),ids(data)); assertEquals(4,data.path("studyTotal").asInt());
-        assertEquals(8.0,data.path("patients").path("items").get(0).path("das28At").asDouble()); assertEquals(3.0,data.path("patients").path("items").get(3).path("das28At").asDouble());
+        observed.reset(); data=success("{}"); assertEquals(Arrays.asList("1","20","7","6"),ids(data)); assertEquals(4,data.path("studyTotal").asInt());
+        assertEquals(8.0,patientById(data,1).path("das28At").asDouble()); assertEquals(3.0,patientById(data,20).path("das28At").asDouble());
         assertEquals(3,data.path("activity").path("evalN").asInt()); assertSnapshotReleased();
     }
-    private void assertSnapshotReleased() { assertSnapshotReleased(5); }
-    private void assertSnapshotReleased(int selects) {
-        assertEquals(selects,observed.selects); assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
+    private void assertSnapshotReleased() { assertSnapshotReleased(5,2); }
+    private void assertSnapshotReleased(int selects,int owners) {
+        assertEquals(selects,observed.selects); assertEquals(owners,observed.borrowed); assertEquals(owners,observed.returned); assertEquals(0,observed.active.get());
         assertEquals(1,new HashSet<>(observed.queryConnections).size());
         assertEquals(Collections.nCopies(selects,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
         assertEquals(Collections.nCopies(selects,false),observed.autoCommits);
@@ -66,7 +66,7 @@ class CohortSnapshotTest extends CohortHttpFixture {
         JsonNode envelope=json.readTree(response.getResponse().getContentAsByteArray());
         assertFalse(envelope.path("success").asBoolean()); assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertTrue(envelope.path("data").isNull());
         assertNotNull(response.getResponse().getHeader("X-Trace-Id")); assertTrue(observed.mysqlFailures>0,"故障必须实际到达 MySQL 而非仅提前抛异常");
-        assertSnapshotReleased(3);
+        assertSnapshotReleased(3,1);
         String body=response.getResponse().getContentAsString();
         for(String secret:new String[]{"SELECT","p01c_missing_source_table","jdbc:","crpScore","synthetic"}) assertFalse(body.contains(secret));
     }
@@ -81,6 +81,6 @@ class CohortSnapshotTest extends CohortHttpFixture {
         assertEquals(503,response.getResponse().getStatus());
         JsonNode envelope=json.readTree(response.getResponse().getContentAsByteArray());
         assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertFalse(envelope.path("success").asBoolean()); assertTrue(envelope.path("data").isNull());
-        assertEquals(3,instants.get()); assertSnapshotReleased(); assertFalse(response.getResponse().getContentAsString().contains("synthetic-private-program-fault"));
+        assertEquals(3,instants.get()); assertSnapshotReleased(5,1); assertFalse(response.getResponse().getContentAsString().contains("synthetic-private-program-fault"));
     }
 }

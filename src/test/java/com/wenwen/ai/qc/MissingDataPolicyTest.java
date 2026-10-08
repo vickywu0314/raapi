@@ -18,7 +18,7 @@ class MissingDataPolicyTest {
         assertEquals(Arrays.asList("M_BASELINE_LAB","M_DAS28","M_MEDICATION"),result.get(2L).getMissingCodes());assertEquals(Collections.singletonList("M_COMORBIDITY"),result.get(3L).getMissingCodes());
         assertThrows(UnsupportedOperationException.class,()->result.clear());assertThrows(UnsupportedOperationException.class,()->result.get(2L).getMissingCodes().clear());assertThrows(UnsupportedOperationException.class,()->result.get(2L).asMap().clear());
         Map<Long,MissingDataStatus> supplied=new LinkedHashMap<>(result);
-        SourceBatch batch=new SourceBatch(ids,Collections.emptyList(),Instant.EPOCH,Collections.emptyMap(),supplied);supplied.clear();ids.clear();
+        SourceBatch batch=new SourceBatch(ids,Collections.emptyList(),Instant.EPOCH,Collections.emptyMap(),supplied,Collections.emptyMap());supplied.clear();ids.clear();
         assertEquals(3,batch.getQc().size());assertEquals(3,batch.getPatientIds().size());assertThrows(UnsupportedOperationException.class,()->batch.getQc().clear());
         assertThrows(RuntimeException.class,()->MissingDataPolicy.evaluate(Arrays.asList(1L),visits,null));
     }

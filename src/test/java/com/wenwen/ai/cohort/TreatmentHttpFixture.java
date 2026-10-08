@@ -36,7 +36,9 @@ abstract class TreatmentHttpFixture extends CohortHttpFixture {
         for(JsonNode item:data.path("patients").path("items")) if(item.path("patientId").asText().equals(Long.toString(patient))) return item.path("treatment");
         fail("未找到患者 "+patient); return null;
     }
-    void released() {
-        assertEquals(5,observed.selects); assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
+    void released() { assertReleased(2); }
+    void sourceReleased() { assertReleased(1); }
+    private void assertReleased(int owners) {
+        assertEquals(5,observed.selects); assertEquals(owners,observed.borrowed); assertEquals(owners,observed.returned); assertEquals(0,observed.active.get());
     }
 }

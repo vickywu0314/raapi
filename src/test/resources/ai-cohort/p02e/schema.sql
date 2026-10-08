@@ -1,5 +1,5 @@
 ALTER TABLE patient_basic_info
- ADD study_no VARCHAR(100), ADD follow_cycle INT DEFAULT 3,
+ ADD follow_cycle INT DEFAULT 3,
  ADD create_date DATETIME, ADD createDate DATETIME,
  ADD happen_date DATETIME, ADD happenDate DATETIME,
  ADD smoke INT, ADD smoke_years INT, ADD smokeYears INT,
