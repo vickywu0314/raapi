@@ -1,0 +1,633 @@
+{
+  "metadata": {
+    "purpose": "P04b independent comparison fixture/oracle input; synthetic, not medical or statistical release approval",
+    "asOf": "2026-10-07",
+    "sourceVisitDate": "2026-10-07",
+    "overlapRule": "patientId intersection before per-metric missing-value filtering; when excluded, remove the whole intersection from both sides then recompute",
+    "groupDefinitions": {
+      "A": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "B": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "intersection": [
+        7,
+        8
+      ],
+      "A_after_excluding_intersection": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "B_after_excluding_intersection": [
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ]
+    },
+    "sourceConstructionHints": {
+      "age": "At asOf, birthDate is exactly asOf minus the stated whole age in years (same month/day); expected ages id1..id14 = 20..33.",
+      "diseaseDurationYears": "At asOf, confirmDate is exactly asOf minus the stated whole duration in years (same month/day), matching ClinicalPolicy.duration.",
+      "clinicalValues": "das28, CRP, HAQ are separate values on the same evaluation visit date; missing HAQ is an absent value on patient 8, never filled from another visit.",
+      "treatmentLine": "Desired derived line facts only. The worker constructing a product fixture should reuse the existing TreatmentHttpFixture/DevelopmentDrugDictionary rather than inventing a new treatment adapter.",
+      "sex": "Synthetic derived F/M facts; current mapping is patient_basic_info.gender=2/1 respectively.",
+      "serologyAndQc": "Synthetic derived serology and QC facts are for aggregation checks only; quality status uses only the existing COMPLETE/MISSING contract for the full U (no UNKNOWN QC state). This does not prescribe a new source mapping or QC rule."
+    }
+  },
+  "mainPatients": [
+    {
+      "id": 1,
+      "age": 20,
+      "birthDate": "2006-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 1,
+      "confirmDate": "2025-10-07",
+      "das28": "1.0",
+      "activity": "remission",
+      "target": true,
+      "crp": "0.4",
+      "haq": "0.1",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 1
+    },
+    {
+      "id": 2,
+      "age": 21,
+      "birthDate": "2005-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 2,
+      "confirmDate": "2024-10-07",
+      "das28": "2.0",
+      "activity": "remission",
+      "target": true,
+      "crp": "0.8",
+      "haq": "0.2",
+      "haqObservedAt": "2026-10-07",
+      "serology": "FALSE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 1
+    },
+    {
+      "id": 3,
+      "age": 22,
+      "birthDate": "2004-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 3,
+      "confirmDate": "2023-10-07",
+      "das28": "2.3",
+      "activity": "low",
+      "target": true,
+      "crp": "1.2",
+      "haq": "0.3",
+      "haqObservedAt": "2026-10-07",
+      "serology": "UNKNOWN",
+      "qcStatus": "MISSING",
+      "treatmentLine": 2
+    },
+    {
+      "id": 4,
+      "age": 23,
+      "birthDate": "2003-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 4,
+      "confirmDate": "2022-10-07",
+      "das28": "2.7",
+      "activity": "low",
+      "target": true,
+      "crp": "1.6",
+      "haq": "0.3",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 2
+    },
+    {
+      "id": 5,
+      "age": 24,
+      "birthDate": "2002-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 5,
+      "confirmDate": "2021-10-07",
+      "das28": "3.0",
+      "activity": "moderate",
+      "target": false,
+      "crp": "2.0",
+      "haq": "0.4",
+      "haqObservedAt": "2026-10-07",
+      "serology": "FALSE",
+      "qcStatus": "MISSING",
+      "treatmentLine": 3
+    },
+    {
+      "id": 6,
+      "age": 25,
+      "birthDate": "2001-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 6,
+      "confirmDate": "2020-10-07",
+      "das28": "4.0",
+      "activity": "moderate",
+      "target": false,
+      "crp": "2.4",
+      "haq": "0.5",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "MISSING",
+      "treatmentLine": 3
+    },
+    {
+      "id": 7,
+      "age": 26,
+      "birthDate": "2000-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 7,
+      "confirmDate": "2019-10-07",
+      "das28": "4.1",
+      "activity": "moderate",
+      "target": false,
+      "crp": "2.8",
+      "haq": "0.6",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": null
+    },
+    {
+      "id": 8,
+      "age": 27,
+      "birthDate": "1999-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 8,
+      "confirmDate": "2018-10-07",
+      "das28": "4.5",
+      "activity": "high",
+      "target": false,
+      "crp": "3.2",
+      "haq": null,
+      "haqObservedAt": "2026-10-07",
+      "serology": "UNKNOWN",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 2
+    },
+    {
+      "id": 9,
+      "age": 28,
+      "birthDate": "1998-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 9,
+      "confirmDate": "2017-10-07",
+      "das28": "4.6",
+      "activity": "high",
+      "target": false,
+      "crp": "3.6",
+      "haq": "0.8",
+      "haqObservedAt": "2026-10-07",
+      "serology": "FALSE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 1
+    },
+    {
+      "id": 10,
+      "age": 29,
+      "birthDate": "1997-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 10,
+      "confirmDate": "2016-10-07",
+      "das28": "4.7",
+      "activity": "high",
+      "target": false,
+      "crp": "4.0",
+      "haq": "0.9",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "MISSING",
+      "treatmentLine": 2
+    },
+    {
+      "id": 11,
+      "age": 30,
+      "birthDate": "1996-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 11,
+      "confirmDate": "2015-10-07",
+      "das28": "5.0",
+      "activity": "high",
+      "target": false,
+      "crp": "4.4",
+      "haq": "1.0",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 2
+    },
+    {
+      "id": 12,
+      "age": 31,
+      "birthDate": "1995-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 12,
+      "confirmDate": "2014-10-07",
+      "das28": "5.1",
+      "activity": "high",
+      "target": false,
+      "crp": "4.8",
+      "haq": "1.1",
+      "haqObservedAt": "2026-10-07",
+      "serology": "TRUE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 3
+    },
+    {
+      "id": 13,
+      "age": 32,
+      "birthDate": "1994-10-07",
+      "sex": "F",
+      "diseaseDurationYears": 13,
+      "confirmDate": "2013-10-07",
+      "das28": "6.0",
+      "activity": "high",
+      "target": false,
+      "crp": "5.2",
+      "haq": "1.2",
+      "haqObservedAt": "2026-10-07",
+      "serology": "FALSE",
+      "qcStatus": "MISSING",
+      "treatmentLine": 3
+    },
+    {
+      "id": 14,
+      "age": 33,
+      "birthDate": "1993-10-07",
+      "sex": "M",
+      "diseaseDurationYears": 14,
+      "confirmDate": "2012-10-07",
+      "das28": "6.1",
+      "activity": "high",
+      "target": false,
+      "crp": "5.6",
+      "haq": "1.3",
+      "haqObservedAt": "2026-10-07",
+      "serology": "FALSE",
+      "qcStatus": "COMPLETE",
+      "treatmentLine": 3
+    }
+  ],
+  "quantileProbes": {
+    "empty": [],
+    "one": [
+      "4.25"
+    ],
+    "two": [
+      "1",
+      "5"
+    ],
+    "six": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+    ],
+    "ties": [
+      "1",
+      "1",
+      "2",
+      "2",
+      "2",
+      "8"
+    ],
+    "closeBigDecimal": [
+      "0.100000000000000001",
+      "0.100000000000000003",
+      "0.100000000000000005",
+      "0.100000000000000007",
+      "0.100000000000000009",
+      "0.100000000000000011"
+    ]
+  },
+  "comparisonCases": {
+    "mainBeforeExclusion": {
+      "A": "mainPatients ids 1..8",
+      "B": "mainPatients ids 7..14",
+      "overlap": 2,
+      "id8HaqMissingStillOverlaps": true
+    },
+    "mainAfterExclusion": {
+      "A": "ids 1..6",
+      "B": "ids 9..14",
+      "activityCounts": {
+        "A": [
+          2,
+          2,
+          2,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0,
+          6
+        ]
+      },
+      "lineCounts": {
+        "A": [
+          2,
+          2,
+          2
+        ],
+        "B": [
+          1,
+          2,
+          3
+        ]
+      },
+      "targetCounts": {
+        "A": [
+          4,
+          2
+        ],
+        "B": [
+          0,
+          6
+        ]
+      }
+    }
+  },
+  "denominatorExamples": {
+    "femaleCohortVsKnown": {
+      "A": {
+        "cohortN": 7,
+        "knownN": 6,
+        "female": 1,
+        "male": 5,
+        "unknown": 1
+      },
+      "B": {
+        "cohortN": 8,
+        "knownN": 6,
+        "female": 5,
+        "male": 1,
+        "unknown": 2
+      },
+      "displayDenominator": "C.n; unknown stays in denominator",
+      "testDenominator": "KNOWN_CATEGORY"
+    },
+    "serologyCohortVsKnown": {
+      "A": {
+        "cohortN": 6,
+        "knownN": 5,
+        "positive": 3,
+        "negative": 2,
+        "unknown": 1
+      },
+      "B": {
+        "cohortN": 6,
+        "knownN": 6,
+        "positive": 3,
+        "negative": 3,
+        "unknown": 0
+      },
+      "displayDenominator": "C.n; unknown stays in denominator",
+      "testDenominator": "KNOWN_CATEGORY"
+    },
+    "activityUsesEvalN": {
+      "A": {
+        "cohortN": 7,
+        "evalN": 6,
+        "counts": [
+          2,
+          2,
+          2,
+          0
+        ],
+        "unknownActivity": 1
+      },
+      "B": {
+        "cohortN": 8,
+        "evalN": 6,
+        "counts": [
+          0,
+          0,
+          0,
+          6
+        ],
+        "unknownActivity": 2
+      },
+      "displayDenominator": "evalN",
+      "testDenominator": "EVALUABLE_ACTIVITY"
+    },
+    "lineUsesCohortN": {
+      "A": {
+        "cohortN": 7,
+        "counts": [
+          2,
+          2,
+          2
+        ],
+        "unknownLine": 1
+      },
+      "B": {
+        "cohortN": 8,
+        "counts": [
+          1,
+          2,
+          3
+        ],
+        "unknownLine": 2
+      },
+      "displayDenominator": "C.n",
+      "testDenominator": "KNOWN_LINE"
+    }
+  },
+  "boundaryCases": {
+    "validN": [
+      {
+        "id": "n0_vs_6",
+        "A": [],
+        "B": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ]
+      },
+      {
+        "id": "n4_vs_6",
+        "A": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "B": [
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      {
+        "id": "n5_vs_5",
+        "A": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "B": [
+          "6",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      {
+        "id": "n5_vs_6",
+        "A": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "B": [
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11"
+        ]
+      }
+    ],
+    "allOneActivityCategory": {
+      "tableByGroup": [
+        [
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          6,
+          0,
+          0,
+          0
+        ]
+      ],
+      "description": "effective n=6 per group, only one nonzero category"
+    },
+    "overlapPrecedesInsufficientSample": {
+      "AIds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "BIds": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "intersection": [
+        7
+      ],
+      "metricKnownN": {
+        "A": 4,
+        "B": 5
+      },
+      "expectedStatus": "OVERLAP"
+    },
+    "expectedExactlyFive": {
+      "tableByGroup": [
+        [
+          5,
+          5
+        ],
+        [
+          5,
+          5
+        ]
+      ],
+      "expectedEveryCell": 5,
+      "expectedMethod": "CHI_SQUARE",
+      "correction": false
+    }
+  },
+  "tieAsymptoticControl": {
+    "A": [
+      "1",
+      "2",
+      "2",
+      "4",
+      "5"
+    ],
+    "B": [
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+    ],
+    "note": "Ties require asymptotic with continuity correction; .30 and .300 are numerically equal for BigDecimal.compareTo too."
+  },
+  "precisionOrderControl": {
+    "A": [
+      "0.300000000000000001",
+      "0.300000000000000003",
+      "0.300000000000000005",
+      "0.300000000000000007",
+      "0.300000000000000009"
+    ],
+    "B": [
+      "0.300000000000000011",
+      "0.300000000000000013",
+      "0.300000000000000015",
+      "0.300000000000000017",
+      "0.300000000000000019"
+    ],
+    "sameValueDifferentScale": [
+      "0.30",
+      "0.300"
+    ],
+    "note": "Rank after exact numeric ordering, then pass monotone rank codes to SciPy; do not float-convert raw decimal before tie detection."
+  }
+}
