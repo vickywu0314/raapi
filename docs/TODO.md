@@ -52,6 +52,8 @@
   - `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果表
   - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
   - `src/main/resources/sql/20261007_ai_analysis_run.sql`：独立有期分析结果表，无旧患者外键；仅开发合成库已验证，生产执行由DBA另行接收（AQC-EXT-04仍OPEN）
+- [ ] **接收比较专表与共享保留配置**：`src/main/resources/sql/20261008_ai_compare_run.sql`新增独立`ra_ai_compare_run`，不改单队列v1/旧表或建旧外键。共享TTL/cap/key门槛、每创建稳定限清1000过期比较行、cleanup+INSERT同短事务、owner/expiry/当前完整U复验仅在隔离合成MySQL8.4.11验证。DBA/运维接收目标版本、InnoDB/短RR、保留策略和生产DDL；无后台清理，已清缺行404，commit后传输失败可留TTL孤立行。AQC-EXT-04仍OPEN；来源日期摘要未代替P06导出字段/窗口与AQC-REL-02接收
+- [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
 - [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
 - [x] 新建患者的研究类型：`ra.patient.research-type=0`（2026-10-11 确认，已配置）

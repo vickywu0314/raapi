@@ -721,7 +721,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ### 7.1 当前医生 RA 队列
 
-页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、五卡四图/FM描述、人数和首10的姓名/研究编号及临床/评估/治疗来源。`completion=P03_RESULT` 表示描述/推断与单次数值保留、签名分页已接入；授权相似条件入口见§7.3，仍须由客户端显式调用本接口完成分析。私有定义保存、比较、AI与导出由后续切片交付。
+页面：当前交付 RA/now/6m/活动度/内部 id 及 sex/age/sero/cm 临床筛选及 tx 治疗/data完整性筛选、五卡四图/FM描述、人数和首10的姓名/研究编号及临床/评估/治疗来源。`completion=P03_RESULT` 表示描述/推断与单次数值保留、签名分页已接入；授权相似条件入口见§7.3，仍须由客户端显式调用本接口完成分析。私有定义保存/元数据生命周期与动态重开见§7.4，同源完整比较与有期重读见§7.5；AI与导出由后续切片交付。
 
 | 项 | 值 |
 |---|---|
@@ -930,7 +930,78 @@ Controller先要求可信Principal，再固定入口Clock.instant，随后读bod
 
 canApply=true时客户端将filters原样包装成`{"filters":...}`调用7.1标准cohort；可显式追加/调整其普通条件，本入口不接收隐式合并。索引本人默认不排除，按自然条件匹配。候选只是当次授权事实产生的条件，不是权限凭证或analysis结果；两次HTTP各自固定asOf并重新读当前U/事实，后一次cohort不重新推断相似条件，也不保证index继续授权。旧候选不能让已撤权患者进入U。空C仍保留完整零桶/NO_DATA/null和真实analysisId，后页继续7.2当前范围复查、到期和保留数值规则。
 
-本片只提供SIMILAR与现有完整cohort/分页组合，保存/比较及q/AI入口仍属后续能力；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
+本片提供SIMILAR与现有完整cohort/分页组合，私有定义另见§7.4，比较另见§7.5；q/AI入口仍属后续能力；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
+
+### 7.4 私有不可变条件定义与动态重开
+
+五路均为POST JSON：`/api/ra/cohort/save`、`list`、`open`、`rename`、`delete`。可信Principal先于body，资源和回执只按本人医生+RA限定；客户端doctorId/header/principal.name不赋权。匿名401且不读取body。每次响应有新的X-Trace-Id，成功data.meta.traceId相同，重放也生成新trace。统一DataResult：成功HTTP200/success=true/code="200"，失败success=false/data=null，错误不输出SQL或原输入。
+
+请求只接受以下字段，未知/重复键、尾随JSON、非法UTF8/其它编码、不成对surrogate、非对象或错误字段类型在SQL前拒绝。save最多128KiB UTF8，其余最多4096 bytes，最多多读1 byte判超限。cohortId/requestId须标准小写UUID，不接受缩写、null/number或空白；version是1～Long.MAX_VALUE的JSON整数，不接受小数/指数/字符串。发生version溢出返回503。
+
+| 路由 | 请求字段与含义 | 成功data |
+|---|---|---|
+| save | name、filters对象、requestId必需；note可省略或null。filters经§7.1同一个CohortQuery验证，不接收analysisId、问句、source或计算成员 | cohortId、version=1、meta |
+| list | 仅page/size；默认1/20，page正整数且offset不溢出，size=1～100 | items、total、page、size、meta |
+| open | 仅cohortId必需 | cohort、analysis、meta |
+| rename | cohortId/version/requestId必需，name/note至少实际出现一项；省略保留，note:null清空，name:null拒绝；不能传filters | cohortId、变更后version、meta |
+| delete | 仅cohortId/version/requestId，均必需 | cohortId、删除后version、meta |
+
+name采用Java8 String.trim，仅首尾U+0000～U+0020被移除；结果1～30 Unicode码点，大小写及Unicode组合形式保持原样，NBSP不额外trim。note不trim，最多200码点，空串与null均保留含义。相同owner/RA活动名称由数据库UTF8字节唯一键兜底，其他owner可以同名。首次删除先CAS再逻辑删并version+1，释放活动名称；本人已删定义的新合法delete命令返回既有删除version，不受旧version限制、不复活或再+1。open/rename对已删或其他owner定义统一404。
+
+list item/open.cohort恰含cohortId、name、note、完整规范filters、version、createdAt、updatedAt、currentN:null。两个时间由Clock epoch毫秒转UTC Instant。列表只返回本人未删定义，以createdAt倒序/id二进制升序，count与items在一个独立短REPEATABLE_READ只读视图中；超页正常空items，不查询临床表、不运行分析或填写人数。filters长期不可变，只保存显式筛选条件及用户输入ids；null ids不限，[]为空C，不把某次U交集、患者成员、人数、分析ID、姓名、身份证或病例JSON落入定义/回执。
+
+open先完成本人有效定义的短读/codec验证并释放，再直接调用原§7.1完整analyze。每次重新读当前完整U/临床源，产生新的analysisId，保留原五卡四图/FM/统计/排序以及§7.2签名后页。显式ids每次重新交当前U；新访视、物理删除及撤关系影响下一open，原analysis数值仍是原创建快照。响应cohort固定本次读取的元数据，定义读取后并发rename/delete不追溯撤销已开始的分析；不承诺跨两个短读与网络的长事务。缺签名key时save/list/rename/delete仍可用，有效open沿原配置503且临床SQL前拒绝；不存在资源仍404，非法持久定义仍503。
+
+SAVE/RENAME/DELETE的成功回执以owner/action/requestId唯一，业务结果只含cohortId/version，与定义变动在同一独立短写事务提交。首次trace保留在回执，本次响应trace独立。先验证body，再查回执，再看资源/活动/CAS/名称。同规范参数重放原结果，异参409/IDEMPOTENCY_CONFLICT；JSON属性顺序/空白、save ids顺序/重复及默认at等价，但rename省略与note:null不同。后续rename/delete不影响原save或原rename的重放。两独立实例竞争由数据库兜底；NAME/CAS或request键冲突后先结束原事务，再新短读已提交胜者回执，同参优先重放、异参优先幂等冲突，没有回执才返回实际名称/版本冲突。没有缓存或无限重试。
+
+| code | HTTP | 含义 |
+|---|---|---|
+| UNAUTHENTICATED | 401 | 可信身份缺失，body/SQL未读 |
+| INVALID_REQUEST | 400 | 根形状、元数据、UUID、page/version或严格解析失败 |
+| INVALID_FILTER | 400 | 合法save根中的既有filters验证失败 |
+| LIMIT_EXCEEDED | 413 | 原body或既有ids数组超过限额 |
+| RESOURCE_NOT_FOUND | 404 | 不存在、他人或open/rename已删定义 |
+| IDEMPOTENCY_CONFLICT / VERSION_CONFLICT / NAME_CONFLICT | 409 | 请求键异参 / 活动版本不符 / 活动同名 |
+| SERVICE_UNAVAILABLE | 503 | SQL、持久定义/回执codec/非法值或程序失败；不回全U/空列表/旧分析 |
+
+例：save `{"name":"Trial","note":null,"filters":{"act":"target","ids":["7","1"]},"requestId":"00000000-0000-0000-0000-000000000001"}`；返回data `{"cohortId":"00000000-0000-0000-0000-000000000100","version":1,"meta":{"traceId":"本次响应X-Trace-Id"}}`。list `{}`列出元信息；open `{"cohortId":"00000000-0000-0000-0000-000000000100"}`动态分析。rename `{"cohortId":"00000000-0000-0000-0000-000000000100","version":1,"requestId":"00000000-0000-0000-0000-000000000002","note":null}`清空说明并返回v2；delete使用同cohortId/version=2及新的requestId返回v3。
+
+新DDL见[私有定义及命令表](../src/main/resources/sql/20261008_private_cohort_definition.sql)，两个新InnoDB表，无旧表写入/外键。活动名称用utf8mb4 VARCHAR(30)及二进制stored生成列唯一索引，filters用规范完整UTF8 BLOB/SHA256/v1，坏hash、缺键/额外键、重复/尾随、非规范bytes或未知版本均503。定义与成功回执长期保留，没有TTL清理或恢复已删资源。本片开发验收限于Java8/真实HTTP/MyBatis/loopback合成MySQL8.4；生产目标版本、DDL/隔离和长期留存归AQC-EXT-04，真实身份/医学统计及其余外部义务未关闭。同源比较及有期重读见§7.5，不授予共享、AI、文件或邮件权限。
+
+### 7.5 同源两队列完整比较与有期重读
+
+`POST /api/ra/ai/compare` 的根对象恰接收必需的 `a`、`b` 和可省略的 `excludeOverlap`（默认false，显式值只能boolean）。每侧恰为 `{"source":"FILTERS","filters":{...}}` 或 `{"source":"SAVED","cohortId":"标准小写UUID"}`。合法FILTERS/SAVED两侧可以组合；同一侧混带两种来源拒绝。FILTERS空对象合法，完全复用§7.1的条件、默认now、ids:null不限与ids:[]空集。SAVED只读取本人未删定义并严格解码固定条件，投影本次cohortId和元数据version；不调用open的分析入口，不带name/note、旧analysisId、计算成员、snapshot、SIMILAR或q/AI。
+
+可信身份先body；匿名401且body/SQL未读。compare原UTF8 body最多256KiB、最多读取上限+1；严格UTF8、重复键、尾随JSON、根/侧/类型和额外键校验。每侧保留原filters节点，包装为 `{"filters":...}` 后交同一CohortQuery，执行包装后128KiB以及去重前5000个ids的原限额。新协议不单独限制filters原文空白片段，也不按charset标头拒绝实际合法UTF8。两个侧的全部语法和条件先校验，再按A/B顺序读SAVED，之后判断规范at相同。FILTERS/FILTERS异at零DB；含SAVED异at最多定义短读，临床源零查询。非法输入400/INVALID_REQUEST，原字节或数组超限413/LIMIT_EXCEEDED；不会从坏定义回落全U。
+
+比较固定一个started、同次上海asOf、一个字典snapshot、一次本人RA完整源U和一次派生。定义短读退出后才读取源；源五SELECT仍共用短REPEATABLE_READ视图，释放连接后才纯计算。`CohortComputation.derive/select` 由原analyze与新compare真实共用，沿原QC/临床/治疗/at/活动筛选及6m资格；原首屏、统计、DTO、分页和单队列v1不变。两个C先按患者id求交集，再逐指标缺失处理；排重时双方都减去完整交集，人数、聚合和日期覆盖重新计算。不调用两次analyze拼结果，也不创建单队列run。
+
+成功data恰含 `compareResultId,studyTotal,a,b,overlapN,excludeOverlap,rows,meta`。studyTotal为完整U，overlapN为排除前交集人数，不返回交集id。每侧恰含 `source,filters,cohortId,cohortVersion,nBeforeExclusion,n,evalN,submittedUniqueIdsN,effectiveIdsN`；FILTERS id/version为null，SAVED为本次固定值；filters为完整规范条件。submitted/effective仍是显式ids去重数与先交U的数量，不因其它条件或排重改义。
+
+rows按 `n,age,duration,das28At,crpAt,haqAt,female,sero,target,complete,activity,line` 固定12行；每行恰 `metric,kind,a,b,difference,test`。
+
+- COUNT：每侧 `{n}`，difference/test均null，人数不检验。
+- CONTINUOUS：每侧 `{validN,unknownN,q1,median,q3,iqr,status}`。年龄/病程沿原整年事实，DAS取所选at，CRP/HAQ只取同一evaluation访视，不补当前或其它访视。Type7以BigDecimal排序和精确线性插值，h=(n−1)p，p=.25/.5/.75；IQR=Q3−Q1，不先显示舍入。n=1四分位同值/IQR0；valid0四数null/NO_DATA，其余OK。difference=medianA−medianB，任侧空则null。
+- BINARY：每侧 `{numerator,denominator,knownN,unknownN,value,status}`。女性F、sero TRUE、QC COMPLETE的显示分母是C.n；DAS≤2.7达标的显示分母是evalN。sex/sero UNKNOWN留在显示分母但不当检验阴性；当前真实QC只COMPLETE/MISSING，knownN=C.n，不制造第三态。target knownN=evalN、unknownN=C.n−evalN。比例沿原16位HALF_UP，分母0为0/NO_DATA；difference用原有理数计算100×(A−B)百分点，任侧分母0则null，不减两个已舍入比例。
+- DISTRIBUTION：每侧 `{denominator,knownN,unknownN,status,groups}`，groups恰为 `{category,count,value}`。activity固定remission/low/moderate/high，分母evalN；line固定字符串1/2/3，显示分母C.n、knownN为三桶之和，未知另列不成为第四线。difference=null，每行只有整体test。
+
+非COUNT的test核心沿§7.1 StatisticalPolicy：`method,status,pValue,displayP,significant,nA,nB,reason,warnings,policyVersion,testDenominator`；列联再含expectedBelow5Cells/expectedCellCount，非OK为null。连续检验分母NON_MISSING_METRIC；female/sero/complete为KNOWN_CATEGORY；target为EVALUABLE_TARGET；activity为EVALUABLE_ACTIVITY；line为KNOWN_LINE。nA/nB始终为该指标实际有效检验人数。
+
+优先级为：未排重且有交集→OVERLAP/COHORTS_OVERLAP；否则任侧有效n<5→INSUFFICIENT_SAMPLE/VALID_N_LT_5；之后才真正调用既有双侧MW或列联检验。连续保留精确十进制秩/ties、EXACT/ASYMPTOTIC和continuity；binary输入每组[yes,no]，activity/line输入固定类别计数并沿原零边际裁剪、Fisher/Pearson及稀疏警告。全同值/单非零类别为既有DEGENERATE。raw P有限[0,1]、raw<.05显著；显示<0.001或三位HALF_UP，非OK方法/P/显著性为null且displayP=—。交换A/B描述交换、差反号、双侧P不变。
+
+meta恰为 `at,asOfDate,readStartedAt,readCompletedAt,computedAt,expiresAt,traceId,policyVersions,sourceDateCoverage,completion,statisticalDisclosure`。completion=P04_COMPARE；原十项政策加comparison=dev-compare-v01，statistics仍dev-stats-v04；保留原探索性/非因果披露。started固定asOf，readCompleted/computed为真实完成时点，computed的epoch毫秒为created，expires为checkedAdd(created,共享TTL)。
+
+sourceDateCoverage恰含a/b，各有除n外11指标；每项 `{validN,datedN,undatedN,missingN,minDate,maxDate,status}`，dated+undated=valid、missing=C.n−valid。有效0为NO_DATA，全有日期KNOWN，部分有日期PARTIAL，有效但均无可靠来源日UNKNOWN；dated0时min/max为null。DAS/target/activity用所选ScoreVisit日期，CRP/HAQ用同evaluation合法值已有observedAt；年龄/性别/病程、sero/line/QC保守undated，不用asOf、生日、确诊日或药史猜来源窗口。真实6m沿原最近访视规则，coverage反映选中访视，不能误传now或以asOf冒充来源日。P04只保存证据摘要，P06才判断xlsx字段与时间窗口。
+
+新 [比较专表DDL](../src/main/resources/sql/20261008_ai_compare_run.sql) 建 `ra_ai_compare_run`，InnoDB、无旧表外键，含id、owner、完整U指纹、v1 MEDIUMBLOB/SHA256、created/expires毫秒与(expiry,id)索引。新codec独立allowlist双端校验完整键集、12行/枚举/规范条件/UUID/日期、计数分母与coverage、四分位/IQR/差值/比例/P状态及行时间；有效hash的语义坏载荷仍503。payload不保存compareResultId、姓名/研究编号/身份证/生日/原JSON/问句/name/note或患者明细；只有显式filters.ids可保留。
+
+创建复用§7.2部署门槛（含签名key校验）、TTL与容量，没有新key。缺/错配置在临床源前503。最终UTF8 bytes超cap为413/RESULT_TOO_LARGE且零cleanup/INSERT；容量合格后，新结果owner在一个REQUIRES_NEW短写事务内仅清本新表expires≤created、按expiry/id最多1000行，再INSERT。提交成功才发布ID，任一SQL或post-INSERT/precommit故障回滚新行和本轮cleanup。定义/源事务此时均退出；不清单队列表，无后台缓存/清理。commit后的网络失败可能留下完整TTL孤立行；没有幂等key，合法重发可生成新run。
+
+`POST /api/ra/ai/compareResult` 根仅 `{"compareResultId":"标准小写UUID"}`，最多4096原UTF8 bytes，同样严格解析。身份通过后、读body前固定requestedAt。顺序：身份→输入400/413→新表短find→缺行/非owner404→requestedAt≥expiry为410/COMPARE_EXPIRED→codec坏载荷503→独立短只读RR查询本人RA完整id并复验U指纹→变化409/SCOPE_CHANGED→固定完整表。当前U增、物理删、撤权均失效，包含不在A/B的患者；不读取display/姓名、临床/字典或SAVED定义，不重算旧值。普通访视/姓名/定义元数据更新不改旧表，真实fresh应用context可重读。清理后缺行404；没有signed expiry，不凭ID声称识别已清行的过期史。
+
+read除meta.traceId为本次并追加comparisonTraceId为创建trace外，a/b/rows/交集/原时间政策和保留值一致。两接口均DataResult及新的X-Trace-Id；SQL/库/程序/损坏503/SERVICE_UNAVAILABLE、data=null，底层信息不外泄。定义失效404/RESOURCE_NOT_FOUND，范围变化409；不回旧值或部分结果。所有短事务/连接在成功或失败公开响应前退出；不承诺定义/源/当前U/网络跨多个owner的强原子性。
+
+本片仅Java8、真实HTTP/MyBatis与隔离合成MySQL开发验证；八项真实身份/源/字典/目标DB/医学统计/发布义务未关闭，没有CI、生产DDL/部署、AI/SMTP或文件发送。[P04开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p04-gate)已接收私有定义与比较的组合及证明边界；普通xlsx仍由P06验收。
 
 ## 新增接口时的维护约定
 

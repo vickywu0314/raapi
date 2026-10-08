@@ -1,0 +1,1746 @@
+{
+  "metadata": {
+    "purpose": "P04b independent comparison fixture/oracle input; synthetic, not medical or statistical release approval",
+    "python": "3.12.14",
+    "scipy": "1.17.0",
+    "numpy": "2.3.5",
+    "oracleDoesNotImportProduct": true,
+    "alpha": 0.05,
+    "alternative": "two-sided",
+    "mwContinuityCorrection": true,
+    "exactRule": "no ties and min(nA,nB)<=8 and max(nA,nB)<=50, otherwise asymptotic",
+    "contingencyCorrection": false,
+    "fisherExpectedRule": "2x2 and any expected frequency <5",
+    "quantileRule": "Type7 h=(n-1)p with exact Decimal interpolation",
+    "numericTolerance": {
+      "absolute": 1e-12,
+      "relativeNonzero": 1e-10,
+      "zero": "absolute only"
+    }
+  },
+  "mainComparison": {
+    "beforeExclusion": {
+      "groupN": {
+        "A": 8,
+        "B": 8
+      },
+      "intersectionPatientIds": [
+        7,
+        8
+      ],
+      "intersectionN": 2,
+      "id8HaqMissingStillInIntersection": true,
+      "continuous": {
+        "age": {
+          "A": {
+            "n": 8,
+            "sorted": [
+              "20",
+              "21",
+              "22",
+              "23",
+              "24",
+              "25",
+              "26",
+              "27"
+            ],
+            "q1": "21.75",
+            "median": "23.5",
+            "q3": "25.25",
+            "iqr": "3.5"
+          },
+          "B": {
+            "n": 8,
+            "sorted": [
+              "26",
+              "27",
+              "28",
+              "29",
+              "30",
+              "31",
+              "32",
+              "33"
+            ],
+            "q1": "27.75",
+            "median": "29.5",
+            "q3": "31.25",
+            "iqr": "3.5"
+          },
+          "medianDifferenceAminusB": "-6",
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "diseaseDurationYears": {
+          "A": {
+            "n": 8,
+            "sorted": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8"
+            ],
+            "q1": "2.75",
+            "median": "4.5",
+            "q3": "6.25",
+            "iqr": "3.5"
+          },
+          "B": {
+            "n": 8,
+            "sorted": [
+              "7",
+              "8",
+              "9",
+              "10",
+              "11",
+              "12",
+              "13",
+              "14"
+            ],
+            "q1": "8.75",
+            "median": "10.5",
+            "q3": "12.25",
+            "iqr": "3.5"
+          },
+          "medianDifferenceAminusB": "-6",
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "das28": {
+          "A": {
+            "n": 8,
+            "sorted": [
+              "1",
+              "2",
+              "2.3",
+              "2.7",
+              "3",
+              "4",
+              "4.1",
+              "4.5"
+            ],
+            "q1": "2.225",
+            "median": "2.85",
+            "q3": "4.025",
+            "iqr": "1.8"
+          },
+          "B": {
+            "n": 8,
+            "sorted": [
+              "4.1",
+              "4.5",
+              "4.6",
+              "4.7",
+              "5",
+              "5.1",
+              "6",
+              "6.1"
+            ],
+            "q1": "4.575",
+            "median": "4.85",
+            "q3": "5.325",
+            "iqr": "0.75"
+          },
+          "medianDifferenceAminusB": "-2",
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "crp": {
+          "A": {
+            "n": 8,
+            "sorted": [
+              "0.4",
+              "0.8",
+              "1.2",
+              "1.6",
+              "2",
+              "2.4",
+              "2.8",
+              "3.2"
+            ],
+            "q1": "1.1",
+            "median": "1.8",
+            "q3": "2.5",
+            "iqr": "1.4"
+          },
+          "B": {
+            "n": 8,
+            "sorted": [
+              "2.8",
+              "3.2",
+              "3.6",
+              "4",
+              "4.4",
+              "4.8",
+              "5.2",
+              "5.6"
+            ],
+            "q1": "3.5",
+            "median": "4.2",
+            "q3": "4.9",
+            "iqr": "1.4"
+          },
+          "medianDifferenceAminusB": "-2.4",
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "haq": {
+          "A": {
+            "n": 7,
+            "sorted": [
+              "0.1",
+              "0.2",
+              "0.3",
+              "0.3",
+              "0.4",
+              "0.5",
+              "0.6"
+            ],
+            "q1": "0.25",
+            "median": "0.3",
+            "q3": "0.45",
+            "iqr": "0.2"
+          },
+          "B": {
+            "n": 7,
+            "sorted": [
+              "0.6",
+              "0.8",
+              "0.9",
+              "1",
+              "1.1",
+              "1.2",
+              "1.3"
+            ],
+            "q1": "0.85",
+            "median": "1",
+            "q3": "1.15",
+            "iqr": "0.3"
+          },
+          "medianDifferenceAminusB": "-0.7",
+          "test": {
+            "nA": 7,
+            "nB": 7,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        }
+      },
+      "activityCountsByGroup": {
+        "A": [
+          2,
+          2,
+          3,
+          1
+        ],
+        "B": [
+          0,
+          0,
+          1,
+          7
+        ]
+      },
+      "lineCountsByGroup": {
+        "A": [
+          [
+            2,
+            3,
+            2
+          ],
+          1
+        ],
+        "B": [
+          [
+            1,
+            3,
+            3
+          ],
+          1
+        ]
+      },
+      "testStatusForEveryPRow": "OVERLAP",
+      "binary": {
+        "female": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 2,
+              "denominator": 8,
+              "rate": "0.25",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 6,
+              "denominator": 8,
+              "rate": "0.75",
+              "unknown": 0
+            },
+            "differenceAminusB": "-0.5",
+            "differenceAminusBPercentagePoints": "-50"
+          },
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "KNOWN_CATEGORY",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "serologyPositive": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 4,
+              "denominator": 8,
+              "rate": "0.5",
+              "unknown": 2
+            },
+            "B": {
+              "numerator": 4,
+              "denominator": 8,
+              "rate": "0.5",
+              "unknown": 1
+            },
+            "differenceAminusB": "0",
+            "differenceAminusBPercentagePoints": "0"
+          },
+          "test": {
+            "nA": 6,
+            "nB": 7,
+            "testDenominator": "KNOWN_CATEGORY",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "target": {
+          "display": {
+            "denominator": "evalN",
+            "A": {
+              "numerator": 4,
+              "denominator": 8,
+              "rate": "0.5",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 0,
+              "denominator": 8,
+              "rate": "0",
+              "unknown": 0
+            },
+            "differenceAminusB": "0.5",
+            "differenceAminusBPercentagePoints": "50"
+          },
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "EVALUABLE_DAS28",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        },
+        "complete": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 5,
+              "denominator": 8,
+              "rate": "0.625",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 6,
+              "denominator": 8,
+              "rate": "0.75",
+              "unknown": 0
+            },
+            "differenceAminusB": "-0.125",
+            "differenceAminusBPercentagePoints": "-12.5"
+          },
+          "test": {
+            "nA": 8,
+            "nB": 8,
+            "testDenominator": "KNOWN_CATEGORY",
+            "method": null,
+            "status": "OVERLAP",
+            "reason": "OVERLAP",
+            "pValue": null,
+            "displayP": "—",
+            "significantRawAtAlpha005": null,
+            "warnings": []
+          }
+        }
+      },
+      "activityDistribution": {
+        "categories": [
+          "remission",
+          "low",
+          "moderate",
+          "high"
+        ],
+        "denominator": "evalN",
+        "A": {
+          "counts": [
+            2,
+            2,
+            3,
+            1
+          ],
+          "evalN": 8
+        },
+        "B": {
+          "counts": [
+            0,
+            0,
+            1,
+            7
+          ],
+          "evalN": 8
+        },
+        "test": {
+          "nA": 8,
+          "nB": 8,
+          "testDenominator": "EVALUABLE_ACTIVITY",
+          "method": null,
+          "status": "OVERLAP",
+          "reason": "OVERLAP",
+          "pValue": null,
+          "displayP": "—",
+          "significantRawAtAlpha005": null,
+          "warnings": []
+        }
+      },
+      "lineDistribution": {
+        "categories": [
+          1,
+          2,
+          3
+        ],
+        "denominator": "C.n",
+        "A": {
+          "counts": [
+            2,
+            3,
+            2
+          ],
+          "cohortN": 8,
+          "unknownLine": 1
+        },
+        "B": {
+          "counts": [
+            1,
+            3,
+            3
+          ],
+          "cohortN": 8,
+          "unknownLine": 1
+        },
+        "test": {
+          "nA": 7,
+          "nB": 7,
+          "testDenominator": "KNOWN_LINE",
+          "method": null,
+          "status": "OVERLAP",
+          "reason": "OVERLAP",
+          "pValue": null,
+          "displayP": "—",
+          "significantRawAtAlpha005": null,
+          "warnings": []
+        }
+      }
+    },
+    "afterExcludingIntersection": {
+      "includedPatientIds": {
+        "A": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "B": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ]
+      },
+      "groupN": {
+        "A": 6,
+        "B": 6
+      },
+      "continuous": {
+        "age": {
+          "A": {
+            "n": 6,
+            "sorted": [
+              "20",
+              "21",
+              "22",
+              "23",
+              "24",
+              "25"
+            ],
+            "q1": "21.25",
+            "median": "22.5",
+            "q3": "23.75",
+            "iqr": "2.5"
+          },
+          "B": {
+            "n": 6,
+            "sorted": [
+              "28",
+              "29",
+              "30",
+              "31",
+              "32",
+              "33"
+            ],
+            "q1": "29.25",
+            "median": "30.5",
+            "q3": "31.75",
+            "iqr": "2.5"
+          },
+          "medianDifferenceAminusB": "-8",
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "warnings": [],
+            "method": "MANN_WHITNEY_EXACT",
+            "status": "OK",
+            "reason": null,
+            "U_A": 0.0,
+            "pValue": 0.0021645021645021645,
+            "displayP": "0.002",
+            "significantRawAtAlpha005": true
+          }
+        },
+        "diseaseDurationYears": {
+          "A": {
+            "n": 6,
+            "sorted": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6"
+            ],
+            "q1": "2.25",
+            "median": "3.5",
+            "q3": "4.75",
+            "iqr": "2.5"
+          },
+          "B": {
+            "n": 6,
+            "sorted": [
+              "9",
+              "10",
+              "11",
+              "12",
+              "13",
+              "14"
+            ],
+            "q1": "10.25",
+            "median": "11.5",
+            "q3": "12.75",
+            "iqr": "2.5"
+          },
+          "medianDifferenceAminusB": "-8",
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "warnings": [],
+            "method": "MANN_WHITNEY_EXACT",
+            "status": "OK",
+            "reason": null,
+            "U_A": 0.0,
+            "pValue": 0.0021645021645021645,
+            "displayP": "0.002",
+            "significantRawAtAlpha005": true
+          }
+        },
+        "das28": {
+          "A": {
+            "n": 6,
+            "sorted": [
+              "1",
+              "2",
+              "2.3",
+              "2.7",
+              "3",
+              "4"
+            ],
+            "q1": "2.075",
+            "median": "2.5",
+            "q3": "2.925",
+            "iqr": "0.85"
+          },
+          "B": {
+            "n": 6,
+            "sorted": [
+              "4.6",
+              "4.7",
+              "5",
+              "5.1",
+              "6",
+              "6.1"
+            ],
+            "q1": "4.775",
+            "median": "5.05",
+            "q3": "5.775",
+            "iqr": "1"
+          },
+          "medianDifferenceAminusB": "-2.55",
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "warnings": [],
+            "method": "MANN_WHITNEY_EXACT",
+            "status": "OK",
+            "reason": null,
+            "U_A": 0.0,
+            "pValue": 0.0021645021645021645,
+            "displayP": "0.002",
+            "significantRawAtAlpha005": true
+          }
+        },
+        "crp": {
+          "A": {
+            "n": 6,
+            "sorted": [
+              "0.4",
+              "0.8",
+              "1.2",
+              "1.6",
+              "2",
+              "2.4"
+            ],
+            "q1": "0.9",
+            "median": "1.4",
+            "q3": "1.9",
+            "iqr": "1"
+          },
+          "B": {
+            "n": 6,
+            "sorted": [
+              "3.6",
+              "4",
+              "4.4",
+              "4.8",
+              "5.2",
+              "5.6"
+            ],
+            "q1": "4.1",
+            "median": "4.6",
+            "q3": "5.1",
+            "iqr": "1"
+          },
+          "medianDifferenceAminusB": "-3.2",
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "warnings": [],
+            "method": "MANN_WHITNEY_EXACT",
+            "status": "OK",
+            "reason": null,
+            "U_A": 0.0,
+            "pValue": 0.0021645021645021645,
+            "displayP": "0.002",
+            "significantRawAtAlpha005": true
+          }
+        },
+        "haq": {
+          "A": {
+            "n": 6,
+            "sorted": [
+              "0.1",
+              "0.2",
+              "0.3",
+              "0.3",
+              "0.4",
+              "0.5"
+            ],
+            "q1": "0.225",
+            "median": "0.3",
+            "q3": "0.375",
+            "iqr": "0.15"
+          },
+          "B": {
+            "n": 6,
+            "sorted": [
+              "0.8",
+              "0.9",
+              "1",
+              "1.1",
+              "1.2",
+              "1.3"
+            ],
+            "q1": "0.925",
+            "median": "1.05",
+            "q3": "1.175",
+            "iqr": "0.25"
+          },
+          "medianDifferenceAminusB": "-0.75",
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "NON_MISSING_EVALUATION_METRIC",
+            "warnings": [
+              "SMALL_SAMPLE_TIES"
+            ],
+            "method": "MANN_WHITNEY_ASYMPTOTIC",
+            "status": "OK",
+            "reason": null,
+            "U_A": 0.0,
+            "pValue": 0.004998124765082457,
+            "displayP": "0.005",
+            "significantRawAtAlpha005": true
+          }
+        }
+      },
+      "binary": {
+        "female": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 1,
+              "denominator": 6,
+              "rate": "0.16666666666666666666666666666666666666666666666666666666666666666666666666666667",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 5,
+              "denominator": 6,
+              "rate": "0.83333333333333333333333333333333333333333333333333333333333333333333333333333333",
+              "unknown": 0
+            },
+            "differenceAminusB": "-0.66666666666666666666666666666666666666666666666666666666666666666666666666666666",
+            "differenceAminusBPercentagePoints": "-66.666666666666666666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "KNOWN_CATEGORY",
+            "inputTableByGroup": [
+              [
+                1,
+                5
+              ],
+              [
+                5,
+                1
+              ]
+            ],
+            "prunedTableByGroup": [
+              [
+                1,
+                5
+              ],
+              [
+                5,
+                1
+              ]
+            ],
+            "warnings": [],
+            "expectedBelow5Cells": 4,
+            "expectedCellCount": 4,
+            "method": "FISHER_EXACT",
+            "status": "OK",
+            "reason": null,
+            "expectedFrequencies": [
+              [
+                3.0,
+                3.0
+              ],
+              [
+                3.0,
+                3.0
+              ]
+            ],
+            "pValue": 0.08008658008658008,
+            "displayP": "0.080",
+            "significantRawAtAlpha005": false
+          }
+        },
+        "target": {
+          "display": {
+            "denominator": "evalN",
+            "A": {
+              "numerator": 4,
+              "denominator": 6,
+              "rate": "0.66666666666666666666666666666666666666666666666666666666666666666666666666666667",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": "0",
+              "unknown": 0
+            },
+            "differenceAminusB": "0.66666666666666666666666666666666666666666666666666666666666666666666666666666667",
+            "differenceAminusBPercentagePoints": "66.666666666666666666666666666666666666666666666666666666666666666666666666666667"
+          },
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "EVALUABLE_DAS28",
+            "inputTableByGroup": [
+              [
+                4,
+                2
+              ],
+              [
+                0,
+                6
+              ]
+            ],
+            "prunedTableByGroup": [
+              [
+                4,
+                2
+              ],
+              [
+                0,
+                6
+              ]
+            ],
+            "warnings": [],
+            "expectedBelow5Cells": 4,
+            "expectedCellCount": 4,
+            "method": "FISHER_EXACT",
+            "status": "OK",
+            "reason": null,
+            "expectedFrequencies": [
+              [
+                2.0,
+                4.0
+              ],
+              [
+                2.0,
+                4.0
+              ]
+            ],
+            "pValue": 0.060606060606060615,
+            "displayP": "0.061",
+            "significantRawAtAlpha005": false
+          }
+        },
+        "serologyPositive": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 3,
+              "denominator": 6,
+              "rate": "0.5",
+              "unknown": 1
+            },
+            "B": {
+              "numerator": 3,
+              "denominator": 6,
+              "rate": "0.5",
+              "unknown": 0
+            },
+            "differenceAminusB": "0",
+            "differenceAminusBPercentagePoints": "0"
+          },
+          "test": {
+            "nA": 5,
+            "nB": 6,
+            "testDenominator": "KNOWN_CATEGORY",
+            "inputTableByGroup": [
+              [
+                3,
+                2
+              ],
+              [
+                3,
+                3
+              ]
+            ],
+            "prunedTableByGroup": [
+              [
+                3,
+                2
+              ],
+              [
+                3,
+                3
+              ]
+            ],
+            "warnings": [],
+            "expectedBelow5Cells": 4,
+            "expectedCellCount": 4,
+            "method": "FISHER_EXACT",
+            "status": "OK",
+            "reason": null,
+            "expectedFrequencies": [
+              [
+                2.727272727272727,
+                2.272727272727273
+              ],
+              [
+                3.272727272727273,
+                2.727272727272727
+              ]
+            ],
+            "pValue": 1.0,
+            "displayP": "1.000",
+            "significantRawAtAlpha005": false
+          }
+        },
+        "complete": {
+          "display": {
+            "denominator": "C.n",
+            "A": {
+              "numerator": 3,
+              "denominator": 6,
+              "rate": "0.5",
+              "unknown": 0
+            },
+            "B": {
+              "numerator": 4,
+              "denominator": 6,
+              "rate": "0.66666666666666666666666666666666666666666666666666666666666666666666666666666667",
+              "unknown": 0
+            },
+            "differenceAminusB": "-0.16666666666666666666666666666666666666666666666666666666666666666666666666666667",
+            "differenceAminusBPercentagePoints": "-16.666666666666666666666666666666666666666666666666666666666666666666666666666667"
+          },
+          "test": {
+            "nA": 6,
+            "nB": 6,
+            "testDenominator": "KNOWN_CATEGORY",
+            "inputTableByGroup": [
+              [
+                3,
+                3
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "prunedTableByGroup": [
+              [
+                3,
+                3
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "warnings": [],
+            "expectedBelow5Cells": 4,
+            "expectedCellCount": 4,
+            "method": "FISHER_EXACT",
+            "status": "OK",
+            "reason": null,
+            "expectedFrequencies": [
+              [
+                3.5,
+                2.5
+              ],
+              [
+                3.5,
+                2.5
+              ]
+            ],
+            "pValue": 1.0,
+            "displayP": "1.000",
+            "significantRawAtAlpha005": false
+          }
+        }
+      },
+      "activityDistribution": {
+        "categories": [
+          "remission",
+          "low",
+          "moderate",
+          "high"
+        ],
+        "denominator": "evalN",
+        "A": {
+          "counts": [
+            2,
+            2,
+            2,
+            0
+          ],
+          "evalN": 6
+        },
+        "B": {
+          "counts": [
+            0,
+            0,
+            0,
+            6
+          ],
+          "evalN": 6
+        },
+        "test": {
+          "nA": 6,
+          "nB": 6,
+          "testDenominator": "EVALUABLE_ACTIVITY",
+          "inputTableByGroup": [
+            [
+              2,
+              2,
+              2,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              6
+            ]
+          ],
+          "prunedTableByGroup": [
+            [
+              2,
+              2,
+              2,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              6
+            ]
+          ],
+          "warnings": [
+            "SPARSE_EXPECTED_COUNTS"
+          ],
+          "expectedBelow5Cells": 8,
+          "expectedCellCount": 8,
+          "method": "CHI_SQUARE",
+          "status": "OK",
+          "reason": null,
+          "expectedFrequencies": [
+            [
+              1.0,
+              1.0,
+              1.0,
+              3.0
+            ],
+            [
+              1.0,
+              1.0,
+              1.0,
+              3.0
+            ]
+          ],
+          "pValue": 0.007383160505359769,
+          "displayP": "0.007",
+          "significantRawAtAlpha005": true
+        }
+      },
+      "lineDistribution": {
+        "categories": [
+          1,
+          2,
+          3
+        ],
+        "denominator": "C.n",
+        "A": {
+          "counts": [
+            2,
+            2,
+            2
+          ],
+          "cohortN": 6,
+          "unknownLine": 0
+        },
+        "B": {
+          "counts": [
+            1,
+            2,
+            3
+          ],
+          "cohortN": 6,
+          "unknownLine": 0
+        },
+        "test": {
+          "nA": 6,
+          "nB": 6,
+          "testDenominator": "KNOWN_LINE",
+          "inputTableByGroup": [
+            [
+              2,
+              2,
+              2
+            ],
+            [
+              1,
+              2,
+              3
+            ]
+          ],
+          "prunedTableByGroup": [
+            [
+              2,
+              2,
+              2
+            ],
+            [
+              1,
+              2,
+              3
+            ]
+          ],
+          "warnings": [
+            "SPARSE_EXPECTED_COUNTS"
+          ],
+          "expectedBelow5Cells": 6,
+          "expectedCellCount": 6,
+          "method": "CHI_SQUARE",
+          "status": "OK",
+          "reason": null,
+          "expectedFrequencies": [
+            [
+              1.5,
+              2.0,
+              2.5
+            ],
+            [
+              1.5,
+              2.0,
+              2.5
+            ]
+          ],
+          "pValue": 0.7659283383646487,
+          "displayP": "0.766",
+          "significantRawAtAlpha005": false
+        }
+      },
+      "swappedGroupCheck": {
+        "continuousPValues": {
+          "age": 0.0021645021645021645,
+          "diseaseDurationYears": 0.0021645021645021645,
+          "das28": 0.0021645021645021645,
+          "crp": 0.0021645021645021645,
+          "haq": 0.004998124765082457
+        },
+        "femalePValue": 0.08008658008658008,
+        "activityPValue": 0.007383160505359769,
+        "linePValue": 0.7659283383646487
+      }
+    }
+  },
+  "quantileProbes": {
+    "empty": {
+      "n": 0,
+      "sorted": [],
+      "q1": null,
+      "median": null,
+      "q3": null,
+      "iqr": null
+    },
+    "one": {
+      "n": 1,
+      "sorted": [
+        "4.25"
+      ],
+      "q1": "4.25",
+      "median": "4.25",
+      "q3": "4.25",
+      "iqr": "0"
+    },
+    "two": {
+      "n": 2,
+      "sorted": [
+        "1",
+        "5"
+      ],
+      "q1": "2",
+      "median": "3",
+      "q3": "4",
+      "iqr": "2"
+    },
+    "six": {
+      "n": 6,
+      "sorted": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "q1": "2.25",
+      "median": "3.5",
+      "q3": "4.75",
+      "iqr": "2.5"
+    },
+    "ties": {
+      "n": 6,
+      "sorted": [
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+        "8"
+      ],
+      "q1": "1.25",
+      "median": "2",
+      "q3": "2",
+      "iqr": "0.75"
+    },
+    "closeBigDecimal": {
+      "n": 6,
+      "sorted": [
+        "0.100000000000000001",
+        "0.100000000000000003",
+        "0.100000000000000005",
+        "0.100000000000000007",
+        "0.100000000000000009",
+        "0.100000000000000011"
+      ],
+      "q1": "0.1000000000000000035",
+      "median": "0.100000000000000006",
+      "q3": "0.1000000000000000085",
+      "iqr": "0.000000000000000005"
+    }
+  },
+  "denominatorExamples": {
+    "femaleCohortVsKnown": {
+      "display": {
+        "denominator": "C.n; unknown stays in denominator",
+        "A": {
+          "numerator": 1,
+          "denominator": 7,
+          "rate": "0.14285714285714285714285714285714285714285714285714285714285714285714285714285714",
+          "unknown": 1
+        },
+        "B": {
+          "numerator": 5,
+          "denominator": 8,
+          "rate": "0.625",
+          "unknown": 2
+        },
+        "differenceAminusB": "-0.48214285714285714285714285714285714285714285714285714285714285714285714285714286",
+        "differenceAminusBPercentagePoints": "-48.214285714285714285714285714285714285714285714285714285714285714285714285714286"
+      },
+      "test": {
+        "nA": 6,
+        "nB": 6,
+        "testDenominator": "KNOWN_CATEGORY",
+        "inputTableByGroup": [
+          [
+            1,
+            5
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "prunedTableByGroup": [
+          [
+            1,
+            5
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "warnings": [],
+        "expectedBelow5Cells": 4,
+        "expectedCellCount": 4,
+        "method": "FISHER_EXACT",
+        "status": "OK",
+        "reason": null,
+        "expectedFrequencies": [
+          [
+            3.0,
+            3.0
+          ],
+          [
+            3.0,
+            3.0
+          ]
+        ],
+        "pValue": 0.08008658008658008,
+        "displayP": "0.080",
+        "significantRawAtAlpha005": false
+      }
+    },
+    "serologyCohortVsKnown": {
+      "display": {
+        "denominator": "C.n; unknown stays in denominator",
+        "A": {
+          "numerator": 3,
+          "denominator": 6,
+          "rate": "0.5",
+          "unknown": 1
+        },
+        "B": {
+          "numerator": 3,
+          "denominator": 6,
+          "rate": "0.5",
+          "unknown": 0
+        },
+        "differenceAminusB": "0",
+        "differenceAminusBPercentagePoints": "0"
+      },
+      "test": {
+        "nA": 5,
+        "nB": 6,
+        "testDenominator": "KNOWN_CATEGORY",
+        "inputTableByGroup": [
+          [
+            3,
+            2
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "prunedTableByGroup": [
+          [
+            3,
+            2
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "warnings": [],
+        "expectedBelow5Cells": 4,
+        "expectedCellCount": 4,
+        "method": "FISHER_EXACT",
+        "status": "OK",
+        "reason": null,
+        "expectedFrequencies": [
+          [
+            2.727272727272727,
+            2.272727272727273
+          ],
+          [
+            3.272727272727273,
+            2.727272727272727
+          ]
+        ],
+        "pValue": 1.0,
+        "displayP": "1.000",
+        "significantRawAtAlpha005": false
+      }
+    },
+    "activityUsesEvalN": {
+      "display": {
+        "denominator": "evalN",
+        "A": {
+          "counts": [
+            2,
+            2,
+            2,
+            0
+          ],
+          "denominator": 6,
+          "unknown": 1
+        },
+        "B": {
+          "counts": [
+            0,
+            0,
+            0,
+            6
+          ],
+          "denominator": 6,
+          "unknown": 2
+        }
+      },
+      "test": {
+        "nA": 6,
+        "nB": 6,
+        "testDenominator": "EVALUABLE_ACTIVITY",
+        "inputTableByGroup": [
+          [
+            2,
+            2,
+            2,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            6
+          ]
+        ],
+        "prunedTableByGroup": [
+          [
+            2,
+            2,
+            2,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            6
+          ]
+        ],
+        "warnings": [
+          "SPARSE_EXPECTED_COUNTS"
+        ],
+        "expectedBelow5Cells": 8,
+        "expectedCellCount": 8,
+        "method": "CHI_SQUARE",
+        "status": "OK",
+        "reason": null,
+        "expectedFrequencies": [
+          [
+            1.0,
+            1.0,
+            1.0,
+            3.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            3.0
+          ]
+        ],
+        "pValue": 0.007383160505359769,
+        "displayP": "0.007",
+        "significantRawAtAlpha005": true
+      }
+    },
+    "lineUsesCohortN": {
+      "display": {
+        "denominator": "C.n",
+        "A": {
+          "counts": [
+            2,
+            2,
+            2
+          ],
+          "denominator": 7,
+          "unknownLine": 1
+        },
+        "B": {
+          "counts": [
+            1,
+            2,
+            3
+          ],
+          "denominator": 8,
+          "unknownLine": 2
+        }
+      },
+      "test": {
+        "nA": 6,
+        "nB": 6,
+        "testDenominator": "KNOWN_LINE",
+        "inputTableByGroup": [
+          [
+            2,
+            2,
+            2
+          ],
+          [
+            1,
+            2,
+            3
+          ]
+        ],
+        "prunedTableByGroup": [
+          [
+            2,
+            2,
+            2
+          ],
+          [
+            1,
+            2,
+            3
+          ]
+        ],
+        "warnings": [
+          "SPARSE_EXPECTED_COUNTS"
+        ],
+        "expectedBelow5Cells": 6,
+        "expectedCellCount": 6,
+        "method": "CHI_SQUARE",
+        "status": "OK",
+        "reason": null,
+        "expectedFrequencies": [
+          [
+            1.5,
+            2.0,
+            2.5
+          ],
+          [
+            1.5,
+            2.0,
+            2.5
+          ]
+        ],
+        "pValue": 0.7659283383646487,
+        "displayP": "0.766",
+        "significantRawAtAlpha005": false
+      }
+    }
+  },
+  "boundaryCases": {
+    "validN": {
+      "n0_vs_6": {
+        "nA": 0,
+        "nB": 6,
+        "testDenominator": "NON_MISSING_METRIC",
+        "warnings": [],
+        "method": null,
+        "status": "INSUFFICIENT_SAMPLE",
+        "reason": "VALID_N_LT_5",
+        "pValue": null,
+        "displayP": "—",
+        "significantRawAtAlpha005": null
+      },
+      "n4_vs_6": {
+        "nA": 4,
+        "nB": 6,
+        "testDenominator": "NON_MISSING_METRIC",
+        "warnings": [],
+        "method": null,
+        "status": "INSUFFICIENT_SAMPLE",
+        "reason": "VALID_N_LT_5",
+        "pValue": null,
+        "displayP": "—",
+        "significantRawAtAlpha005": null
+      },
+      "n5_vs_5": {
+        "nA": 5,
+        "nB": 5,
+        "testDenominator": "NON_MISSING_METRIC",
+        "warnings": [],
+        "method": "MANN_WHITNEY_EXACT",
+        "status": "OK",
+        "reason": null,
+        "U_A": 0.0,
+        "pValue": 0.007936507936507936,
+        "displayP": "0.008",
+        "significantRawAtAlpha005": true
+      },
+      "n5_vs_6": {
+        "nA": 5,
+        "nB": 6,
+        "testDenominator": "NON_MISSING_METRIC",
+        "warnings": [],
+        "method": "MANN_WHITNEY_EXACT",
+        "status": "OK",
+        "reason": null,
+        "U_A": 0.0,
+        "pValue": 0.004329004329004329,
+        "displayP": "0.004",
+        "significantRawAtAlpha005": true
+      }
+    },
+    "allOneActivityCategory": {
+      "nA": 6,
+      "nB": 6,
+      "testDenominator": "EVALUABLE_ACTIVITY",
+      "inputTableByGroup": [
+        [
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          6,
+          0,
+          0,
+          0
+        ]
+      ],
+      "prunedTableByGroup": [
+        [
+          6
+        ],
+        [
+          6
+        ]
+      ],
+      "warnings": [],
+      "expectedBelow5Cells": null,
+      "expectedCellCount": null,
+      "method": null,
+      "status": "DEGENERATE",
+      "reason": "ZERO_MARGIN",
+      "pValue": null,
+      "displayP": "—",
+      "significantRawAtAlpha005": null
+    },
+    "overlapPrecedesInsufficientSample": {
+      "intersection": [
+        7
+      ],
+      "metricKnownN": {
+        "A": 4,
+        "B": 5
+      },
+      "status": "OVERLAP",
+      "method": null,
+      "pValue": null,
+      "displayP": "—",
+      "significantRawAtAlpha005": null,
+      "reason": "OVERLAP"
+    },
+    "expectedExactlyFive": {
+      "nA": 10,
+      "nB": 10,
+      "testDenominator": "KNOWN_CATEGORY",
+      "inputTableByGroup": [
+        [
+          5,
+          5
+        ],
+        [
+          5,
+          5
+        ]
+      ],
+      "prunedTableByGroup": [
+        [
+          5,
+          5
+        ],
+        [
+          5,
+          5
+        ]
+      ],
+      "warnings": [],
+      "expectedBelow5Cells": 0,
+      "expectedCellCount": 4,
+      "method": "CHI_SQUARE",
+      "status": "OK",
+      "reason": null,
+      "expectedFrequencies": [
+        [
+          5.0,
+          5.0
+        ],
+        [
+          5.0,
+          5.0
+        ]
+      ],
+      "pValue": 1.0,
+      "displayP": "1.000",
+      "significantRawAtAlpha005": false
+    }
+  },
+  "tieAsymptoticControl": {
+    "nA": 5,
+    "nB": 5,
+    "testDenominator": "NON_MISSING_METRIC",
+    "warnings": [
+      "SMALL_SAMPLE_TIES"
+    ],
+    "method": "MANN_WHITNEY_ASYMPTOTIC",
+    "status": "OK",
+    "reason": null,
+    "U_A": 7.0,
+    "pValue": 0.2873330696714993,
+    "displayP": "0.287",
+    "significantRawAtAlpha005": false
+  },
+  "precisionOrderControl": {
+    "nA": 5,
+    "nB": 5,
+    "testDenominator": "NON_MISSING_METRIC",
+    "warnings": [],
+    "method": "MANN_WHITNEY_EXACT",
+    "status": "OK",
+    "reason": null,
+    "U_A": 0.0,
+    "pValue": 0.007936507936507936,
+    "displayP": "0.008",
+    "significantRawAtAlpha005": true
+  },
+  "exactPManualCrossChecks": {
+    "completeSeparation6v6": "2/C(12,6)=2/924=1/462",
+    "completeSeparation5v5": "2/C(10,5)=2/252=1/126"
+  }
+}

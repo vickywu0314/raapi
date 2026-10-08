@@ -51,57 +51,26 @@ public class AiCohortServiceImpl implements AiCohortService {
         LocalDate asOf = started.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
         com.wenwen.ai.treatment.DrugDictionary.Snapshot drugView=dictionary.snapshot();
         SourceBatch batch = source.read(doctor.getId(),asOf);
-        Map<Long,List<ScoreVisit>> visitsByPatient=new HashMap<>();
-        Map<Long,Set<String>> observedQuality = new HashMap<>();
-        for (ScoreVisit visit : batch.getVisits()) {
-            visitsByPatient.computeIfAbsent(visit.getPatientId(),key -> new ArrayList<>()).add(visit);
-            observedQuality.computeIfAbsent(visit.getPatientId(),key -> new LinkedHashSet<>()).addAll(visit.getQuality());
-        }
-        Map<Long,DerivedPatient> universe=new LinkedHashMap<>();
-        for(long id:batch.getPatientIds()) {
-            List<ScoreVisit> records=visitsByPatient.getOrDefault(id,Collections.emptyList());
-            com.wenwen.ai.treatment.TreatmentEpisode tx=com.wenwen.ai.treatment.TreatmentTimeline.build(records,asOf,drugView).current();
-            ScoreVisit now=VisitMatcher.now(records,id,asOf),six=VisitMatcher.sixMonth(records,id,asOf,tx),base=VisitMatcher.baseline(records,id,asOf,tx);
-            universe.put(id,new DerivedPatient(id,batch.getClinical().get(id),batch.getQc().get(id),tx,now,six,base,"6m".equals(query.getAt())?six:now));
-        }
+        CohortComputation.Derivation derivation=CohortComputation.derive(batch,query.getAt(),asOf,drugView);
+        CohortComputation.Selection cohortSelection=CohortComputation.select(derivation,query);
+        Map<Long,List<ScoreVisit>> visitsByPatient=derivation.visitsByPatient;
+        Map<Long,Set<String>> observedQuality=derivation.observedQuality;
+        Map<Long,DerivedPatient> universe=derivation.universe;
         List<DerivedPatient> cohort=new ArrayList<>();
         String[] levels = {"remission","low","moderate","high"};
         Map<String,Integer> counts = new LinkedHashMap<>(), baseCounts=new LinkedHashMap<>();
         for (String level : levels) { counts.put(level,0); baseCounts.put(level,0); }
         List<Map<String,Object>> items = new ArrayList<>();
         int n = 0, eval = 0, baseN=0, unknownTxN=0;
-        Integer effectiveIdsN = query.getIds() == null ? null : 0;
-        for (long id : batch.getPatientIds()) {
-            if (query.getIds() != null) {
-                if (!query.getIds().contains(id)) continue;
-                effectiveIdsN++;
-            }
-            DerivedPatient derived=universe.get(id);
+        Integer effectiveIdsN = cohortSelection.effectiveIdsN;
+        for (DerivedPatient derived : cohortSelection.members) {
+            long id=derived.id;
             com.wenwen.ai.qc.MissingDataStatus qc=derived.qc;
-            if (!qc.matches(query.getData())) continue;
             com.wenwen.ai.clinical.PatientClinical clinical=derived.clinical;
-            if (query.getSex()!=null && !query.getSex().equals(clinical.getSex())) continue;
-            if (query.getSero()!=null && !"TRUE".equals(clinical.getSero())) continue;
-            if (query.getCm()!=null && !("FM".equals(query.getCm()) && "TRUE".equals(clinical.getFm()))
-                    && !("AS".equals(query.getCm()) && "TRUE".equals(clinical.getAs()))
-                    && !("none".equals(query.getCm()) && "FALSE".equals(clinical.getFm()) && "FALSE".equals(clinical.getAs()))) continue;
-            if (query.getAge()!=null) {
-                String[] bounds=query.getAge().split("-",-1);
-                int min=Integer.parseInt(bounds[0]), max=bounds[1].isEmpty()?120:Integer.parseInt(bounds[1]);
-                if (clinical.getAge()==null || clinical.getAge()<min || clinical.getAge()>max) continue;
-            }
             List<ScoreVisit> medicationVisits=visitsByPatient.getOrDefault(id,Collections.emptyList());
             com.wenwen.ai.treatment.TreatmentEpisode treatment=derived.treatment;
-            if(!treatment.matches(query.getTx())) continue;
             ScoreVisit now=derived.now,six=derived.six,baseline=derived.baseline,score=derived.evaluation;
-            if("6m".equals(query.getAt()) && score==null) continue;
             String level = score == null ? null : Das28Util.activity(score.getScore());
-            if (query.getAct() != null) {
-                if (score == null) continue;
-                boolean target = score.getScore().compareTo(new java.math.BigDecimal("2.7")) <= 0;
-                if (!(query.getAct().equals(level) || ("target".equals(query.getAct()) && target)
-                        || ("mod-high".equals(query.getAct()) && !target))) continue;
-            }
             n++; cohort.add(derived);
             if("UNKNOWN".equals(treatment.state) || "CONFLICT".equals(treatment.state)) unknownTxN++;
             if (level != null) { counts.put(level,counts.get(level)+1); eval++; }
