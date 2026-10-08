@@ -1,0 +1,19 @@
+package com.wenwen.service.impl;
+import com.wenwen.ai.export.*;
+import com.wenwen.ai.export.mail.*;
+import com.wenwen.ai.query.CohortException;
+import com.wenwen.ai.scope.TrustedDoctor;
+import com.wenwen.service.AiExportApplicationService;
+import java.io.*;
+import java.time.*;
+import java.util.*;
+import org.springframework.stereotype.Service;
+@Service public final class AiExportApplicationServiceImpl implements AiExportApplicationService {
+ private final ExportContentReader reader;private final ExportFieldPolicy policy;private final ExportApplicationStore store;private final Clock clock;private final ExportNotificationSettings settings;private final ExportNotificationSender sender;
+ public AiExportApplicationServiceImpl(ExportContentReader r,ExportFieldPolicy p,ExportApplicationStore s,Clock c,ExportNotificationSettings settings,ExportNotificationSender sender){reader=r;policy=p;store=s;clock=c;this.settings=settings;this.sender=sender;}
+ public Map<String,Object> apply(TrustedDoctor doctor,ExportApplicationQuery q,Instant at)throws IOException {long owner=doctor.getId();ExportApplicationRecord existing=store.find(owner,q.requestId);if(existing!=null)return replay(existing,q);LocalDate today=at.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();if(LocalDate.parse(q.endDate).isAfter(today))throw new CohortException(400,"INVALID_REQUEST","申请日期无效");policy.validate();ExportFieldPolicy.Window w=new ExportFieldPolicy.Window(at);ExportContentReader.Content content=reader.read(owner,q.export,at);List<Map<String,Object>> blocked=policy.blocked(q.export,content.payload,w);if(blocked.isEmpty())throw new CohortException(409,"APPLICATION_NOT_REQUIRED","所选内容无需申请");policy.rejection(q.export,content.payload,w,blocked);String summary=ExportApplicationSummary.build(q,content,w,blocked);ExportApplicationRecord created;try{created=store.create(owner,q,summary,at.toEpochMilli());}catch(org.springframework.dao.DuplicateKeyException e){ExportApplicationRecord winner=store.find(owner,q.requestId);if(winner==null)throw e;return replay(winner,q);}return notify(created);}
+ public Map<String,Object> retry(TrustedDoctor doctor,long id){ExportApplicationRecord recorded=store.byId(doctor.getId(),id);if(recorded==null)throw new CohortException(404,"RESOURCE_NOT_FOUND","申请不存在");if(!Arrays.asList("PENDING","FAILED").contains(recorded.text("mailState")))return recorded.response();return notify(recorded);}
+ private Map<String,Object> notify(ExportApplicationRecord recorded){ExportApplicationRecord claimed;String failure=settings.failure();try{claimed=store.claim(recorded.number("owner"),recorded.number("applicationId"),clock.instant().toEpochMilli(),failure==null?settings.to:null,failure==null?settings.from:null);}catch(RuntimeException e){return recorded.response(false,null,"STATE_UPDATE_UNCONFIRMED");}if(claimed==null)return store.byId(recorded.number("owner"),recorded.number("applicationId")).response();ExportNotificationSender.Result result;if(failure!=null)result=ExportNotificationSender.Result.failed(failure);else if(!settings.to.equals(claimed.text("mailTo"))||!settings.from.equals(claimed.text("mailFrom")))result=ExportNotificationSender.Result.failed("RECIPIENT_CHANGED");else result=sender.send(claimed,settings,clock.instant());if(Thread.currentThread().isInterrupted())return claimed.response(true,result.accepted,"CALLER_INTERRUPTED");if(!result.ownerExited)return claimed.response(true,result.accepted,result.reason);try{return store.settle(claimed,result.state,result.reason,clock.instant().toEpochMilli()).response(true,result.accepted,result.reason);}catch(RuntimeException e){return claimed.response(false,result.accepted,"STATE_UPDATE_UNCONFIRMED");}}
+
+ private Map<String,Object> replay(ExportApplicationRecord r,ExportApplicationQuery q){if(!q.hash.equals(r.text("requestHash")))throw new CohortException(409,"IDEMPOTENCY_CONFLICT","申请参数与原请求不同");return r.response();}
+}
