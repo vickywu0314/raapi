@@ -12,9 +12,11 @@ import org.springframework.web.bind.annotation.*;
 public final class PrivateCohortController {
     private final PrincipalProvider principal;
     private final PrivateCohortService service;
-    public PrivateCohortController(PrincipalProvider principal,PrivateCohortService service){
+    private final AiFeatureAvailability availability;
+    public PrivateCohortController(PrincipalProvider principal,PrivateCohortService service,AiFeatureAvailability availability){
         this.principal=principal;
         this.service=service;
+        this.availability=availability;
     }
     @PostMapping("/save") public ResponseEntity<DataResult<?>> save(HttpServletRequest request){
         return handle("SAVE",request);
@@ -37,6 +39,7 @@ public final class PrivateCohortController {
         int status=200;
         try{
             TrustedDoctor doctor=principal.requireCurrent();
+            availability.requireApi();
             PrivateCohortQuery q=PrivateCohortQuery.read(action,request.getInputStream(),doctor);
             result.setData(service.execute(doctor,q,trace));
             result.setSuccess(true);

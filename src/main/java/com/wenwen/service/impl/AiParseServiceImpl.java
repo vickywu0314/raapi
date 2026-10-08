@@ -10,7 +10,7 @@ import java.time.Clock;
 import java.util.*;
 import static com.wenwen.vo.AiCohortVo.object;
 @Service public final class AiParseServiceImpl implements AiParseService {
-    public static final String RULE="dev-parse-rules-v01",SCHEMA="dev-parse-schema-v01";
+    public static final String RULE="dev-parse-rules-v02",SCHEMA="dev-parse-schema-v01";
     private final AiParseGateway gateway;private final ParseAuditStore audit;private final Clock clock;private final RuleParser rules=new RuleParser();private final ObjectMapper json=new ObjectMapper();
     public AiParseServiceImpl(ParseAuditStore audit,Clock clock,AiParseGateway gateway){this.audit=audit;this.clock=clock;this.gateway=gateway;}
     public Map<String,Object> parse(TrustedDoctor doctor,ParseQuery query,String trace,long started) throws IOException {
