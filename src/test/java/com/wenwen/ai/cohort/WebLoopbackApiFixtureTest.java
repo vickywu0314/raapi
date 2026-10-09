@@ -31,4 +31,15 @@ class WebLoopbackApiFixtureTest {
         } finally {executor.shutdownNow();assertTrue(executor.awaitTermination(5,java.util.concurrent.TimeUnit.SECONDS));}
         assertFalse(f.control("CONTROL 5 ADVANCE_TTL /tmp/file"));
     }
+    @Test void p02SelectsOnlyOrdinarySixPatientSeedAndRejectsControls() throws Exception {
+        assertEquals("seed.sql",WebLoopbackApiFixture.seedForScenario("default"));
+        assertEquals("seed-p01b.sql",WebLoopbackApiFixture.seedForScenario("p01b"));
+        assertEquals("seed-p02.sql",WebLoopbackApiFixture.seedForScenario("p02"));
+        assertThrows(IllegalArgumentException.class,()->WebLoopbackApiFixture.seedForScenario("../../other"));
+        assertThrows(IllegalArgumentException.class,()->WebLoopbackApiFixture.seedForScenario(null));
+        assertTrue(WebLoopbackApiFixture.resource(WebLoopbackApiFixture.seedForScenario("p02")).contains("(101,3,0,1)"));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p02";
+        assertFalse(f.control("CONTROL 1 IDENTITY_202"));assertFalse(f.control("CONTROL 1 ADVANCE_TTL"));
+        assertEquals(101,f.scenarioPrincipal().getId());assertEquals(java.time.Instant.parse("2026-10-07T02:00:00Z"),f.scenarioClock.instant());
+    }
 }

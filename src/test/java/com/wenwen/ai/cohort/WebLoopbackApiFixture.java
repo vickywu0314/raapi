@@ -106,9 +106,15 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 s.execute(sql); ownedTables.add(TABLES[i++]);
                 event("table-owned","table",ownedTables.get(ownedTables.size()-1));
             }
-            for (String sql:resource(scenario.equals("p01b")?"seed-p01b.sql":"seed.sql").split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
+            for (String sql:resource(seedForScenario(scenario)).split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
             event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
         }
+    }
+    static String seedForScenario(String scenario) {
+        if("default".equals(scenario))return "seed.sql";
+        if("p01b".equals(scenario))return "seed-p01b.sql";
+        if("p02".equals(scenario))return "seed-p02.sql";
+        throw new IllegalArgumentException("未知合成场景");
     }
     static String resource(String name) throws IOException {
         try(InputStream in=WebLoopbackApiFixture.class.getResourceAsStream("/ai-cohort/web/"+name)) {
@@ -213,7 +219,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         String identity="synthetic",mode="normal",scenario="default";boolean failure=false;
         for(String arg:args){if(arg.startsWith("--identity="))identity=arg.substring(11);else if(arg.equals("--sql-failure"))failure=true;else if(arg.startsWith("--mode="))mode=arg.substring(7);else if(arg.startsWith("--scenario="))scenario=arg.substring(11);else throw new IllegalArgumentException("未知参数");}
         if(!Arrays.asList("synthetic","anonymous").contains(identity))throw new IllegalArgumentException("未知身份");
-        if(!Arrays.asList("default","p01b").contains(scenario))throw new IllegalArgumentException("未知合成场景");
+        seedForScenario(scenario);
         final WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;
         Thread hook=new Thread(()->{try{fixture.close();}catch(Exception e){event("cleanup-error","class",e.getClass().getName());}},"web-fixture-close");
         Runtime.getRuntime().addShutdownHook(hook);
