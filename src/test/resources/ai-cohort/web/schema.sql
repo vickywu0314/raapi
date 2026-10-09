@@ -1,0 +1,12 @@
+CREATE TABLE patient_basic_info (id BIGINT PRIMARY KEY, name VARCHAR(100) NOT NULL, study_no VARCHAR(100) NULL, gender INT NULL, card_no VARCHAR(30) NULL, age INT NULL, confirm_date DATE NULL, confirmDate DATE NULL, jws VARCHAR(2000) NULL) ENGINE=InnoDB;
+CREATE TABLE patient_relation_doctor (id BIGINT PRIMARY KEY AUTO_INCREMENT, doctor_id BIGINT NOT NULL, patient_id BIGINT NOT NULL, research_type INT DEFAULT 0, miss INT DEFAULT 0) ENGINE=InnoDB;
+CREATE TABLE patient_follow_up_history (id BIGINT PRIMARY KEY, patient_basic_info_id BIGINT NOT NULL, research_type INT DEFAULT 0, follow_up_date DATETIME NULL, followUpDate DATETIME NULL, bqpg VARCHAR(4000) NULL, fzjc VARCHAR(2000) NULL, zlfa VARCHAR(4000) NULL) ENGINE=InnoDB;
+CREATE TABLE patient_comorbidity (id BIGINT PRIMARY KEY,patient_id BIGINT,disease_code VARCHAR(30),since_year INT) ENGINE=InnoDB;
+CREATE TABLE ra_ai_analysis_run (
+ id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ owner_doctor_id BIGINT NOT NULL, scope_fingerprint CHAR(64) CHARACTER SET ascii NOT NULL,
+ sort_key VARCHAR(80) CHARACTER SET ascii NOT NULL, payload_version INT NOT NULL,
+ payload MEDIUMBLOB NOT NULL, payload_sha256 CHAR(64) CHARACTER SET ascii NOT NULL,
+ created_at_ms BIGINT NOT NULL, expires_at_ms BIGINT NOT NULL,
+ INDEX idx_analysis_expiry (expires_at_ms,id)
+) ENGINE=InnoDB;
