@@ -42,4 +42,36 @@ class WebLoopbackApiFixtureTest {
         assertFalse(f.control("CONTROL 1 IDENTITY_202"));assertFalse(f.control("CONTROL 1 ADVANCE_TTL"));
         assertEquals(101,f.scenarioPrincipal().getId());assertEquals(java.time.Instant.parse("2026-10-07T02:00:00Z"),f.scenarioClock.instant());
     }
+    @Test void p03ReusesOrdinarySeedAndOwnedControls() throws Exception {
+        assertEquals("seed-p01b.sql",WebLoopbackApiFixture.seedForScenario("p03"));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p03";
+        assertTrue(f.control("CONTROL 1 IDENTITY_202"));assertEquals(202,f.scenarioPrincipal().getId());
+        assertFalse(f.control("CONTROL 2 SELECT_SQL"));assertTrue(f.control("CONTROL 2 IDENTITY_ANONYMOUS"));assertThrows(com.wenwen.ai.query.CohortException.class,f::scenarioPrincipal);
+        assertTrue(f.control("CONTROL 3 IDENTITY_101"));assertTrue(f.control("CONTROL 4 ADVANCE_TTL"));assertEquals(java.time.Instant.parse("2026-10-07T02:15:00Z"),f.scenarioClock.instant());
+    }
+    @Test void p03PrivateDdlRegistersOnlySuccessfulCreates() throws Exception {
+        java.util.List<String> sql=WebLoopbackApiFixture.privateStatements();assertEquals(2,sql.size());
+        assertTrue(sql.get(0).contains("CREATE TABLE ra_private_cohort_definition ("));assertTrue(sql.get(1).contains("CREATE TABLE ra_private_cohort_command ("));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();java.util.concurrent.atomic.AtomicInteger called=new java.util.concurrent.atomic.AtomicInteger();
+        // JDBC边界替身仅验证fixture登记时序；真实MySQL冲突/自动清理由T3同case另证。
+        java.sql.Statement statement=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{
+            if(method.getName().equals("execute")){
+                int index=called.getAndIncrement();assertEquals(index,f.ownedTables.size());assertEquals(sql.get(index),args[0]);
+                if(index==1)throw new java.sql.SQLException("synthetic CREATE collision","42S01",1050);return false;
+            }
+            throw new AssertionError("非预定JDBC方法");
+        });
+        assertThrows(java.sql.SQLException.class,()->f.createPrivateTables(statement));assertEquals(java.util.Collections.singletonList("ra_private_cohort_definition"),f.ownedTables);assertEquals(2,called.get());
+    }
+    @Test void p03ExposesOnlyExactPrivateCommandPaths() {
+        for(String scenario:new String[]{"default","p01b","p02","p03"}) {
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/cohort"));
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/cohortPatients"));
+            for(String action:new String[]{"save","list","open","rename","delete"})
+                assertEquals("p03".equals(scenario),WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/cohort/"+action));
+            for(String path:new String[]{"/api/ra/cohort/rename/","/api/ra/cohort/delete?x=1","/api/ra/cohort/compare","/api/ra/cohort/export","/api/ra/cohort/control"})
+                assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path));
+        }
+    }
+
 }
