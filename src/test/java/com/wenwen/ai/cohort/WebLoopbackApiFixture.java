@@ -41,6 +41,37 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     Tomcat tomcat;
     boolean closed;
     int preparationConnections;
+    String scenario="default";
+    final ScenarioClock scenarioClock=new ScenarioClock();
+    final java.util.concurrent.atomic.AtomicLong scenarioDoctor=new java.util.concurrent.atomic.AtomicLong(101);
+    long controlSeq;
+    /** Clock与Principal仅供本fixture owned stdin，跨Servlet线程原子可见。 */
+    static final class ScenarioClock extends Clock {
+        final java.util.concurrent.atomic.AtomicReference<Instant> now;
+        final ZoneId zone;
+        ScenarioClock(){this(new java.util.concurrent.atomic.AtomicReference<>(Instant.parse("2026-10-07T02:00:00Z")),ZoneOffset.UTC);}
+        private ScenarioClock(java.util.concurrent.atomic.AtomicReference<Instant> now,ZoneId zone){this.now=now;this.zone=zone;}
+        public ZoneId getZone(){return zone;}
+        public Clock withZone(ZoneId zone){return new ScenarioClock(now,zone);}
+        public Instant instant(){return now.get();}
+        void advanceTtl(){now.updateAndGet(instant->instant.plusMillis(900000));}
+    }
+    synchronized boolean control(String line) {
+        String[] parts=line.split(" ",-1);Long sequence=null;
+        if(parts.length==3 && parts[0].equals("CONTROL") && parts[1].matches("[1-9][0-9]{0,15}"))sequence=Long.parseLong(parts[1]);
+        boolean accepted=false;
+        if(sequence!=null && scenario.equals("p01b") && sequence==controlSeq+1 && Arrays.asList("IDENTITY_101","IDENTITY_202","IDENTITY_ANONYMOUS","ADVANCE_TTL").contains(parts[2])) {
+            if(parts[2].equals("ADVANCE_TTL"))scenarioClock.advanceTtl();
+            else scenarioDoctor.set(parts[2].equals("IDENTITY_101")?101:parts[2].equals("IDENTITY_202")?202:0);
+            controlSeq=sequence;accepted=true;
+        }
+        event("control-ack","seq",sequence,"command",parts.length==3?parts[2]:null,"accepted",accepted);
+        return accepted;
+    }
+    TrustedDoctor scenarioPrincipal() {
+        long id=scenarioDoctor.get();if(id==0)throw new CohortException(401,"UNAUTHENTICATED","请先登录");
+        return new TrustedDoctor(id);
+    }
 
     static synchronized void event(String type, Object... fields) {
         Map<String,Object> data = new LinkedHashMap<>(); data.put("type",type);
@@ -75,7 +106,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 s.execute(sql); ownedTables.add(TABLES[i++]);
                 event("table-owned","table",ownedTables.get(ownedTables.size()-1));
             }
-            for (String sql:resource("seed.sql").split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
+            for (String sql:resource(scenario.equals("p01b")?"seed-p01b.sql":"seed.sql").split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
             event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
         }
     }
@@ -117,8 +148,12 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
         sources.addFirst(new MapPropertySource("synthetic-only",properties));
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("observedDataSource",observed));
-        PrincipalProvider principal="synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");};
+        final PrincipalProvider principal=scenario.equals("p01b")?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("principalProvider",principal));
+        if(scenario.equals("p01b")) {
+            scenarioDoctor.set(identity.equals("synthetic")?101:0);
+            application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
+        }
         application.register(Infrastructure.class);
         tomcat=new Tomcat();tomcat.setBaseDir(base.getAbsolutePath());
         tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(0);
@@ -127,7 +162,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         DispatcherServlet dispatcher=new DispatcherServlet(application);
         HttpServlet servlet=new HttpServlet(){
             protected synchronized void service(HttpServletRequest request,HttpServletResponse response) throws ServletException,IOException {
-                if(!"/api/ra/ai/cohort".equals(request.getRequestURI())) {response.sendError(404);return;}
+                if(!Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients").contains(request.getRequestURI())) {response.sendError(404);return;}
                 try {dispatcher.service(request,response);}
                 finally {event("http-observation","borrowed",observed.borrowed,"returned",observed.returned,"active",observed.active.get(),"mysqlFailures",observed.mysqlFailures,"mysqlError",observed.lastMysqlError,"sqlState",observed.lastSqlState,"status",response.getStatus());}
             }
@@ -175,10 +210,11 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     public static void main(String[] args) throws Exception {
-        String identity="synthetic",mode="normal";boolean failure=false;
-        for(String arg:args){if(arg.startsWith("--identity="))identity=arg.substring(11);else if(arg.equals("--sql-failure"))failure=true;else if(arg.startsWith("--mode="))mode=arg.substring(7);else throw new IllegalArgumentException("未知参数");}
+        String identity="synthetic",mode="normal",scenario="default";boolean failure=false;
+        for(String arg:args){if(arg.startsWith("--identity="))identity=arg.substring(11);else if(arg.equals("--sql-failure"))failure=true;else if(arg.startsWith("--mode="))mode=arg.substring(7);else if(arg.startsWith("--scenario="))scenario=arg.substring(11);else throw new IllegalArgumentException("未知参数");}
         if(!Arrays.asList("synthetic","anonymous").contains(identity))throw new IllegalArgumentException("未知身份");
-        final WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();
+        if(!Arrays.asList("default","p01b").contains(scenario))throw new IllegalArgumentException("未知合成场景");
+        final WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;
         Thread hook=new Thread(()->{try{fixture.close();}catch(Exception e){event("cleanup-error","class",e.getClass().getName());}},"web-fixture-close");
         Runtime.getRuntime().addShutdownHook(hook);
         try {
@@ -194,7 +230,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             if(held)event("held-not-ready","port",port);
             else {System.out.println("RA_WEB_FIXTURE_READY "+JSON.writeValueAsString(ready));System.out.flush();}
             try(BufferedReader input=new BufferedReader(new InputStreamReader(System.in,StandardCharsets.UTF_8))){
-                String line;while((line=input.readLine())!=null){if(line.equals("STOP")&&!mode.equals("ignore-stop"))break;}
+                String line;while((line=input.readLine())!=null){if(line.equals("STOP")&&!mode.equals("ignore-stop"))break;else if(line.startsWith("CONTROL "))fixture.control(line);}
                 if(mode.equals("ignore-stop"))new java.util.concurrent.CountDownLatch(1).await();
             }
             if(held){System.out.println("RA_WEB_FIXTURE_READY "+JSON.writeValueAsString(ready));System.out.flush();}
