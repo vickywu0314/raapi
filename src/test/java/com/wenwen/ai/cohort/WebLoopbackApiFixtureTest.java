@@ -146,4 +146,36 @@ class WebLoopbackApiFixtureTest {
         });
         created.createComparisonTables(success);assertEquals(java.util.Collections.singletonList("ra_ai_compare_run"),created.ownedTables);
     }
+    @Test void p05ParseReusesOrdinarySeedAndExposesSameControllerApply() {
+        for(String scenario:new String[]{"p05-rule","p05-safety"}) {
+            assertEquals("seed-p01b.sql",WebLoopbackApiFixture.seedForScenario(scenario));
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/parse"));
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/applyParse"));
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/compare"));
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/parse/"));
+        }
+        assertFalse(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/ai/parse"));
+    }
+    @Test void parseAuditRegistersOnlySuccessfulCreate() throws Exception {
+        String sql=WebLoopbackApiFixture.parseAuditStatement();assertTrue(sql.contains("CREATE TABLE ra_ai_parse_audit ("));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();
+        java.sql.Statement failed=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{if(method.getName().equals("execute")){assertEquals(sql,args[0]);assertTrue(f.ownedTables.isEmpty());throw new java.sql.SQLException("synthetic CREATE collision","42S01",1050);}throw new AssertionError("非预定JDBC方法");});
+        assertThrows(java.sql.SQLException.class,()->f.createParseAuditTable(failed));assertTrue(f.ownedTables.isEmpty());
+        java.sql.Statement successful=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{if(method.getName().equals("execute")){assertEquals(sql,args[0]);assertTrue(f.ownedTables.isEmpty());return false;}throw new AssertionError("非预定JDBC方法");});
+        f.createParseAuditTable(successful);assertEquals(java.util.Collections.singletonList("ra_ai_parse_audit"),f.ownedTables);
+    }
+    @Test void p05ApplyUsesOnlyNewOrdinaryFactsAndExactTwoPaths() throws Exception {
+        for(String scenario:new String[]{"p05-apply-rule","p05-apply-safety"}) {
+            assertEquals("seed-p05.sql",WebLoopbackApiFixture.seedForScenario(scenario));
+            WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;assertTrue(fixture.parseScenario());
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/parse"));assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/applyParse"));
+            for(String path:new String[]{"/api/ra/ai/parse/","/api/ra/ai/applyParse/","/api/ra/ai/compare","/api/ra/cohort/open","/api/ra/ai/export"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path));
+        }
+        for(String scenario:new String[]{"default","p01b","p02","p03","p04"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/applyParse"));
+        String seed=WebLoopbackApiFixture.resource("seed-p05.sql");assertEquals(5,seed.split("INSERT INTO patient_basic_info ",-1).length-1);assertEquals(5,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);assertEquals(10,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+        assertTrue(seed.contains("VALUES (101,9223372036854775807,0,0)"));assertTrue(seed.contains("VALUES (202,4,0,0)"));assertFalse(seed.contains("VALUES (101,4,0,0)"));
+        assertTrue(seed.contains("VALUES (1,'P05合成女TNFi','P05-00001',2"));assertTrue(seed.contains("VALUES (2,'P05合成男TNFi','P05-00002',1"));assertTrue(seed.contains("VALUES (3,'P05合成女传统药','P05-00003',2"));
+        assertTrue(seed.contains("2026-04-05"));assertTrue(seed.contains("2026-10-06"));assertTrue(seed.contains("2026-04-06"));assertTrue(seed.contains("依那西普"));assertTrue(seed.contains("甲氨蝶呤"));
+    }
+
 }
