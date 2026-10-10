@@ -8,9 +8,11 @@ import com.wenwen.ai.source.CohortSourceAdapter;
 import com.wenwen.ai.treatment.*;
 import com.wenwen.controller.ra.AiCohortController;
 import com.wenwen.controller.ra.PrivateCohortController;
+import com.wenwen.controller.ra.ComparisonController;
 import com.wenwen.mapper.*;
 import com.wenwen.service.impl.AiCohortServiceImpl;
 import com.wenwen.service.impl.PrivateCohortServiceImpl;
+import com.wenwen.service.impl.ComparisonServiceImpl;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
@@ -36,6 +38,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 public final class WebLoopbackApiFixture implements AutoCloseable {
     static final String[] TABLES = {"patient_basic_info", "patient_relation_doctor", "patient_follow_up_history", "patient_comorbidity", "ra_ai_analysis_run"};
     static final String[] PRIVATE_TABLES={"ra_private_cohort_definition","ra_private_cohort_command"};
+    static final String COMPARISON_TABLE="ra_ai_compare_run";
     static final ObjectMapper JSON = new ObjectMapper();
     final List<String> ownedTables = new ArrayList<>();
     DriverManagerDataSource raw;
@@ -63,7 +66,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         String[] parts=line.split(" ",-1);Long sequence=null;
         if(parts.length==3 && parts[0].equals("CONTROL") && parts[1].matches("[1-9][0-9]{0,15}"))sequence=Long.parseLong(parts[1]);
         boolean accepted=false;
-        if(sequence!=null && (scenario.equals("p01b")||scenario.equals("p03")) && sequence==controlSeq+1 && Arrays.asList("IDENTITY_101","IDENTITY_202","IDENTITY_ANONYMOUS","ADVANCE_TTL").contains(parts[2])) {
+        if(sequence!=null && (scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04")) && sequence==controlSeq+1 && Arrays.asList("IDENTITY_101","IDENTITY_202","IDENTITY_ANONYMOUS","ADVANCE_TTL").contains(parts[2])) {
             if(parts[2].equals("ADVANCE_TTL"))scenarioClock.advanceTtl();
             else scenarioDoctor.set(parts[2].equals("IDENTITY_101")?101:parts[2].equals("IDENTITY_202")?202:0);
             controlSeq=sequence;accepted=true;
@@ -110,18 +113,21 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 event("table-owned","table",ownedTables.get(ownedTables.size()-1));
             }
             for (String sql:resource(seedForScenario(scenario)).split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
-            if(scenario.equals("p03"))createPrivateTables(s);
+            if(scenario.equals("p03")||scenario.equals("p04"))createPrivateTables(s);
+            if(scenario.equals("p04"))createComparisonTables(s);
             event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
         return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients").contains(path)
-            || ("p03".equals(scenario)&&Arrays.asList("/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete").contains(path));
+            || (("p03".equals(scenario)||"p04".equals(scenario))&&Arrays.asList("/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete").contains(path))
+            || ("p04".equals(scenario)&&Arrays.asList("/api/ra/ai/compare","/api/ra/ai/compareResult").contains(path));
     }
     static String seedForScenario(String scenario) {
         if("default".equals(scenario))return "seed.sql";
         if("p01b".equals(scenario)||"p03".equals(scenario))return "seed-p01b.sql";
         if("p02".equals(scenario))return "seed-p02.sql";
+        if("p04".equals(scenario))return "seed-p04.sql";
         throw new IllegalArgumentException("未知合成场景");
     }
     static String resource(String name) throws IOException {
@@ -146,6 +152,19 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             statement.execute(statements.get(i));ownedTables.add(PRIVATE_TABLES[i]);
             event("table-owned","table",PRIVATE_TABLES[i]);
         }
+    }
+    static List<String> comparisonStatements() throws IOException {
+        try(InputStream in=WebLoopbackApiFixture.class.getResourceAsStream("/sql/20261008_ai_compare_run.sql")) {
+            if(in==null)throw new FileNotFoundException("comparison-ddl");
+            String ddl=new Scanner(in,StandardCharsets.UTF_8.name()).useDelimiter("\\A").next();
+            List<String> statements=new ArrayList<>();for(String sql:ddl.split(";"))if(!sql.trim().isEmpty())statements.add(sql);
+            if(statements.size()!=1||!statements.get(0).contains("CREATE TABLE "+COMPARISON_TABLE+" ("))throw new IllegalStateException("比较DDL声明不符");
+            return statements;
+        }
+    }
+    void createComparisonTables(Statement statement) throws SQLException,IOException {
+        statement.execute(comparisonStatements().get(0));ownedTables.add(COMPARISON_TABLE);
+        event("table-owned","table",COMPARISON_TABLE);
     }
     @Configuration @EnableWebMvc
     @Import({AiCohortController.class,AiCohortServiceImpl.class,CohortSourceAdapter.class,AnalysisResultStore.class,AnalysisPageReader.class})
@@ -175,6 +194,16 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
         @Bean public PrivateCohortMapper privateMapper(SqlSessionTemplate template){return template.getMapper(PrivateCohortMapper.class);}
     }
+    @Configuration @EnableWebMvc
+    @Import({ComparisonController.class,ComparisonServiceImpl.class,ComparisonResultStore.class,ComparisonScopeReader.class})
+    public static class ComparisonInfrastructure extends PrivateInfrastructure {
+        @Override @Bean public SqlSessionFactory sqlSessionFactory(DataSource ds) throws Exception {
+            SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(ds);
+            factory.setMapperLocations(new Resource[]{new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/AiAnalysisRunMapper.xml"),new ClassPathResource("mybatis/PrivateCohortMapper.xml"),new ClassPathResource("mybatis/AiComparisonRunMapper.xml")});
+            return factory.getObject();
+        }
+        @Bean public AiComparisonRunMapper comparisonMapper(SqlSessionTemplate template){return template.getMapper(AiComparisonRunMapper.class);}
+    }
     int start(String identity, boolean sqlFailure, File base) throws Exception {
         observed=new ObservedDataSource(raw); observed.failSecondSql=sqlFailure;
         application=new AnnotationConfigWebApplicationContext();
@@ -189,13 +218,13 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
         sources.addFirst(new MapPropertySource("synthetic-only",properties));
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("observedDataSource",observed));
-        final PrincipalProvider principal=(scenario.equals("p01b")||scenario.equals("p03"))?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
+        final PrincipalProvider principal=(scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04"))?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("principalProvider",principal));
-        if((scenario.equals("p01b")||scenario.equals("p03"))) {
+        if((scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04"))) {
             scenarioDoctor.set(identity.equals("synthetic")?101:0);
             application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
         }
-        application.register(scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class);
+        application.register(scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class);
         tomcat=new Tomcat();tomcat.setBaseDir(base.getAbsolutePath());
         tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(0);
         Context context=tomcat.addContext("",base.getAbsolutePath());
@@ -266,6 +295,22 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             }finally{statement.execute("DROP TABLE IF EXISTS ra_private_cohort_command");}
         }
     }
+    void comparisonSchemaConflictCheck() throws Exception {
+        try(Connection c=preparationConnection();Statement statement=c.createStatement()){
+            verifyDatabase(c);statement.execute("CREATE TABLE ra_ai_compare_run (sentinel INT PRIMARY KEY) ENGINE=InnoDB");statement.execute("INSERT INTO ra_ai_compare_run VALUES (8675309)");
+        }
+        boolean conflict=false;
+        try{schema();}catch(SQLException e){conflict=e.getErrorCode()==1050;event("create-conflict","mysqlError",e.getErrorCode());}
+        close();
+        try(Connection c=preparationConnection();Statement statement=c.createStatement()){
+            try{
+                if(!conflict)throw new AssertionError("未到达比较表真实CREATE冲突");
+                try(ResultSet rs=statement.executeQuery("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME<>'ra_ai_compare_run'")){rs.next();if(rs.getInt(1)!=0)throw new AssertionError("本次owned表未自动清理");}
+                try(ResultSet rs=statement.executeQuery("SELECT sentinel FROM ra_ai_compare_run")){if(!rs.next()||rs.getInt(1)!=8675309||rs.next())throw new AssertionError("比较预存哨兵未保留");}
+                event("comparison-schema-ownership-observed","beforeFallback",true,"ownedTableAbsent",true,"sentinel",8675309);
+            }finally{statement.execute("DROP TABLE IF EXISTS ra_ai_compare_run");}
+        }
+    }
     public static void main(String[] args) throws Exception {
         String identity="synthetic",mode="normal",scenario="default";boolean failure=false;
         for(String arg:args){if(arg.startsWith("--identity="))identity=arg.substring(11);else if(arg.equals("--sql-failure"))failure=true;else if(arg.startsWith("--mode="))mode=arg.substring(7);else if(arg.startsWith("--scenario="))scenario=arg.substring(11);else throw new IllegalArgumentException("未知参数");}
@@ -277,7 +322,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         try {
             fixture.connect();
             if(mode.equals("guard-only"))return;
-            if(mode.equals("schema-conflict-check")){if(scenario.equals("p03"))fixture.privateSchemaConflictCheck();else fixture.schemaConflictCheck();return;}
+            if(mode.equals("schema-conflict-check")){if(scenario.equals("p04"))fixture.comparisonSchemaConflictCheck();else if(scenario.equals("p03"))fixture.privateSchemaConflictCheck();else fixture.schemaConflictCheck();return;}
             fixture.schema();
             if(mode.equals("partial-start-fail"))throw new IllegalStateException("受控部分装配失败");
             String base=System.getenv("RA_WEB_FIXTURE_DIR");if(base==null)throw new IllegalStateException("缺少本次Tomcat目录");

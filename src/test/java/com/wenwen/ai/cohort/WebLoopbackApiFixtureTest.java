@@ -74,4 +74,76 @@ class WebLoopbackApiFixtureTest {
         }
     }
 
+    @Test void p04UsesOnlyFixedFourteenPatientFactsAndOwnedControls() throws Exception {
+        assertEquals("seed-p04.sql",WebLoopbackApiFixture.seedForScenario("p04"));
+        String seed=WebLoopbackApiFixture.resource("seed-p04.sql");
+        assertEquals(14,seed.split("INSERT INTO patient_basic_info ",-1).length-1);
+        assertEquals(14,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);
+        assertEquals(19,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+        assertFalse(seed.contains("INSERT INTO patient_comorbidity"));
+        String[] scores={"1","2","2.3","2.7","3","4","4.1","4.5","4.6","4.7","5","5.1","6","6.1"};
+        String[] crp={"0.4","0.8","1.2","1.6","2.0","2.4","2.8","3.2","3.6","4.0","4.4","4.8","5.2","5.6"};
+        String[] haq={"0.1","0.2","0.3","0.3","0.4","0.5","0.6",null,"0.8","0.9","1.0","1.1","1.2","1.3"};
+        String[] birthdays={"20061007","20051007","20041007","20031007","20021007","20011007","20001007","19991007","19981007","19971007","19961007","19951007","19941007","19931007"};
+        String[] diagnosis={"2025-10-07","2024-10-07","2023-10-07","2022-10-07","2021-10-07","2020-10-07","2019-10-07","2018-10-07","2017-10-07","2016-10-07","2015-10-07","2014-10-07","2013-10-07","2012-10-07"};
+        int[] gender={2,1,1,1,1,1,2,1,2,2,2,2,2,1};
+        String[] rf={"35","20",null,"35","20","35","35",null,"20","35","35","35","20","20"};
+        String[] drugs={"甲氨蝶呤","甲氨蝶呤","阿达木单抗","阿达木单抗","依那西普","依那西普","synthetic-unmapped-drug-CANARY","阿达木单抗","甲氨蝶呤","阿达木单抗","阿达木单抗","依那西普","依那西普","依那西普"};
+        java.util.Set<Integer> complete=new java.util.HashSet<>(java.util.Arrays.asList(1,2,4,7,8,9,11,12,14));
+        java.util.Set<Integer> past=new java.util.HashSet<>(java.util.Arrays.asList(5,6,12,13,14));
+        for(int i=1;i<=14;i++) {
+            assertTrue(seed.contains("VALUES ("+i+",'synthetic-comparison-name-CANARY',"+gender[i-1]+",'110101"+birthdays[i-1]+"0011','"+diagnosis[i-1]+"',"+(complete.contains(i)?"'{\"record\":1}'":"NULL")+");"));
+            assertTrue(seed.contains("'110101"+birthdays[i-1]+"0011','"+diagnosis[i-1]+"'"));
+            assertTrue(seed.contains("VALUES (101,"+i+",0,0);"));
+            final int patient=i;
+            String main=java.util.Arrays.stream(seed.split("\n")).filter(line->line.startsWith("INSERT INTO patient_follow_up_history ")&&line.contains("VALUES ("+(100+patient)+","+patient+",0,")).findFirst().orElseThrow(()->new AssertionError("缺固定访视"));
+            assertTrue(main.contains("'2026-10-07'"));
+            assertTrue(main.contains("\"crpScore\":"+scores[i-1]+"}"));
+            assertTrue(main.contains("\"cfydb\":"+crp[i-1]));
+            if(rf[i-1]==null)assertFalse(main.contains("lfsyz"));
+            else assertTrue(main.contains("\"lfsyz\":"+rf[i-1]+"}"));
+            assertTrue(main.contains("\"drugName\":\""+drugs[i-1]+"\",\"startTime\":\"2026-04-01\",\"endTime\":null"));
+            assertEquals(past.contains(i),seed.contains("VALUES ("+(200+i)+","+i+",0,'2025-02-01',NULL,'{\"record\":1}','{\"xyList\":[{\"drugName\":\"阿达木单抗\",\"startTime\":\"2025-01-01\",\"endTime\":\"2025-03-01\"}]}');"));
+            if(haq[i-1]==null)assertFalse(main.contains("hqaScore"));
+            else assertTrue(main.contains("\"hqaScore\":"+haq[i-1]+"}"));
+        }
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p04";
+        assertTrue(f.control("CONTROL 1 IDENTITY_202"));assertEquals(202,f.scenarioPrincipal().getId());
+        assertFalse(f.control("CONTROL 2 SELECT_SQL"));assertTrue(f.control("CONTROL 2 IDENTITY_ANONYMOUS"));assertThrows(com.wenwen.ai.query.CohortException.class,f::scenarioPrincipal);
+        assertTrue(f.control("CONTROL 3 IDENTITY_101"));assertTrue(f.control("CONTROL 4 ADVANCE_TTL"));
+        assertEquals(java.time.Instant.parse("2026-10-07T02:15:00Z"),f.scenarioClock.instant());
+        assertFalse(f.control("CONTROL 4 ADVANCE_TTL"));assertFalse(f.control("CONTROL 6 IDENTITY_202"));
+    }
+    @Test void p04ExposesCompareAndRetainedReadWithPrivateCommands() {
+        for(String action:new String[]{"save","list","open","rename","delete"})
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/cohort/"+action));
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/ai/cohort"));
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/ai/cohortPatients"));
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/ai/compare"));
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/ai/compareResult"));
+        for(String scenario:new String[]{"default","p01b","p02","p03"})
+            {assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/compare"));assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/compareResult"));}
+        for(String path:new String[]{"/api/ra/ai/compare/","/api/ra/ai/compare?x=1","/api/ra/ai/compareResult/","/api/ra/ai/compareResult?x=1","/api/ra/cohort/compare","/api/ra/ai/control","/api/ra/ai/export"})
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p04",path));
+    }
+    @Test void p04ComparisonDdlRegistersOnlySuccessfulCreate() throws Exception {
+        java.util.List<String> sql=WebLoopbackApiFixture.comparisonStatements();assertEquals(1,sql.size());
+        assertTrue(sql.get(0).contains("CREATE TABLE ra_ai_compare_run ("));
+        WebLoopbackApiFixture failed=new WebLoopbackApiFixture();failed.ownedTables.addAll(java.util.Arrays.asList(WebLoopbackApiFixture.PRIVATE_TABLES));
+        java.sql.Statement collision=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{
+            if(method.getName().equals("execute")) {
+                assertEquals(sql.get(0),args[0]);assertEquals(2,failed.ownedTables.size());
+                throw new java.sql.SQLException("synthetic CREATE collision","42S01",1050);
+            }
+            throw new AssertionError("非预定JDBC方法");
+        });
+        assertThrows(java.sql.SQLException.class,()->failed.createComparisonTables(collision));
+        assertEquals(java.util.Arrays.asList(WebLoopbackApiFixture.PRIVATE_TABLES),failed.ownedTables);
+        WebLoopbackApiFixture created=new WebLoopbackApiFixture();
+        java.sql.Statement success=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{
+            if(method.getName().equals("execute")){assertEquals(sql.get(0),args[0]);assertTrue(created.ownedTables.isEmpty());return false;}
+            throw new AssertionError("非预定JDBC方法");
+        });
+        created.createComparisonTables(success);assertEquals(java.util.Collections.singletonList("ra_ai_compare_run"),created.ownedTables);
+    }
 }
