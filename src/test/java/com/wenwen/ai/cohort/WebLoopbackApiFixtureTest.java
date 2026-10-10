@@ -178,4 +178,163 @@ class WebLoopbackApiFixtureTest {
         assertTrue(seed.contains("2026-04-05"));assertTrue(seed.contains("2026-10-06"));assertTrue(seed.contains("2026-04-06"));assertTrue(seed.contains("依那西普"));assertTrue(seed.contains("甲氨蝶呤"));
     }
 
+    @Test void p06ComparisonReusesFixedFactsAndOnlyNecessaryRoutes() throws Exception {
+        assertEquals("seed-p04.sql",WebLoopbackApiFixture.seedForScenario("p06-comparison"));
+        String seed=WebLoopbackApiFixture.resource(WebLoopbackApiFixture.seedForScenario("p06-comparison"));
+        assertEquals(14,seed.split("INSERT INTO patient_basic_info ",-1).length-1);
+        assertEquals(14,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);
+        assertEquals(19,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p06-comparison";
+        assertEquals(101,f.scenarioPrincipal().getId());
+        assertEquals(java.time.Instant.parse("2026-10-07T02:00:00Z"),f.scenarioClock.instant());
+        assertFalse(f.control("CONTROL 1 ADVANCE_TTL"));assertFalse(f.control("CONTROL 1 IDENTITY_202"));
+        for(String path:new String[]{"/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/export/xlsx"}) {
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath("p06-comparison",path),path);
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p06-comparison",path+"/"),path);
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p06-comparison",path+"?x=1"),path);
+        }
+        for(String path:new String[]{"/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/ai/control"})
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p06-comparison",path),path);
+        assertFalse(WebLoopbackApiFixture.allowsHttpPath("p04","/api/ra/export/xlsx"));
+        assertFalse(WebLoopbackApiFixture.allowsHttpPath("p06-cohort","/api/ra/ai/compare"));
+        assertEquals(WebLoopbackApiFixture.ComparisonInfrastructure.class,WebLoopbackApiFixture.ComparisonExportInfrastructure.class.getSuperclass());
+        assertEquals(java.util.Arrays.asList(com.wenwen.controller.ra.AiExportController.class,com.wenwen.service.impl.AiExportServiceImpl.class,com.wenwen.ai.export.ExportContentReader.class,com.wenwen.ai.export.ExportFieldPolicy.class,com.wenwen.ai.export.OrdinaryXlsxWriter.class,com.wenwen.ai.export.ExportAuditStore.class),java.util.Arrays.asList(WebLoopbackApiFixture.ComparisonExportInfrastructure.class.getAnnotation(org.springframework.context.annotation.Import.class).value()));
+    }
+    @Test void p06ComparisonDdlPreservesSuccessfulOwnershipAtExportAuditCollision() throws Exception {
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p06-comparison";
+        java.util.List<String> sql=new java.util.ArrayList<>(WebLoopbackApiFixture.privateStatements());
+        sql.addAll(WebLoopbackApiFixture.comparisonStatements());sql.add(WebLoopbackApiFixture.exportAuditStatement());
+        java.util.concurrent.atomic.AtomicInteger calls=new java.util.concurrent.atomic.AtomicInteger();
+        java.sql.Statement statement=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{
+            assertEquals("execute",method.getName());int index=calls.getAndIncrement();
+            assertEquals(index,f.ownedTables.size());assertEquals(sql.get(index),args[0]);
+            if(index==3)throw new java.sql.SQLException("synthetic export audit CREATE collision","42S01",1050);
+            return false;
+        });
+        f.createPrivateTables(statement);f.createComparisonTables(statement);
+        assertThrows(java.sql.SQLException.class,()->f.createExportAuditTable(statement));
+        assertEquals(java.util.Arrays.asList("ra_private_cohort_definition","ra_private_cohort_command","ra_ai_compare_run"),f.ownedTables);
+        assertEquals(4,calls.get());
+    }
+    @Test void p06OrdinaryExportHasExactSeedPathsAndCreateOwnership() throws Exception {
+        assertEquals("seed-p06.sql",WebLoopbackApiFixture.seedForScenario("p06-cohort"));
+        String seed=WebLoopbackApiFixture.resource("seed-p06.sql");
+        assertEquals(37,seed.split("INSERT INTO patient_basic_info ",-1).length-1);
+        assertEquals(37,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);
+        assertEquals(37,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+        assertFalse(seed.contains("INSERT INTO patient_comorbidity"));assertFalse(seed.contains("zlfa"));
+        assertTrue(seed.contains("\"crpScore\":3.7"));assertTrue(seed.contains("\"crpScore\":0.1"));assertTrue(seed.contains("\"cfydb\":10"));assertTrue(seed.contains("\"cfydb\":46"));
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("p06-cohort","/api/ra/export/xlsx"));
+        for(String other:new String[]{"default","p01b","p02","p03","p04","p05-rule"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(other,"/api/ra/export/xlsx"));
+        for(String path:new String[]{"/api/ra/export/xlsx/","/api/ra/export/xlsx?x=1","/api/ra/ai/compare","/api/ra/export/apply","/api/ra/export/retryNotification"})assertFalse(WebLoopbackApiFixture.allowsHttpPath("p06-cohort",path));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p06-cohort";assertFalse(f.control("CONTROL 1 ADVANCE_TTL"));assertEquals(101,f.scenarioPrincipal().getId());
+        java.sql.Statement collision=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{assertEquals("execute",method.getName());assertEquals(WebLoopbackApiFixture.exportAuditStatement(),args[0]);assertTrue(f.ownedTables.isEmpty());throw new java.sql.SQLException("synthetic collision","42S01",1050);});
+        assertThrows(java.sql.SQLException.class,()->f.createExportAuditTable(collision));assertTrue(f.ownedTables.isEmpty());
+        java.sql.Statement success=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{assertEquals("execute",method.getName());assertTrue(f.ownedTables.isEmpty());return false;});
+        f.createExportAuditTable(success);assertEquals(java.util.Collections.singletonList("ra_ai_export_audit"),f.ownedTables);
+    }
+    @Test void p06ApplicationUsesFixedThirtySevenPatientSeedAndExactRoutes() throws Exception {
+        for(String scenario:new String[]{"p06-application-replay","p06-application-retry","p06-application-unknown"}) {
+            assertEquals("seed-p06.sql",WebLoopbackApiFixture.seedForScenario(scenario));
+            String seed=WebLoopbackApiFixture.resource(WebLoopbackApiFixture.seedForScenario(scenario));
+            assertEquals(37,seed.split("INSERT INTO patient_basic_info ",-1).length-1);
+            assertEquals(37,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);
+            assertEquals(37,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+            WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;
+            assertTrue(fixture.applicationScenario());assertEquals(101,fixture.scenarioPrincipal().getId());
+            assertEquals(java.time.Instant.parse("2026-10-07T02:00:00Z"),fixture.scenarioClock.instant());
+            for(String path:new String[]{"/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification"}) {
+                assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,path),path);
+                assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path+"/"),path);
+                assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path+"?x=1"),path);
+            }
+            for(String path:new String[]{"/api/ra/export/apply","/api/ra/export/visitsCsv","/api/ra/export/range","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/ai/parse","/api/ra/ai/resolveEntry","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/ai/control"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path),path);
+            for(String command:new String[]{"ADVANCE_TTL","IDENTITY_202","SELECT_SQL","SMTP_SUCCESS","SMTP_ASSERT"})assertFalse(fixture.control("CONTROL 1 "+command));
+        }
+        assertFalse(WebLoopbackApiFixture.applicationScenario("p06-application-other"));
+        assertThrows(IllegalArgumentException.class,()->WebLoopbackApiFixture.seedForScenario("p06-application-other"));
+        assertEquals(NotificationSmtpPeer.Mode.SUCCESS,WebLoopbackApiFixture.applicationPeerMode("p06-application-replay"));
+        assertEquals(NotificationSmtpPeer.Mode.RCPT_REJECT,WebLoopbackApiFixture.applicationPeerMode("p06-application-retry"));
+        assertEquals(NotificationSmtpPeer.Mode.DATA_SILENT,WebLoopbackApiFixture.applicationPeerMode("p06-application-unknown"));
+        assertThrows(IllegalArgumentException.class,()->WebLoopbackApiFixture.applicationPeerMode("p06-cohort"));
+    }
+    @Test void p06ApplicationDdlRejectsCollisionWithoutClaimingForeignTables() throws Exception {
+        java.util.List<String> sql=WebLoopbackApiFixture.applicationStatements();assertEquals(2,sql.size());
+        assertTrue(sql.get(0).contains("CREATE TABLE `export_application` ("));assertTrue(sql.get(1).contains("CREATE TABLE ra_ai_export_request ("));
+        for(String statement:sql)assertFalse(statement.contains("IF NOT EXISTS"));
+        for(int collisionIndex=0;collisionIndex<=2;collisionIndex++) {
+            final int failAt=collisionIndex;WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();
+            java.util.concurrent.atomic.AtomicInteger calls=new java.util.concurrent.atomic.AtomicInteger();
+            java.sql.Statement statement=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args)->{
+                assertEquals("execute",method.getName());int index=calls.getAndIncrement();
+                assertEquals(index,fixture.ownedTables.size());assertEquals(sql.get(index),args[0]);
+                if(index==failAt)throw new java.sql.SQLException("synthetic application CREATE collision","42S01",1050);return false;
+            });
+            if(failAt<2)assertThrows(java.sql.SQLException.class,()->fixture.createApplicationTables(statement));
+            else fixture.createApplicationTables(statement);
+            assertEquals(java.util.Arrays.asList(WebLoopbackApiFixture.APPLICATION_TABLES).subList(0,failAt),fixture.ownedTables);
+            assertEquals(Math.min(failAt+1,2),calls.get());
+        }
+    }
+    @Test void p06ApplicationSmtpSettingsAndDecodedCanaryChecksStaySynthetic() {
+        java.util.Map<String,Object> properties=WebLoopbackApiFixture.applicationSmtpProperties(43307);
+        assertEquals(8,properties.size());assertEquals("127.0.0.1",properties.get("ra.export.smtp.host"));
+        assertEquals("LOOPBACK_PLAIN",properties.get("ra.export.smtp.mode"));assertEquals("",properties.get("ra.export.smtp.username"));assertEquals("",properties.get("ra.export.smtp.password"));
+        com.wenwen.ai.export.mail.ExportNotificationSettings settings=new com.wenwen.config.ExportNotificationConfiguration().exportNotificationSettings(new org.springframework.core.env.StandardEnvironment(){
+            @Override public String getProperty(String key,String fallback){Object value=properties.get(key);return value==null?fallback:value.toString();}
+        });
+        assertNull(settings.failure());assertEquals("fixture-from@notification.invalid",settings.from);assertEquals("fixture-admin@notification.invalid",settings.to);
+        assertThrows(IllegalArgumentException.class,()->WebLoopbackApiFixture.applicationSmtpProperties(0));
+        assertDoesNotThrow(()->WebLoopbackApiFixture.assertApplicationBody("申请编号：1\n引用人数：37\n申请字段：patientId,sex"));
+        assertThrows(AssertionError.class,()->WebLoopbackApiFixture.assertApplicationBody("ordinary-application-canary"));
+        for(int id=101;id<=137;id++) {
+            final int patient=id;
+            assertThrows(AssertionError.class,()->WebLoopbackApiFixture.assertApplicationBody("合成文件患者"+patient));
+            assertThrows(AssertionError.class,()->WebLoopbackApiFixture.assertApplicationBody("EXPORT-"+patient));
+        }
+    }
+    @Test void p06ApplicationContextAssemblesRealServicesAndBothMappersWithoutLegacyEndpoints() throws Exception {
+        assertEquals(WebLoopbackApiFixture.ExportInfrastructure.class,WebLoopbackApiFixture.ApplicationInfrastructure.class.getSuperclass());
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=new org.springframework.web.context.support.AnnotationConfigWebApplicationContext();
+        context.setServletContext(new org.springframework.mock.web.MockServletContext());
+        for(String name:new String[]{"systemProperties","systemEnvironment","servletContextInitParams","servletConfigInitParams","jndiProperties"})context.getEnvironment().getPropertySources().remove(name);
+        java.util.Map<String,Object> properties=WebLoopbackApiFixture.applicationSmtpProperties(43307);
+        properties.put("ra.ai.api.enabled","true");properties.put("ra.export.xlsx.enabled","true");
+        properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
+        properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
+        context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("synthetic-only",properties));
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        javax.sql.DataSource datasource=(javax.sql.DataSource)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{javax.sql.DataSource.class},(proxy,method,args)->{
+            if(method.getName().equals("getConnection")){connections.incrementAndGet();throw new AssertionError("准入装配不应连接SQL");}
+            if(method.getName().equals("toString"))return "synthetic-not-connected-datasource";
+            if(method.getName().equals("hashCode"))return System.identityHashCode(proxy);
+            if(method.getName().equals("equals"))return proxy==args[0];
+            throw new AssertionError("非预定DataSource方法");
+        });
+        context.addBeanFactoryPostProcessor(factory->{factory.registerSingleton("observedDataSource",datasource);factory.registerSingleton("principalProvider",(com.wenwen.ai.scope.PrincipalProvider)()->new com.wenwen.ai.scope.TrustedDoctor(101));});
+        context.register(WebLoopbackApiFixture.ApplicationInfrastructure.class);
+        try {
+            context.refresh();assertEquals(0,connections.get());
+            assertEquals(1,context.getBeansOfType(com.wenwen.controller.ra.AiExportApplicationController.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.service.impl.AiExportApplicationServiceImpl.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.export.ExportApplicationStore.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.mapper.AiExportApplicationMapper.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.mapper.ExportMapper.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.export.mail.ExportNotificationSender.class).size());
+            assertNull(context.getBean(com.wenwen.ai.export.mail.ExportNotificationSettings.class).failure());
+            assertEquals(java.time.Instant.parse("2026-10-07T02:00:00Z"),context.getBean(java.time.Clock.class).instant());
+            org.apache.ibatis.session.Configuration configuration=context.getBean(org.apache.ibatis.session.SqlSessionFactory.class).getConfiguration();
+            assertEquals(org.apache.ibatis.logging.nologging.NoLoggingImpl.class,configuration.getLogImpl());
+            assertTrue(configuration.hasStatement("com.wenwen.mapper.ExportMapper.insertApplication"));
+            assertTrue(configuration.hasStatement("com.wenwen.mapper.AiExportApplicationMapper.reserve"));
+            org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping mapping=context.getBean(org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class);
+            java.util.Set<String> paths=new java.util.HashSet<>();for(org.springframework.web.servlet.mvc.method.RequestMappingInfo info:mapping.getHandlerMethods().keySet())paths.addAll(info.getPatternsCondition().getPatterns());
+            assertTrue(paths.contains("/api/ra/export/applyAnalysis"));assertTrue(paths.contains("/api/ra/export/retryNotification"));assertTrue(paths.contains("/api/ra/export/xlsx"));
+            assertFalse(paths.contains("/api/ra/export/apply"));assertFalse(paths.contains("/api/ra/export/visitsCsv"));assertFalse(paths.contains("/api/ra/ai/compare"));
+            assertEquals(0,connections.get());
+        } finally {context.close();}
+        assertFalse(context.isActive());assertEquals(0,connections.get());
+    }
+
 }
