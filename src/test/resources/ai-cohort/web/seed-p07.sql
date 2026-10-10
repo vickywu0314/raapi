@@ -1,0 +1,19 @@
+-- P07普通小集合：四名本人RA、另医与非RA边界；不提供年龄或血清依据。
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (11,'P07合成索引女','P07-00011',2,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,11,0,0);
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (9007199254740993,'P07合成长ID女','P07-LONG',2,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,9007199254740993,0,0);
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (21,'P07合成男','P07-00021',1,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,21,0,0);
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (22,'P07合成未知','P07-00022',NULL,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,22,0,0);
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (23,'P07其它医生女','P07-00023',2,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (202,23,0,0);
+INSERT INTO patient_basic_info (id,name,study_no,gender,card_no,confirm_date,jws) VALUES (24,'P07非RA女','P07-00024',2,NULL,'2025-10-07','{"record":1}');
+INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,24,6,0);
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (110,11,0,'2026-10-06','{"result":{"crpScore":1.8}}');
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (120,9007199254740993,0,'2026-10-06','{"result":{"crpScore":2.4}}');
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (210,21,0,'2026-10-06','{"result":{"crpScore":3.2}}');
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (220,22,0,'2026-10-06','{"result":{"crpScore":4.2}}');
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (230,23,0,'2026-10-06','{"result":{"crpScore":1.8}}');
+INSERT INTO patient_follow_up_history (id,patient_basic_info_id,research_type,follow_up_date,bqpg) VALUES (240,24,6,'2026-10-06','{"result":{"crpScore":1.8}}');

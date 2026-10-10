@@ -3,6 +3,101 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 /** 首连接核库决策在任何DDL前执行，字符串负例无需触碰其他库。 */
 class WebLoopbackApiFixtureTest {
+    @Test void p07CompositionAssemblesAllFifteenRealRoutesBeforeAnySql() throws Exception {
+        WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-composition";
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=compositionUnitContext(fixture,connections,"true","true");
+        try {
+            context.refresh();
+            java.util.Set<String> actual=new java.util.TreeSet<>();
+            org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping mapping=context.getBean(org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class);
+            for(org.springframework.web.servlet.mvc.method.RequestMappingInfo info:mapping.getHandlerMethods().keySet())actual.addAll(info.getPatternsCondition().getPatterns());
+            assertEquals(new java.util.TreeSet<>(java.util.Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/resolveEntry","/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification")),actual);
+            for(Class<?> type:new Class<?>[]{com.wenwen.controller.ra.AiCohortController.class,com.wenwen.controller.ra.AiParseController.class,com.wenwen.controller.ra.PrivateCohortController.class,com.wenwen.controller.ra.ComparisonController.class,com.wenwen.controller.ra.AiExportController.class,com.wenwen.controller.ra.AiExportApplicationController.class,com.wenwen.service.impl.AiCohortServiceImpl.class,com.wenwen.service.impl.AiParseServiceImpl.class,com.wenwen.service.impl.PrivateCohortServiceImpl.class,com.wenwen.service.impl.ComparisonServiceImpl.class,com.wenwen.service.impl.AiExportServiceImpl.class,com.wenwen.service.impl.AiExportApplicationServiceImpl.class})assertEquals(1,context.getBeansOfType(type).size(),type.getName());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.scope.AiFeatureAvailability.class).size());
+            assertSame(fixture.scenarioClock,context.getBean(java.time.Clock.class));
+            org.apache.ibatis.session.Configuration sql=context.getBean(org.apache.ibatis.session.SqlSessionFactory.class).getConfiguration();
+            for(String statement:new String[]{"AiCohortSourceMapper.patientIds","AiAnalysisRunMapper.insert","PrivateCohortMapper.insertDefinition","AiComparisonRunMapper.insert","AiParseAuditMapper.insert","AiExportAuditMapper.insert","ExportMapper.insertApplication","AiExportApplicationMapper.reserve"})assertTrue(sql.hasStatement("com.wenwen.mapper."+statement),statement);
+            assertEquals("AI_NOT_ENABLED",context.getBean(com.wenwen.ai.parse.AiParseGateway.class).parse("女性",new com.wenwen.ai.parse.RuleParser().parse("女性"),new com.wenwen.ai.scope.TrustedDoctor(101)).getFallback());
+            assertNull(fixture.parsePeer);assertEquals(org.apache.ibatis.logging.nologging.NoLoggingImpl.class,sql.getLogImpl());
+            assertEquals(0,connections.get());
+        } finally {context.close();}
+        assertFalse(context.isActive());assertEquals(0,connections.get());
+    }
+    private org.springframework.web.context.support.AnnotationConfigWebApplicationContext compositionUnitContext(WebLoopbackApiFixture fixture,java.util.concurrent.atomic.AtomicInteger connections,String global,String file) {
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=new org.springframework.web.context.support.AnnotationConfigWebApplicationContext();
+        context.setServletContext(new org.springframework.mock.web.MockServletContext());
+        for(String name:new String[]{"systemProperties","systemEnvironment","servletContextInitParams","servletConfigInitParams","jndiProperties"})context.getEnvironment().getPropertySources().remove(name);
+        java.util.Map<String,Object> properties=WebLoopbackApiFixture.applicationSmtpProperties(43307);
+        properties.put("ra.ai.api.enabled",global);properties.put("ra.export.xlsx.enabled",file);
+        properties.put("ra.ai.gateway.enabled","false");properties.put("ra.ai.gateway.outbound-approved","false");
+        properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
+        properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
+        context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("synthetic-only",properties));
+        javax.sql.DataSource datasource=(javax.sql.DataSource)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{javax.sql.DataSource.class},(proxy,method,args)->{
+            if(method.getName().equals("getConnection")){connections.incrementAndGet();throw new AssertionError("真实装配或关闭门不得借SQL");}
+            if(method.getName().equals("toString"))return "synthetic-not-connected-datasource";
+            if(method.getName().equals("hashCode"))return System.identityHashCode(proxy);
+            if(method.getName().equals("equals"))return proxy==args[0];
+            throw new AssertionError("非预定DataSource方法");
+        });
+        context.addBeanFactoryPostProcessor(factory->{factory.registerSingleton("observedDataSource",datasource);factory.registerSingleton("principalProvider",(com.wenwen.ai.scope.PrincipalProvider)fixture::scenarioPrincipal);factory.registerSingleton("clock",fixture.scenarioClock);});
+        context.register(fixture.contextConfiguration());return context;
+    }
+    @Test void p07GlobalGateRejectsEveryRealRouteBeforeBodyAndSqlIncludingAnonymousPriority() throws Exception {
+        WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-composition";
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=compositionUnitContext(fixture,connections,"false","false");
+        final java.util.concurrent.atomic.AtomicReference<WebLoopbackApiFixture.CountingRequest> observed=new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            context.refresh();
+            javax.servlet.Filter observer=(request,response,chain)->{WebLoopbackApiFixture.CountingRequest counted=new WebLoopbackApiFixture.CountingRequest((javax.servlet.http.HttpServletRequest)request);observed.set(counted);chain.doFilter(counted,response);};
+            org.springframework.test.web.servlet.MockMvc http=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).addFilters(observer).build();
+            for(String path:WebLoopbackApiFixture.COMPOSITION_PATHS)for(String body:new String[]{"{}","{"}) {
+                org.springframework.test.web.servlet.MvcResult result=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).contentType("application/json").content(body)).andReturn();
+                assertEquals(503,result.getResponse().getStatus(),path);assertEquals(0,observed.get().bodyBytes,path);
+                com.fasterxml.jackson.databind.JsonNode envelope=WebLoopbackApiFixture.JSON.readTree(result.getResponse().getContentAsByteArray());assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText());assertEquals("队列功能暂不可用",envelope.path("message").asText());assertFalse(envelope.path("success").asBoolean());assertTrue(envelope.path("data").isNull());assertNotNull(result.getResponse().getHeader("X-Trace-Id"));
+            }
+            fixture.scenarioDoctor.set(0);
+            for(String path:WebLoopbackApiFixture.COMPOSITION_PATHS){org.springframework.test.web.servlet.MvcResult result=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).contentType("application/json").content("{")).andReturn();assertEquals(401,result.getResponse().getStatus(),path);assertEquals(0,observed.get().bodyBytes,path);}
+            assertEquals(0,connections.get());
+        } finally {context.close();}
+        assertFalse(context.isActive());assertEquals(0,connections.get());
+    }
+    @Test void p07FileGateLeavesOtherFourteenControllersReadingTheirOwnProtocol() throws Exception {
+        WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-composition";
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=compositionUnitContext(fixture,connections,"true","false");
+        final java.util.concurrent.atomic.AtomicReference<WebLoopbackApiFixture.CountingRequest> observed=new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            context.refresh();javax.servlet.Filter observer=(request,response,chain)->{WebLoopbackApiFixture.CountingRequest counted=new WebLoopbackApiFixture.CountingRequest((javax.servlet.http.HttpServletRequest)request);observed.set(counted);chain.doFilter(counted,response);};
+            org.springframework.test.web.servlet.MockMvc http=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).addFilters(observer).build();
+            for(String path:WebLoopbackApiFixture.COMPOSITION_PATHS) {
+                org.springframework.test.web.servlet.MvcResult result=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).contentType("application/json").content("{")).andReturn();
+                if(path.equals("/api/ra/export/xlsx")){assertEquals(503,result.getResponse().getStatus());assertEquals(0,observed.get().bodyBytes);assertEquals("文件导出暂不可用",WebLoopbackApiFixture.JSON.readTree(result.getResponse().getContentAsByteArray()).path("message").asText());assertNull(result.getResponse().getHeader("Content-Disposition"));}
+                else {assertEquals(400,result.getResponse().getStatus(),path);assertEquals(1,observed.get().bodyBytes,path);}
+            }
+            assertEquals(0,connections.get());
+        } finally {context.close();}
+        assertFalse(context.isActive());assertEquals(0,connections.get());
+    }
+    @Test void p07CompositionHasOnlyExistingOrdinarySeedExactControlsAndFixedDayBoundary() throws Exception {
+        for(String scenario:new String[]{"p07-composition","p07-composition-time"}) {
+            assertEquals("seed-p06.sql",WebLoopbackApiFixture.seedForScenario(scenario));
+            assertEquals(37,WebLoopbackApiFixture.resource(WebLoopbackApiFixture.seedForScenario(scenario)).split("INSERT INTO patient_basic_info ",-1).length-1);
+            for(String path:WebLoopbackApiFixture.COMPOSITION_PATHS){assertTrue(WebLoopbackApiFixture.allowsHttpPath(scenario,path));assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path+"/"));assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path+"?x=1"));}
+            for(String path:new String[]{"/api/ra/patientDetail","/api/ra/ai/control","/api/ra/export/apply","/api/ra/export/range"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,path));
+            WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;
+            assertFalse(fixture.control("CONTROL 1 SELECT_SQL"));assertFalse(fixture.control("CONTROL 1 IDENTITY_202"));
+            assertTrue(fixture.control("CONTROL 1 CLOCK_DAY_BEFORE"));assertEquals(java.time.Instant.parse("2026-10-31T15:59:59.999Z"),fixture.scenarioClock.instant());assertEquals(java.time.LocalDate.parse("2026-10-31"),java.time.LocalDate.now(fixture.scenarioClock.withZone(java.time.ZoneId.of("Asia/Shanghai"))));
+            assertTrue(fixture.control("CONTROL 2 CLOCK_DAY_AFTER"));assertEquals(java.time.Instant.parse("2026-10-31T16:00:00Z"),fixture.scenarioClock.instant());assertEquals(java.time.LocalDate.parse("2026-11-01"),java.time.LocalDate.now(fixture.scenarioClock.withZone(java.time.ZoneId.of("Asia/Shanghai"))));
+            assertTrue(fixture.control("CONTROL 3 CLOCK_EXACT_EXPIRY"));assertEquals(java.time.Instant.parse("2026-10-31T16:14:59.999Z"),fixture.scenarioClock.instant());
+            assertTrue(fixture.control("CONTROL 4 IDENTITY_ANONYMOUS"));assertThrows(com.wenwen.ai.query.CohortException.class,fixture::scenarioPrincipal);assertTrue(fixture.control("CONTROL 5 IDENTITY_101"));assertEquals(101,fixture.scenarioPrincipal().getId());
+            assertThrows(IllegalStateException.class,()->fixture.control("CONTROL 6 REBUILD_ENABLED"));assertEquals(5,fixture.controlSeq);
+            fixture.close();assertFalse(fixture.control("CONTROL 6 CLOCK_DAY_BEFORE"));
+        }
+    }
     @Test void explicitDatabaseAndIsolationRejectBeforeSchema() {
         assertDoesNotThrow(() -> WebLoopbackApiFixture.requireDatabase("ra_synthetic_test","REPEATABLE-READ"));
         assertThrows(IllegalStateException.class, () -> WebLoopbackApiFixture.requireDatabase("other_schema","REPEATABLE-READ"));
@@ -176,6 +271,92 @@ class WebLoopbackApiFixtureTest {
         assertTrue(seed.contains("VALUES (101,9223372036854775807,0,0)"));assertTrue(seed.contains("VALUES (202,4,0,0)"));assertFalse(seed.contains("VALUES (101,4,0,0)"));
         assertTrue(seed.contains("VALUES (1,'P05合成女TNFi','P05-00001',2"));assertTrue(seed.contains("VALUES (2,'P05合成男TNFi','P05-00002',1"));assertTrue(seed.contains("VALUES (3,'P05合成女传统药','P05-00003',2"));
         assertTrue(seed.contains("2026-04-05"));assertTrue(seed.contains("2026-10-06"));assertTrue(seed.contains("2026-04-06"));assertTrue(seed.contains("依那西普"));assertTrue(seed.contains("甲氨蝶呤"));
+    }
+
+    @Test void p07EntryExposesOnlyCurrentEntryAndAnalysisPaths() {
+        for(String path:new String[]{"/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/ai/resolveEntry"}) {
+            assertTrue(WebLoopbackApiFixture.allowsHttpPath("p07-entry",path),path);
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p07-entry",path+"/"),path);
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p07-entry",path+"?x=1"),path);
+        }
+        for(String path:new String[]{"/api/ra/ai/resolveEntryOther","/api/ra/ai/compare","/api/ra/cohort/open","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/ai/control"})
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath("p07-entry",path),path);
+        for(String scenario:new String[]{"default","p01b","p02","p03","p04","p05-rule","p05-apply-rule","p06-cohort","p06-comparison"})
+            assertFalse(WebLoopbackApiFixture.allowsHttpPath(scenario,"/api/ra/ai/resolveEntry"),scenario);
+    }
+
+    @Test void p07EntrySelectsIndependentSixPatientSeed() throws Exception {
+        assertEquals("seed-p07.sql",WebLoopbackApiFixture.seedForScenario("p07-entry"));
+        String seed=WebLoopbackApiFixture.resource("seed-p07.sql");
+        assertEquals(6,seed.split("INSERT INTO patient_basic_info ",-1).length-1);
+        assertEquals(6,seed.split("INSERT INTO patient_relation_doctor ",-1).length-1);
+        assertEquals(6,seed.split("INSERT INTO patient_follow_up_history ",-1).length-1);
+        assertTrue(seed.contains("VALUES (11,'P07合成索引女','P07-00011',2,NULL"));
+        assertTrue(seed.contains("VALUES (9007199254740993,'P07合成长ID女','P07-LONG',2,NULL"));
+        assertTrue(seed.contains("VALUES (21,'P07合成男','P07-00021',1,NULL"));
+        assertTrue(seed.contains("VALUES (22,'P07合成未知','P07-00022',NULL,NULL"));
+        for(String id:new String[]{"11","9007199254740993","21","22"})assertTrue(seed.contains("VALUES (101,"+id+",0,0)"),id);
+        assertTrue(seed.contains("VALUES (202,23,0,0)"));assertFalse(seed.contains("VALUES (101,23,0,0)"));
+        assertTrue(seed.contains("VALUES (101,24,6,0)"));assertFalse(seed.contains("VALUES (101,24,0,0)"));
+        assertTrue(seed.contains("VALUES (23,'P07其它医生女','P07-00023',2,NULL"));
+        assertTrue(seed.contains("VALUES (24,'P07非RA女','P07-00024',2,NULL"));
+        assertFalse(seed.contains("lfsyz"));assertFalse(seed.contains("kccpkt"));
+        assertFalse(seed.contains("UPDATE "));assertFalse(seed.contains("DELETE "));assertFalse(seed.contains("CREATE TABLE "));
+    }
+
+    @Test void p07EntryAssemblesRealResolverAndRuleParseWithoutConnectingSql() throws Exception {
+        WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-entry";
+        assertTrue(fixture.parseScenario(),"p07-entry必须沿真实parse/apply最小装配");
+        assertFalse(fixture.applicationScenario());
+        assertFalse(fixture.control("CONTROL 1 IDENTITY_202"));
+        assertFalse(fixture.control("CONTROL 1 ADVANCE_TTL"));
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=new org.springframework.web.context.support.AnnotationConfigWebApplicationContext();
+        context.setServletContext(new org.springframework.mock.web.MockServletContext());
+        for(String name:new String[]{"systemProperties","systemEnvironment","servletContextInitParams","servletConfigInitParams","jndiProperties"})context.getEnvironment().getPropertySources().remove(name);
+        java.util.Map<String,Object> properties=new java.util.LinkedHashMap<>();
+        properties.put("ra.ai.api.enabled","true");properties.put("ra.export.xlsx.enabled","false");
+        properties.put("ra.ai.gateway.enabled","false");properties.put("ra.ai.gateway.outbound-approved","false");
+        properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
+        properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
+        context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("synthetic-only",properties));
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        javax.sql.DataSource datasource=(javax.sql.DataSource)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{javax.sql.DataSource.class},(proxy,method,args)->{
+            if(method.getName().equals("getConnection")){connections.incrementAndGet();throw new AssertionError("准入装配和格式拒绝不应连接SQL");}
+            if(method.getName().equals("toString"))return "synthetic-entry-not-connected-datasource";
+            if(method.getName().equals("hashCode"))return System.identityHashCode(proxy);
+            if(method.getName().equals("equals"))return proxy==args[0];
+            throw new AssertionError("非预定DataSource方法");
+        });
+        context.addBeanFactoryPostProcessor(factory->{factory.registerSingleton("observedDataSource",datasource);factory.registerSingleton("principalProvider",(com.wenwen.ai.scope.PrincipalProvider)()->new com.wenwen.ai.scope.TrustedDoctor(101));});
+        context.register(WebLoopbackApiFixture.ParseInfrastructure.class);
+        try {
+            context.refresh();assertEquals(0,connections.get());
+            assertEquals(1,context.getBeansOfType(com.wenwen.controller.ra.AiCohortController.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.service.impl.AiCohortServiceImpl.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.source.CohortSourceAdapter.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.controller.ra.AiParseController.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.service.impl.AiParseServiceImpl.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.parse.ParseAuditStore.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.parse.AiParseGateway.class).size());
+            assertEquals(1,context.getBeansOfType(com.wenwen.ai.parse.AiGatewaySettings.class).size());
+            assertEquals("false",context.getEnvironment().getProperty("ra.ai.gateway.enabled"));
+            assertEquals("false",context.getEnvironment().getProperty("ra.ai.gateway.outbound-approved"));
+            com.wenwen.ai.parse.AiGatewayResult ruleOnly=context.getBean(com.wenwen.ai.parse.AiParseGateway.class).parse("女性",new com.wenwen.ai.parse.RuleParser().parse("女性"),new com.wenwen.ai.scope.TrustedDoctor(101));
+            assertEquals("AI_NOT_ENABLED",ruleOnly.getFallback());assertNull(ruleOnly.getCandidate());assertNull(ruleOnly.getModelVersion());
+            assertTrue(context.getBeansOfType(com.wenwen.controller.ra.AiExportController.class).isEmpty());
+            assertTrue(context.getBeansOfType(com.wenwen.controller.ra.PrivateCohortController.class).isEmpty());
+            org.apache.ibatis.session.Configuration configuration=context.getBean(org.apache.ibatis.session.SqlSessionFactory.class).getConfiguration();
+            assertTrue(configuration.hasStatement("com.wenwen.mapper.AiCohortSourceMapper.patientIds"));
+            assertTrue(configuration.hasStatement("com.wenwen.mapper.AiParseAuditMapper.insert"));
+            org.springframework.test.web.servlet.MockMvc http=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).build();
+            org.springframework.test.web.servlet.MvcResult result=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/ra/ai/resolveEntry").contentType("application/json").content("{\"source\":\"SIMILAR\",\"indexPatientId\":\"0\"}")).andReturn();
+            assertEquals(400,result.getResponse().getStatus());
+            com.fasterxml.jackson.databind.JsonNode envelope=WebLoopbackApiFixture.JSON.readTree(result.getResponse().getContentAsByteArray());
+            assertFalse(envelope.path("success").asBoolean());assertEquals("INVALID_REQUEST",envelope.path("code").asText());assertTrue(envelope.path("data").isNull());
+            assertNotNull(result.getResponse().getHeader("X-Trace-Id"));assertEquals(0,connections.get());
+        } finally {context.close();}
+        assertFalse(context.isActive());assertEquals(0,connections.get());
     }
 
     @Test void p06ComparisonReusesFixedFactsAndOnlyNecessaryRoutes() throws Exception {

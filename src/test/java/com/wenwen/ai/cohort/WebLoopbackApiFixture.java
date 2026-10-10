@@ -42,6 +42,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     static final String[] APPLICATION_TABLES={"export_application","ra_ai_export_request"};
     static final String APPLICATION_REASON_CANARY="ordinary-application-canary";
     static final String SMTP_FROM="fixture-from@notification.invalid",SMTP_TO="fixture-admin@notification.invalid";
+    static final List<String> COMPOSITION_PATHS=Collections.unmodifiableList(Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/resolveEntry","/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification"));
+    static final Instant COMPOSITION_DAY_BEFORE=Instant.parse("2026-10-31T15:59:59.999Z"),COMPOSITION_DAY_AFTER=Instant.parse("2026-10-31T16:00:00Z");
     static final ObjectMapper JSON = new ObjectMapper();
     final List<String> ownedTables = new ArrayList<>();
     DriverManagerDataSource raw;
@@ -55,6 +57,14 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     AiGatewayLoopbackPeer.Exchange parsePeerPlan;
     boolean peerPlanDiscarded;
     NotificationSmtpPeer applicationPeer;
+    boolean compositionGlobalEnabled=true,compositionFileEnabled=true;
+    int compositionPort;
+    File compositionBase;
+    String compositionIdentity;
+    boolean compositionSqlFailure;
+    java.util.concurrent.atomic.AtomicInteger compositionWrites=new java.util.concurrent.atomic.AtomicInteger();
+    static boolean compositionScenario(String scenario){return "p07-composition".equals(scenario)||"p07-composition-time".equals(scenario);}
+    boolean compositionScenario(){return compositionScenario(scenario);}
     static boolean applicationScenario(String scenario){return Arrays.asList("p06-application-replay","p06-application-retry","p06-application-unknown").contains(scenario);}
     boolean applicationScenario(){return applicationScenario(scenario);}
     static NotificationSmtpPeer.Mode applicationPeerMode(String scenario){
@@ -63,7 +73,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if("p06-application-unknown".equals(scenario))return NotificationSmtpPeer.Mode.DATA_SILENT;
         throw new IllegalArgumentException("未知申请场景");
     }
-    boolean parseScenario(){return Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety").contains(scenario);}
+    boolean parseScenario(){return Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety","p07-entry").contains(scenario)||compositionScenario();}
     final ScenarioClock scenarioClock=new ScenarioClock();
     final java.util.concurrent.atomic.AtomicLong scenarioDoctor=new java.util.concurrent.atomic.AtomicLong(101);
     long controlSeq;
@@ -78,7 +88,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         public Instant instant(){return now.get();}
         void advanceTtl(){now.updateAndGet(instant->instant.plusMillis(900000));}
     }
-    synchronized boolean control(String line) {
+    synchronized boolean control(String line) throws Exception {
         String[] parts=line.split(" ",-1);Long sequence=null;
         if(parts.length==3 && parts[0].equals("CONTROL") && parts[1].matches("[1-9][0-9]{0,15}"))sequence=Long.parseLong(parts[1]);
         boolean accepted=false;
@@ -94,6 +104,20 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if(sequence!=null&&applicationScenario()&&applicationPeer!=null&&sequence==controlSeq+1) {
             if(parts[2].equals("SMTP_SUCCESS")&&scenario.equals("p06-application-retry")){applicationPeer.mode=NotificationSmtpPeer.Mode.SUCCESS;controlSeq=sequence;accepted=true;}
             else if(parts[2].equals("SMTP_ASSERT")){assertApplicationPeer();controlSeq=sequence;accepted=true;}
+        }
+        if(sequence!=null&&compositionScenario()&&!closed&&sequence==controlSeq+1) {
+            String command=parts[2];
+            if(Arrays.asList("REBUILD_GLOBAL_OFF","REBUILD_BOTH_OFF","REBUILD_FILE_OFF","REBUILD_ENABLED").contains(command)) {
+                rebuildComposition(!command.equals("REBUILD_GLOBAL_OFF")&&!command.equals("REBUILD_BOTH_OFF"),!command.equals("REBUILD_FILE_OFF")&&!command.equals("REBUILD_BOTH_OFF"));accepted=true;
+            } else if(command.equals("IDENTITY_101")||command.equals("IDENTITY_ANONYMOUS")){scenarioDoctor.set(command.equals("IDENTITY_101")?101:0);accepted=true;}
+            else if(command.equals("ADVANCE_TTL")){scenarioClock.advanceTtl();accepted=true;}
+            else if(Arrays.asList("CLOCK_DAY_BEFORE","CLOCK_DAY_AFTER","CLOCK_EXACT_EXPIRY").contains(command)) {
+                scenarioClock.now.set(command.equals("CLOCK_DAY_BEFORE")?COMPOSITION_DAY_BEFORE:command.equals("CLOCK_DAY_AFTER")?COMPOSITION_DAY_AFTER:COMPOSITION_DAY_BEFORE.plusMillis(900000));accepted=true;
+            } else if(command.equals("SNAPSHOT_ROWS")){emitCompositionSnapshot();accepted=true;}
+            else if(command.equals("SOURCE_SCOPE_CHANGE")){changeCompositionScope();accepted=true;}
+            else if(applicationPeer!=null&&(command.equals("SMTP_SUCCESS")||command.equals("SMTP_UNKNOWN"))){applicationPeer.mode=command.equals("SMTP_SUCCESS")?NotificationSmtpPeer.Mode.SUCCESS:NotificationSmtpPeer.Mode.DATA_SILENT;accepted=true;}
+            else if(applicationPeer!=null&&command.equals("SMTP_ASSERT")){assertApplicationPeer();accepted=true;}
+            if(accepted){controlSeq=sequence;event("composition-clock","epochMs",scenarioClock.instant().toEpochMilli(),"doctorId",scenarioDoctor.get());}
         }
         event("control-ack","seq",sequence,"command",parts.length==3?parts[2]:null,"accepted",accepted);
         return accepted;
@@ -170,19 +194,21 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 event("table-owned","table",ownedTables.get(ownedTables.size()-1));
             }
             for (String sql:resource(seedForScenario(scenario)).split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
-            if(scenario.equals("p03")||scenario.equals("p04")||scenario.equals("p06-comparison"))createPrivateTables(s);
-            if(scenario.equals("p04")||scenario.equals("p06-comparison"))createComparisonTables(s);
+            if(scenario.equals("p03")||scenario.equals("p04")||scenario.equals("p06-comparison")||compositionScenario())createPrivateTables(s);
+            if(scenario.equals("p04")||scenario.equals("p06-comparison")||compositionScenario())createComparisonTables(s);
             if(parseScenario())createParseAuditTable(s);
-            if(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario())createExportAuditTable(s);
-            if(applicationScenario())createApplicationTables(s);
+            if(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario()||compositionScenario())createExportAuditTable(s);
+            if(applicationScenario()||compositionScenario())createApplicationTables(s);
             event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        if(compositionScenario(scenario))return COMPOSITION_PATHS.contains(path);
         return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients").contains(path)
             || (("p03".equals(scenario)||"p04".equals(scenario))&&Arrays.asList("/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete").contains(path))
             || (Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety").contains(scenario)&&"/api/ra/ai/parse".equals(path))
             || (Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety").contains(scenario)&&"/api/ra/ai/applyParse".equals(path))
+            || ("p07-entry".equals(scenario)&&Arrays.asList("/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/ai/resolveEntry").contains(path))
             || ("p06-cohort".equals(scenario)&&"/api/ra/export/xlsx".equals(path))
             || (applicationScenario(scenario)&&Arrays.asList("/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification").contains(path))
             || ("p06-comparison".equals(scenario)&&Arrays.asList("/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/export/xlsx").contains(path))
@@ -193,7 +219,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if("p01b".equals(scenario)||"p03".equals(scenario)||"p05-rule".equals(scenario)||"p05-safety".equals(scenario))return "seed-p01b.sql";
         if("p05-apply-rule".equals(scenario)||"p05-apply-safety".equals(scenario))return "seed-p05.sql";
         if("p02".equals(scenario))return "seed-p02.sql";
-        if("p06-cohort".equals(scenario)||applicationScenario(scenario))return "seed-p06.sql";
+        if("p07-entry".equals(scenario))return "seed-p07.sql";
+        if("p06-cohort".equals(scenario)||applicationScenario(scenario)||compositionScenario(scenario))return "seed-p06.sql";
         if("p04".equals(scenario)||"p06-comparison".equals(scenario))return "seed-p04.sql";
         throw new IllegalArgumentException("未知合成场景");
     }
@@ -355,14 +382,35 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean public AiExportApplicationMapper applicationMapper(SqlSessionTemplate template){return template.getMapper(AiExportApplicationMapper.class);}
         @Bean public ExportMapper legacyExportMapper(SqlSessionTemplate template){return template.getMapper(ExportMapper.class);}
     }
+    /** P07统一真实装配只用于合成仪器；所有15路共用同一个固定availability。 */
+    @Configuration @EnableWebMvc
+    @Import({PrivateCohortController.class,PrivateCohortServiceImpl.class,DefinitionStore.class,ComparisonController.class,ComparisonServiceImpl.class,com.wenwen.controller.ra.AiParseController.class,com.wenwen.service.impl.AiParseServiceImpl.class,com.wenwen.ai.parse.ParseAuditStore.class,com.wenwen.config.AiParseGatewayConfiguration.class})
+    public static class CompositionInfrastructure extends ApplicationInfrastructure {
+        @Override @Bean public SqlSessionFactory sqlSessionFactory(DataSource ds) throws Exception {
+            SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(ds);
+            org.apache.ibatis.session.Configuration configuration=new org.apache.ibatis.session.Configuration();configuration.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);factory.setConfiguration(configuration);
+            String[] mappers={"ProjectMapper","AiCohortSourceMapper","AiAnalysisRunMapper","PrivateCohortMapper","AiComparisonRunMapper","AiParseAuditMapper","AiExportAuditMapper","ExportMapper","AiExportApplicationMapper"};
+            Resource[] resources=new Resource[mappers.length];for(int i=0;i<mappers.length;i++)resources[i]=new ClassPathResource("mybatis/"+mappers[i]+".xml");factory.setMapperLocations(resources);return factory.getObject();
+        }
+        @Bean public PrivateCohortMapper privateMapper(SqlSessionTemplate template){return template.getMapper(PrivateCohortMapper.class);}
+        @Bean public AiParseAuditMapper parseAuditMapper(SqlSessionTemplate template){return template.getMapper(AiParseAuditMapper.class);}
+    }
+    Class<?> contextConfiguration() {
+        if(compositionScenario())return CompositionInfrastructure.class;
+        return applicationScenario()?ApplicationInfrastructure.class:scenario.equals("p06-comparison")?ComparisonExportInfrastructure.class:scenario.equals("p06-cohort")?ExportInfrastructure.class:parseScenario()?ParseInfrastructure.class:scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class;
+    }
     int start(String identity, boolean sqlFailure, File base) throws Exception {
-        observed=new ObservedDataSource(raw); observed.failSecondSql=sqlFailure;
+        if(compositionScenario()) {
+            if(compositionBase==null){compositionBase=base;compositionIdentity=identity;compositionSqlFailure=sqlFailure;scenarioDoctor.set(identity.equals("synthetic")?101:0);if(scenario.equals("p07-composition-time"))scenarioClock.now.set(COMPOSITION_DAY_BEFORE);}
+            if(observed==null)observed=new ObservedDataSource(compositionObservedSource(raw));
+        } else observed=new ObservedDataSource(raw);
+        observed.failSecondSql=sqlFailure;
         application=new AnnotationConfigWebApplicationContext();
         MutablePropertySources sources=application.getEnvironment().getPropertySources();
         // Servlet property sources are unpopulated here; remove defaults rather than consulting the host.
         for(String name:new String[]{"systemProperties","systemEnvironment","servletContextInitParams","servletConfigInitParams","jndiProperties"}) sources.remove(name);
         Map<String,Object> properties=new LinkedHashMap<>();
-        properties.put("ra.ai.api.enabled","true");properties.put("ra.export.xlsx.enabled",(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario())?"true":"false");
+        properties.put("ra.ai.api.enabled",compositionScenario()?String.valueOf(compositionGlobalEnabled):"true");properties.put("ra.export.xlsx.enabled",compositionScenario()?String.valueOf(compositionFileEnabled):(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario())?"true":"false");
         properties.put("ra.ai.gateway.enabled","false");properties.put("ra.ai.gateway.outbound-approved","false");
         properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
         properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
@@ -375,26 +423,41 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             properties.put("ra.ai.gateway.enabled","true");properties.put("ra.ai.gateway.outbound-approved","true");properties.put("ra.ai.gateway.synthetic-loopback","true");properties.put("ra.ai.gateway.endpoint",parsePeer.endpoint());properties.put("ra.ai.gateway.model","p05b-synthetic-model");properties.put("ra.ai.gateway.api-key","p05b-loopback-key");event("parse-peer-planned","received",parsePeerPlan.received.getCount());
         }
         if(applicationScenario()){applicationPeer=new NotificationSmtpPeer(applicationPeerMode(scenario));properties.putAll(applicationSmtpProperties(applicationPeer.port()));event("application-peer-planned","mode",applicationPeer.mode.name(),"host","127.0.0.1","smtpMode","LOOPBACK_PLAIN","auth",false,"recipientDomain","notification.invalid");}
+        if(compositionScenario()) {
+            if(applicationPeer==null){applicationPeer=new NotificationSmtpPeer(NotificationSmtpPeer.Mode.SUCCESS);event("application-peer-planned","mode",applicationPeer.mode.name(),"host","127.0.0.1","smtpMode","LOOPBACK_PLAIN","auth",false,"recipientDomain","notification.invalid");}
+            properties.putAll(applicationSmtpProperties(applicationPeer.port()));
+        }
         sources.addFirst(new MapPropertySource("synthetic-only",properties));
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("observedDataSource",observed));
-        final PrincipalProvider principal=(scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04"))?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
+        final PrincipalProvider principal=(scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04")||compositionScenario())?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("principalProvider",principal));
         if((scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04"))) {
             scenarioDoctor.set(identity.equals("synthetic")?101:0);
             application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
         }
-        application.register(applicationScenario()?ApplicationInfrastructure.class:scenario.equals("p06-comparison")?ComparisonExportInfrastructure.class:scenario.equals("p06-cohort")?ExportInfrastructure.class:parseScenario()?ParseInfrastructure.class:scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class);
+        if(compositionScenario())application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
+        application.register(contextConfiguration());
         tomcat=new Tomcat();tomcat.setBaseDir(base.getAbsolutePath());
-        tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(0);
+        tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(compositionScenario()?compositionPort:0);
         Context context=tomcat.addContext("",base.getAbsolutePath());
         context.setParentClassLoader(WebLoopbackApiFixture.class.getClassLoader());
         DispatcherServlet dispatcher=new DispatcherServlet(application);
         HttpServlet servlet=new HttpServlet(){
             protected synchronized void service(HttpServletRequest request,HttpServletResponse response) throws ServletException,IOException {
+                synchronized(WebLoopbackApiFixture.this) {
                 if(!allowsHttpPath(scenario,request.getRequestURI())) {response.sendError(404);return;}
                 int selectsBefore=observed.selects,analysisInsertsBefore=observed.inserts;
-                try {dispatcher.service(request,response);}
-                finally {if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/parse"))event("parse-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/applyParse"))event("apply-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());event("http-observation","borrowed",observed.borrowed,"returned",observed.returned,"active",observed.active.get(),"mysqlFailures",observed.mysqlFailures,"mysqlError",observed.lastMysqlError,"sqlState",observed.lastSqlState,"status",response.getStatus());}
+                int borrowsBefore=observed.borrowed,writesBefore=compositionWrites.get(),smtpConnectionsBefore=applicationPeer==null?0:applicationPeer.connections.get(),smtpDataBefore=applicationPeer==null?0:applicationPeer.dataCommands.get();
+                CountingRequest counted=compositionScenario()?new CountingRequest(request):null;
+                try {dispatcher.service(counted==null?request:counted,response);}
+                finally {
+                    if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/parse"))event("parse-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());
+                    if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/applyParse"))event("apply-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());
+                    if(scenario.equals("p07-entry")&&request.getRequestURI().equals("/api/ra/ai/resolveEntry"))event("resolve-http-observation","traceId",response.getHeader("X-Trace-Id"),"selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get(),"status",response.getStatus());
+                    event("http-observation","borrowed",observed.borrowed,"returned",observed.returned,"active",observed.active.get(),"mysqlFailures",observed.mysqlFailures,"mysqlError",observed.lastMysqlError,"sqlState",observed.lastSqlState,"status",response.getStatus());
+                    if(counted!=null)event("composition-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"smtpConnectionDelta",applicationPeer.connections.get()-smtpConnectionsBefore,"smtpDataDelta",applicationPeer.dataCommands.get()-smtpDataBefore,"active",observed.active.get());
+                }
+                }
             }
             public void init(ServletConfig config) throws ServletException {super.init(config);dispatcher.init(config);}
             public void destroy(){dispatcher.destroy();super.destroy();}
@@ -408,7 +471,99 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         for(String name:application.getBeanDefinitionNames())if(name.toLowerCase(Locale.ROOT).contains("gateway")){if(!parseScenario())throw new IllegalStateException("不应装配gateway");gatewayBeans++;}
         if(parseScenario()&&(application.getBeansOfType(com.wenwen.ai.parse.AiParseGateway.class).size()!=1||application.getBeansOfType(com.wenwen.ai.parse.AiGatewaySettings.class).size()!=1||application.getBeansOfType(com.wenwen.ai.parse.ParseAuditStore.class).size()!=1))throw new IllegalStateException("解析最小装配不符");
         event("context-isolated","propertySources",names,"gatewayBeans",gatewayBeans,"identity",identity);
+        if(compositionScenario()) {
+            String failure=application.getBean(com.wenwen.ai.parse.AiParseGateway.class).parse("女性",new com.wenwen.ai.parse.RuleParser().parse("女性"),new TrustedDoctor(101)).getFallback();
+            if(!"AI_NOT_ENABLED".equals(failure)||parsePeer!=null)throw new IllegalStateException("组合fixture不得开启AI外发");
+            compositionPort=tomcat.getConnector().getLocalPort();
+            event("composition-context","port",compositionPort,"globalEnabled",compositionGlobalEnabled,"fileEnabled",compositionFileEnabled,"paths",COMPOSITION_PATHS,"gatewayFailure",failure,"gatewayEnabled",false,"gatewayOutboundApproved",false,"parsePeerPresent",false,"epochMs",scenarioClock.instant().toEpochMilli());
+        }
         return tomcat.getConnector().getLocalPort();
+    }
+    /** wrapper只计真正消费的请求bytes，拒绝门不读取stream时保持0。 */
+    static final class CountingRequest extends HttpServletRequestWrapper {
+        long bodyBytes;private ServletInputStream counted;
+        CountingRequest(HttpServletRequest request){super(request);}
+        @Override public ServletInputStream getInputStream() throws IOException {
+            if(counted==null){final ServletInputStream input=super.getInputStream();counted=new ServletInputStream(){
+                public int read() throws IOException {int value=input.read();if(value!=-1)bodyBytes++;return value;}
+                public int read(byte[] bytes,int off,int len)throws IOException{int count=input.read(bytes,off,len);if(count>0)bodyBytes+=count;return count;}
+                public boolean isFinished(){return input.isFinished();}public boolean isReady(){return input.isReady();}public void setReadListener(ReadListener listener){input.setReadListener(listener);}public void close()throws IOException{input.close();}
+            };}return counted;
+        }
+        @Override public BufferedReader getReader() throws IOException{return new BufferedReader(new InputStreamReader(getInputStream(),StandardCharsets.UTF_8));}
+    }
+    /** 独立生产SQL计数：覆盖所有新表INSERT/UPDATE/DELETE，而非仅analysis INSERT。 */
+    DataSource compositionObservedSource(DataSource delegate) {
+        return new AbstractDataSource(){
+            public Connection getConnection()throws SQLException{return observe(delegate.getConnection());}
+            public Connection getConnection(String user,String password)throws SQLException{return observe(delegate.getConnection(user,password));}
+            private Connection observe(Connection connection){
+                return (Connection)java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),new Class<?>[]{Connection.class},(proxy,method,args)->{
+                    try {
+                        Object value=method.invoke(connection,args);
+                        if(method.getName().equals("prepareStatement")&&args[0] instanceof String&&value instanceof PreparedStatement&&compositionWriteSql((String)args[0])) {
+                            PreparedStatement statement=(PreparedStatement)value;
+                            return java.lang.reflect.Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),new Class<?>[]{PreparedStatement.class},(p,m,a)->{
+                                try {if(m.getName().equals("execute")||m.getName().equals("executeUpdate")||m.getName().equals("executeLargeUpdate")||m.getName().equals("executeBatch"))compositionWrites.incrementAndGet();return m.invoke(statement,a);}
+                                catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
+                            });
+                        }
+                        return value;
+                    }catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
+                });
+            }
+        };
+    }
+    static boolean compositionWriteSql(String sql){String normalized=sql.trim().toUpperCase(Locale.ROOT);return normalized.startsWith("INSERT ")||normalized.startsWith("UPDATE ")||normalized.startsWith("DELETE ");}
+    Map<String,Object> compositionRows() throws Exception {
+        if(raw==null||ownedTables.isEmpty())throw new IllegalStateException("组合owner尚未取得schema");
+        Map<String,Object> counts=new LinkedHashMap<>(),digests=new LinkedHashMap<>();
+        try(Connection connection=preparationConnection();Statement statement=connection.createStatement()) {
+            // 这些read均使用外层raw；不混入生产请求borrow/select计数。
+            try(ResultSet database=statement.executeQuery("SELECT DATABASE()")){if(!database.next()||!"ra_synthetic_test".equals(database.getString(1)))throw new IllegalStateException("组合重建库发生变化");}
+            for(String table:ownedTables) {
+                if(!table.matches("[a-z_]+"))throw new IllegalStateException("非owned表名");
+                List<String> rows=new ArrayList<>();StringBuilder header=new StringBuilder();
+                try(ResultSet result=statement.executeQuery("SELECT * FROM "+table)) {
+                    ResultSetMetaData metadata=result.getMetaData();int columns=metadata.getColumnCount();
+                    for(int i=1;i<=columns;i++)header.append(metadata.getColumnName(i)).append(':').append(metadata.getColumnType(i)).append('\n');
+                    while(result.next()){StringBuilder row=new StringBuilder();for(int i=1;i<=columns;i++){byte[] value=result.getBytes(i);if(value==null)row.append("N;");else row.append(value.length).append(':').append(Base64.getEncoder().encodeToString(value)).append(';');}rows.add(row.toString());}
+                }
+                Collections.sort(rows);java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");digest.update(header.toString().getBytes(StandardCharsets.UTF_8));for(String row:rows){digest.update(row.getBytes(StandardCharsets.UTF_8));digest.update((byte)'\n');}
+                StringBuilder hex=new StringBuilder();for(byte b:digest.digest())hex.append(String.format(Locale.ROOT,"%02x",b&255));counts.put(table,rows.size());digests.put(table,hex.toString());
+            }
+        }
+        Map<String,Object> snapshot=new LinkedHashMap<>();snapshot.put("tableRows",counts);snapshot.put("tableDigests",digests);return snapshot;
+    }
+    void emitCompositionSnapshot() throws Exception {
+        Map<String,Object> rows=compositionRows();event("composition-snapshot","tableRows",rows.get("tableRows"),"tableDigests",rows.get("tableDigests"),"epochMs",scenarioClock.instant().toEpochMilli(),"smtpConnections",applicationPeer.connections.get(),"smtpDataCommands",applicationPeer.dataCommands.get(),"smtpAccepted",applicationPeer.accepted.get(),"smtpMessages",applicationPeer.messages.size());
+    }
+    void changeCompositionScope() throws Exception {
+        int changed;try(Connection connection=preparationConnection();PreparedStatement statement=connection.prepareStatement("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=137")){changed=statement.executeUpdate();}
+        if(changed!=1)throw new AssertionError("组合U变化未影响唯一owned关系");
+        try(Connection connection=preparationConnection();Statement statement=connection.createStatement();ResultSet result=statement.executeQuery("SELECT COUNT(*) FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=137")){if(!result.next()||result.getInt(1)!=0)throw new AssertionError("组合U变化未实际提交");}
+        event("composition-source-changed","doctorId",101,"patientId","137","affectedRows",changed,"remainingRelations",0);
+    }
+    void stopCompositionContext() throws Exception {
+        Exception first=null;Tomcat oldTomcat=tomcat;AnnotationConfigWebApplicationContext oldApplication=application;
+        if(oldTomcat!=null)try{oldTomcat.stop();}catch(Exception e){first=e;}
+        if(oldApplication!=null)try{oldApplication.close();}catch(Exception e){if(first==null)first=e;else first.addSuppressed(e);}
+        if(oldTomcat!=null)try{oldTomcat.destroy();}catch(Exception e){if(first==null)first=e;else first.addSuppressed(e);}
+        if(oldApplication!=null&&oldApplication.isActive()){IllegalStateException e=new IllegalStateException("旧组合context未退出");if(first==null)first=e;else first.addSuppressed(e);}
+        if(observed.active.get()!=0){IllegalStateException e=new IllegalStateException("旧组合context仍持有SQL");if(first==null)first=e;else first.addSuppressed(e);}
+        event("composition-context-closed","active",oldApplication!=null&&oldApplication.isActive(),"sqlActive",observed.active.get(),"clean",first==null);
+        if(first!=null)throw first;application=null;tomcat=null;
+    }
+    void rebuildComposition(boolean global,boolean file) throws Exception {
+        if(!compositionScenario()||application==null||!application.isActive()||compositionBase==null)throw new IllegalStateException("组合重建没有活动owner");
+        Map<String,Object> before=compositionRows();DataSource sameRaw=raw;ScenarioClock sameClock=scenarioClock;NotificationSmtpPeer samePeer=applicationPeer;List<String> sameTables=new ArrayList<>(ownedTables);int samePort=compositionPort;
+        stopCompositionContext();
+        // 从旧context真实退出到新context发布前核完整保库；失败不得重seed或假恢复。
+        Map<String,Object> afterClose=compositionRows();if(!before.equals(afterClose))throw new AssertionError("结束旧context修改了owned行");
+        compositionGlobalEnabled=global;compositionFileEnabled=file;int port=start(compositionIdentity,compositionSqlFailure,compositionBase);
+        Map<String,Object> after=compositionRows();
+        if(!before.equals(after)||raw!=sameRaw||scenarioClock!=sameClock||applicationPeer!=samePeer||!ownedTables.equals(sameTables)||port!=samePort)throw new AssertionError("组合context未保留原schema/rows/clock/peer/port");
+        event("composition-rebuilt","globalEnabled",global,"fileEnabled",file,"port",port,"oldContextActive",false,"sameSchema",true,"rowsUnchanged",true,"tableRows",after.get("tableRows"),"tableDigests",after.get("tableDigests"),"epochMs",scenarioClock.instant().toEpochMilli(),"smtpConnections",applicationPeer.connections.get(),"smtpDataCommands",applicationPeer.dataCommands.get(),"smtpAccepted",applicationPeer.accepted.get(),"smtpMessages",applicationPeer.messages.size());
     }
     @Override public synchronized void close() throws Exception {
         if(closed)return;closed=true;Exception first=null;
@@ -416,6 +571,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if(application!=null)try{application.close();}catch(Exception e){if(first==null)first=e;}
         if(parseScenario()&&application!=null)event("parse-context-closed","active",application.isActive());
         if(applicationScenario()&&application!=null)event("application-context-closed","active",application.isActive());
+        if(compositionScenario()&&application!=null)event("composition-context-closed","active",application.isActive(),"sqlActive",observed==null?0:observed.active.get(),"clean",first==null,"finalOwnerClose",true);
         if(applicationPeer!=null)try{applicationPeer.close();event("application-peer-closed","connections",applicationPeer.connections.get(),"dataCommands",applicationPeer.dataCommands.get(),"accepted",applicationPeer.accepted.get(),"authCommands",applicationPeer.authCommands.get(),"messages",applicationPeer.messages.size(),"failure",applicationPeer.failure==null?null:"SYNTHETIC_PEER_FAILED","peerEof",applicationPeer.eof.getCount()==0);}catch(Exception e){if(first==null)first=e;}
         if(parsePeer!=null) {
             try{if(parsePeerPlan!=null&&!peerPlanDiscarded){parsePeer.discardUnused(parsePeerPlan);peerPlanDiscarded=true;}}
@@ -490,6 +646,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         final WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario=scenario;
         Thread hook=new Thread(()->{try{fixture.close();}catch(Exception e){event("cleanup-error","class",e.getClass().getName());}},"web-fixture-close");
         Runtime.getRuntime().addShutdownHook(hook);
+        Throwable primaryFailure=null;
         try {
             fixture.connect();
             if(mode.equals("guard-only"))return;
@@ -508,7 +665,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             }
             if(held){System.out.println("RA_WEB_FIXTURE_READY "+JSON.writeValueAsString(ready));System.out.flush();}
 
-        }catch(Throwable e){event("failure","class",e.getClass().getName());throw e;}
-        finally {try{fixture.close();}finally{Runtime.getRuntime().removeShutdownHook(hook);}}
+        }catch(Throwable e){primaryFailure=e;event("failure","class",e.getClass().getName());throw e;}
+        finally {try{try{fixture.close();}catch(Exception cleanup){if(primaryFailure!=null)primaryFailure.addSuppressed(cleanup);else throw cleanup;}}finally{Runtime.getRuntime().removeShutdownHook(hook);}}
     }
 }
