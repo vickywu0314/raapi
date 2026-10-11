@@ -24,9 +24,11 @@ public class FollowupServiceImpl implements FollowupService {
 	private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 	private static final java.util.Map<String, String> STATUS_LABELS = new java.util.HashMap<String, String>();
 	static {
-		STATUS_LABELS.put("overdue", "已逾期");
-		STATUS_LABELS.put("soon", "14 天内到期");
-		STATUS_LABELS.put("later", "待随访");
+		// 与患者列表（PatientServiceImpl.FOLLOW_STATUS）一致
+		STATUS_LABELS.put("pending_first", "待首次随访");
+		STATUS_LABELS.put("overdue", "随访逾期");
+		STATUS_LABELS.put("soon", "近期需随访");
+		STATUS_LABELS.put("active", "随访中");
 		STATUS_LABELS.put("lost", "疑似失访");
 	}
 
@@ -73,9 +75,11 @@ public class FollowupServiceImpl implements FollowupService {
 				long days = ChronoUnit.DAYS.between(today, due);
 				v.setDueDate(due.toString());
 				v.setDays(days);
-				v.setStatus(days < 0 ? "overdue" : days <= 14 ? "soon" : "later");
-			} else {
-				v.setStatus("later");
+				v.setStatus(days < 0 ? "overdue" : days <= 14 ? "soon" : "active");
+			}
+			// 状态与患者列表同一规则：还没有随访 → 待首次随访；再按预计日期 逾期 / 14 天内 / 随访中
+			if (count == 0 || due == null) {
+				v.setStatus("pending_first");
 			}
 			if (ref != null && ref.isBefore(today.minusMonths(lostMonths))) {
 				v.setStatus("lost");
