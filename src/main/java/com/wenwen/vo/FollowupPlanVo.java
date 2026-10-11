@@ -16,9 +16,9 @@ public class FollowupPlanVo {
 	private String sex;
 	@ApiModelProperty("出生年份（按身份证号）")
 	private Integer birthYear;
-	@ApiModelProperty("已随访次数")
+	@ApiModelProperty("随访记录条数（含基线访视）；只建档没录随访为 0")
 	private int visitCount;
-	@ApiModelProperty("下次是第几次随访 = visitCount + 1")
+	@ApiModelProperty("下次是第几次随访：第一条记录是基线访视、不算随访，所以 = visitCount；0 表示下次是基线访视")
 	private int nth;
 	@ApiModelProperty("是否首次（基线）随访：还没有随访记录")
 	private boolean first;

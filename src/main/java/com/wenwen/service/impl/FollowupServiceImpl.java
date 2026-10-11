@@ -56,7 +56,8 @@ public class FollowupServiceImpl implements FollowupService {
 			v.setBirthYear(birth == null ? null : birth.getYear());
 			int count = r.get("visitCount") == null ? 0 : ((Number) r.get("visitCount")).intValue();
 			v.setVisitCount(count);
-			v.setNth(count + 1);
+			// 第一条记录是基线访视，之后的才算随访：下次是基线时 nth = 0，否则为第 count 次随访
+			v.setNth(count);
 			v.setFirst(count == 0);
 			int cycle = r.get("followCycle") == null ? 12 : ((Number) r.get("followCycle")).intValue();
 			v.setFollowCycle(cycle);

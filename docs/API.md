@@ -668,8 +668,8 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 字段 | 中文含义 | 取的方式 |
 |---|---|---|
 | `patientId` / `studyNo` / `name` / `sex` / `birthYear` | 患者 | `patient_basic_info`；出生年份按身份证号 |
-| `visitCount` | 已随访次数 | RA 随访记录条数 |
-| `nth` / `first` | 下次是第几次随访 / 是否基线 | `visitCount + 1` / `visitCount = 0` |
+| `visitCount` | 随访记录条数（含基线访视） | RA 随访记录条数；只建档、没录随访为 0 |
+| `nth` / `first` | 下次是第几次随访 / 下次是否基线访视 | 第一条记录是基线访视、不算随访：`nth` = `visitCount`（0 = 下次是基线）；`first` = `visitCount = 0` |
 | `followCycle` | 随访周期（月） | `follow_cycle` |
 | `lastVisitDate` | 最近随访日期 | `COALESCE(follow_up_date, followUpDate)` 最大值 |
 | `dueDate` | 预计日期 | 最近随访 + 随访周期；没有随访取建档日期 |
