@@ -624,6 +624,35 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
 
+## 八、随访管理页（followups.html）
+
+### 8.1 随访计划
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/followup/plans` |
+| 入参 | `doctorId` |
+| 范围 | 该医生名下、未脱落（本医生 RA 关系没有 `miss=1`）的 RA 患者；只读 |
+| 排序 | 预计日期从早到晚（逾期最久的在最前），预计日期未知的排最后 |
+| 分页 | 不分页，检索（姓名 / ID号 / 研究编号）、按状态 / 周期筛选、分页都在页面完成 |
+
+出参 `data` 为数组：
+
+| 字段 | 中文含义 | 取的方式 |
+|---|---|---|
+| `patientId` / `studyNo` / `name` / `sex` / `birthYear` | 患者 | `patient_basic_info`；出生年份按身份证号 |
+| `visitCount` | 已随访次数 | RA 随访记录条数 |
+| `nth` / `first` | 下次是第几次随访 / 是否基线 | `visitCount + 1` / `visitCount = 0` |
+| `followCycle` | 随访周期（月） | `follow_cycle` |
+| `lastVisitDate` | 最近随访日期 | `COALESCE(follow_up_date, followUpDate)` 最大值 |
+| `dueDate` | 预计日期 | 最近随访 + 随访周期；没有随访取建档日期 |
+| `days` | 距今天数（上海时区），负数 = 已逾期 | |
+| `status` / `statusLabel` | `overdue` 已逾期 / `soon` 14 天内到期 / `later` 待随访 | |
+
+页面：点患者进入患者详情（`patient-visits.html?id=…&from=followups`），详情页「返回」用浏览器后退回到随访管理（保留检索条件和页码）。
+
+---
+
 ## 七、AI 队列完整分析与有期结果分页（P03_RESULT）
 
 ### 7.1 当前医生 RA 队列
