@@ -674,7 +674,9 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `lastVisitDate` | 最近随访日期 | `COALESCE(follow_up_date, followUpDate)` 最大值 |
 | `dueDate` | 预计日期 | 最近随访 + 随访周期；没有随访取建档日期 |
 | `days` | 距今天数（上海时区），负数 = 已逾期 | |
-| `status` / `statusLabel` | `overdue` 已逾期 / `soon` 14 天内到期 / `later` 待随访 | |
+| `status` / `statusLabel` | `overdue` 已逾期 / `soon` 14 天内到期 / `later` 待随访 / `lost` 疑似失访 | 疑似失访：最近一次随访（没有随访取建档日期）距今超过 `ra.followup.lost-months` 个月（默认 24），优先于其他状态 |
+
+页面统计：计划中随访、已逾期、14 天内到期、按期随访率（=(计划数−逾期数)/计划数）都**不含疑似失访**；疑似失访单独一张卡片，点开筛出名单。列表默认不显示疑似失访，状态筛选选「疑似失访」才显示。
 
 页面：点患者进入患者详情（`patient-visits.html?id=…&from=followups`），详情页「返回」用浏览器后退回到随访管理（保留检索条件和页码）。
 

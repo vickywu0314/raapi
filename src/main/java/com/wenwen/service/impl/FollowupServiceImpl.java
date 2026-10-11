@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.wenwen.mapper.FollowupMapper;
@@ -21,9 +22,20 @@ import com.wenwen.vo.FollowupPlanVo;
 public class FollowupServiceImpl implements FollowupService {
 
 	private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
+	private static final java.util.Map<String, String> STATUS_LABELS = new java.util.HashMap<String, String>();
+	static {
+		STATUS_LABELS.put("overdue", "已逾期");
+		STATUS_LABELS.put("soon", "14 天内到期");
+		STATUS_LABELS.put("later", "待随访");
+		STATUS_LABELS.put("lost", "疑似失访");
+	}
 
 	@Autowired
 	private FollowupMapper mapper;
+
+	/** 疑似失访：最近一次随访（没有随访取建档日期）距今超过这么多个月，不再算进随访计划和逾期 */
+	@Value("${ra.followup.lost-months:24}")
+	private int lostMonths;
 
 	@Override
 	public List<FollowupPlanVo> listPlans(Long doctorId) {
@@ -55,6 +67,7 @@ public class FollowupServiceImpl implements FollowupService {
 			if (due != null && last != null) {
 				due = due.plusMonths(cycle);
 			}
+			LocalDate ref = last != null ? date(last) : date((String) r.get("createDate"));
 			if (due != null) {
 				long days = ChronoUnit.DAYS.between(today, due);
 				v.setDueDate(due.toString());
@@ -63,7 +76,10 @@ public class FollowupServiceImpl implements FollowupService {
 			} else {
 				v.setStatus("later");
 			}
-			v.setStatusLabel("overdue".equals(v.getStatus()) ? "已逾期" : "soon".equals(v.getStatus()) ? "14 天内到期" : "待随访");
+			if (ref != null && ref.isBefore(today.minusMonths(lostMonths))) {
+				v.setStatus("lost");
+			}
+			v.setStatusLabel(STATUS_LABELS.get(v.getStatus()));
 			list.add(v);
 		}
 		list.sort(Comparator.comparing(FollowupPlanVo::getDays, Comparator.nullsLast(Comparator.naturalOrder()))

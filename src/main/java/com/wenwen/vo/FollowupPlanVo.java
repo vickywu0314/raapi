@@ -30,7 +30,7 @@ public class FollowupPlanVo {
 	private String dueDate;
 	@ApiModelProperty("距今天数，负数 = 已逾期天数")
 	private Long days;
-	@ApiModelProperty("状态：overdue 已逾期 / soon 14 天内到期 / later 待随访")
+	@ApiModelProperty("状态：overdue 已逾期 / soon 14 天内到期 / later 待随访 / lost 疑似失访（最近一次随访，没有随访取建档日期，距今超过 ra.followup.lost-months 个月，默认 24）")
 	private String status;
 	@ApiModelProperty("状态 · 标签文字")
 	private String statusLabel;
