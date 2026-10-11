@@ -31,6 +31,8 @@ import com.wenwen.vo.PatientBasicForm;
 import com.wenwen.vo.PatientCheckVo;
 import com.wenwen.vo.PatientCreateRequest;
 import com.wenwen.vo.PatientCreateResultVo;
+import com.wenwen.vo.PatientEditFormVo;
+import com.wenwen.vo.PatientUpdateRequest;
 
 @Service
 public class PatientWriteServiceImpl implements PatientWriteService {
@@ -85,6 +87,254 @@ public class PatientWriteServiceImpl implements PatientWriteService {
 
 	@Autowired
 	private AuditLogService auditLogService;
+
+	/** 编辑档案：表单字段名 → 患者表列名（吸烟 4 项作为一组一起改） */
+	private static final Map<String, String> EDIT_COLS = new LinkedHashMap<String, String>();
+	private static final List<String> SMOKE_GROUP = Arrays.asList("smoke", "smokeYears", "smokeCountByDay", "smokeStop");
+	static {
+		String[][] m = { { "name", "name" }, { "cardNo", "card_no" }, { "gender", "gender" }, { "mobile", "mobile" },
+				{ "nation", "nation" }, { "marry", "marry" }, { "confirmDate", "confirm_date" }, { "happenDate", "happen_date" },
+				{ "height", "height" }, { "weight", "weight" }, { "waistline", "waistline" }, { "heartRate", "xl" },
+				{ "systolic", "xy_h" }, { "diastolic", "xy_l" }, { "smoke", "smoke" }, { "smokeYears", "smoke_years" },
+				{ "smokeCountByDay", "smoke_count_by_day" }, { "smokeStop", "smoke_stop" }, { "allergyHistory", "gms" },
+				{ "familyHistory", "jzs" }, { "pastHistory", "jws" }, { "followCycle", "follow_cycle" } };
+		for (String[] x : m) {
+			EDIT_COLS.put(x[0], x[1]);
+		}
+	}
+
+	@Override
+	public PatientEditFormVo getEditForm(Long doctorId, Long patientId) {
+		if (doctorId == null || patientId == null) {
+			throw new IllegalArgumentException("缺少医生ID或患者ID");
+		}
+		myRaRelations(doctorId, patientId);
+		Map<String, Object> b = mapper.getBasicForm(patientId);
+		PatientEditFormVo vo = new PatientEditFormVo();
+		vo.setPatientId(patientId);
+		vo.setStudyNo((String) b.get("studyNo"));
+		vo.setAcrEularScore(toInteger(b.get("acrEularScore")));
+		PatientBasicForm f = toForm(b);
+		Map<String, Object> acr = optional(() -> mapper.getLatestAcr(patientId));
+		// 各部分明细只在总分与患者表一致时带出（老系统改过总分时以患者表为准，不带明细）
+		if (acr != null && vo.getAcrEularScore() != null && vo.getAcrEularScore().equals(toInteger(acr.get("totalScore")))) {
+			AcrEularForm a = new AcrEularForm();
+			a.setJointScore(toInteger(acr.get("jointScore")));
+			a.setSerologyScore(toInteger(acr.get("serologyScore")));
+			a.setDurationScore(toInteger(acr.get("durationScore")));
+			a.setAcuteScore(toInteger(acr.get("acuteScore")));
+			a.setTotalScore(toInteger(acr.get("totalScore")));
+			f.setAcrEular(a);
+		}
+		Map<String, Object> extra = optional(() -> mapper.getRaExtra(patientId));
+		if (extra != null) {
+			f.setDiagnosisInformed(toInteger(extra.get("diagnosisInformed")));
+			f.setConsentSigned(toInteger(extra.get("consentSigned")));
+		}
+		List<ComorbidityInput> cs = new ArrayList<ComorbidityInput>();
+		List<Map<String, Object>> rows = optional(() -> mapper.listComorbidity(patientId));
+		if (rows != null) {
+			for (Map<String, Object> r : rows) {
+				ComorbidityInput c = new ComorbidityInput();
+				c.setCode((String) r.get("code"));
+				c.setSinceYear(toInteger(r.get("sinceYear")));
+				c.setSource((String) r.get("source"));
+				cs.add(c);
+			}
+		}
+		f.setComorbidities(cs);
+		vo.setBasic(f);
+		return vo;
+	}
+
+	@Override
+	@Transactional
+	public int updatePatient(PatientUpdateRequest req) {
+		if (req == null || req.getDoctorId() == null || req.getPatientId() == null || req.getBasic() == null) {
+			throw new IllegalArgumentException("缺少医生ID、患者ID或基本信息");
+		}
+		Long doctorId = req.getDoctorId(), patientId = req.getPatientId();
+		myRaRelations(doctorId, patientId);
+		java.util.Set<String> changed = new java.util.HashSet<String>(req.getChanged() == null ? new ArrayList<String>() : req.getChanged());
+		if (!java.util.Collections.disjoint(changed, SMOKE_GROUP)) {
+			changed.addAll(SMOKE_GROUP);
+		}
+		Map<String, Object> before = mapper.getBasicForm(patientId);
+		Map<String, Object> beforeCols = toCols(before);
+		beforeCols.put("acr_eular_score", toInteger(before.get("acrEularScore")));
+
+		// 只校验改了的字段：没改的用原值（姓名、性别必填）或置空，老数据里不规范的值不影响保存，也不会被改写
+		PatientBasicForm f = req.getBasic(), shown = toForm(before), probe = new PatientBasicForm();
+		probe.setName(changed.contains("name") ? f.getName() : shown.getName());
+		probe.setGender(changed.contains("gender") ? f.getGender() : shown.getGender());
+		if (probe.getGender() == null) {
+			probe.setGender(1); // 老数据性别为空且没改：只为通过校验，不会写入
+		}
+		if (changed.contains("cardNo")) probe.setCardNo(f.getCardNo());
+		if (changed.contains("mobile")) probe.setMobile(f.getMobile());
+		if (changed.contains("nation")) probe.setNation(f.getNation());
+		if (changed.contains("marry")) probe.setMarry(f.getMarry());
+		if (changed.contains("confirmDate")) probe.setConfirmDate(f.getConfirmDate());
+		if (changed.contains("happenDate")) probe.setHappenDate(f.getHappenDate());
+		if (changed.contains("height")) probe.setHeight(f.getHeight());
+		if (changed.contains("weight")) probe.setWeight(f.getWeight());
+		if (changed.contains("waistline")) probe.setWaistline(f.getWaistline());
+		if (changed.contains("heartRate")) probe.setHeartRate(f.getHeartRate());
+		if (changed.contains("systolic")) probe.setSystolic(f.getSystolic());
+		if (changed.contains("diastolic")) probe.setDiastolic(f.getDiastolic());
+		if (changed.contains("smoke")) {
+			probe.setSmoke(f.getSmoke());
+			probe.setSmokeYears(f.getSmokeYears());
+			probe.setSmokeCountByDay(f.getSmokeCountByDay());
+			probe.setSmokeStop(f.getSmokeStop());
+		}
+		if (changed.contains("allergyHistory")) probe.setAllergyHistory(f.getAllergyHistory());
+		if (changed.contains("familyHistory")) probe.setFamilyHistory(f.getFamilyHistory());
+		if (changed.contains("pastHistory")) probe.setPastHistory(f.getPastHistory());
+		probe.setFollowCycle(changed.contains("followCycle") ? f.getFollowCycle() : null);
+		if (changed.contains("comorbidities")) probe.setComorbidities(f.getComorbidities());
+		Map<String, Object> cols = validate(probe);
+		if (changed.contains("gender") && f.getGender() == null) {
+			throw new IllegalArgumentException("请选择性别");
+		}
+
+		Map<String, Object> update = new LinkedHashMap<String, Object>();
+		for (Map.Entry<String, String> e : EDIT_COLS.entrySet()) {
+			String col = e.getValue();
+			if (changed.contains(e.getKey()) && !same(cols.get(col), beforeCols.get(col))) {
+				update.put(col, cols.get(col));
+			}
+		}
+		if (update.containsKey("card_no") && update.get("card_no") != null) {
+			for (Map<String, Object> other : mapper.findByCardNo((String) update.get("card_no"))) {
+				if (!patientId.equals(toLong(other.get("id")))) {
+					throw new BizException("409", "身份证号已被其他患者使用（" + other.get("name") + "，ID号 " + other.get("id") + "）");
+				}
+			}
+		}
+		List<String> notes = new ArrayList<String>();
+		AcrEularForm acr = null;
+		if (changed.contains("acrEular")) {
+			acr = validateAcr(f.getAcrEular());
+			Integer total = acr == null ? null : acr.getTotalScore();
+			if (!same(total, beforeCols.get("acr_eular_score"))) {
+				update.put("acr_eular_score", total);
+			}
+		}
+		if (update.containsKey("xy_h")) {
+			update.put("xy", update.get("xy_h"));
+		}
+		if (!update.isEmpty()) {
+			mapper.updatePatientFields(patientId, update);
+		}
+		Map<String, Object> relDates = new LinkedHashMap<String, Object>();
+		for (String col : new String[] { "confirm_date", "happen_date" }) {
+			if (update.containsKey(col)) {
+				relDates.put(col, update.get(col));
+			}
+		}
+		if (!relDates.isEmpty()) {
+			mapper.updateRelationDates(doctorId, patientId, relDates);
+		}
+		if (acr != null) {
+			Map<String, Object> latest = optional(() -> mapper.getLatestAcr(patientId));
+			boolean sameParts = latest != null && same(latest.get("jointScore"), acr.getJointScore()) && same(latest.get("serologyScore"), acr.getSerologyScore())
+					&& same(latest.get("durationScore"), acr.getDurationScore()) && same(latest.get("acuteScore"), acr.getAcuteScore());
+			if (!sameParts || update.containsKey("acr_eular_score")) {
+				Map<String, Object> a = new HashMap<String, Object>();
+				a.put("patientId", patientId);
+				a.put("jointScore", acr.getJointScore());
+				a.put("serologyScore", acr.getSerologyScore());
+				a.put("durationScore", acr.getDurationScore());
+				a.put("acuteScore", acr.getAcuteScore());
+				a.put("totalScore", acr.getTotalScore());
+				a.put("doctorId", doctorId);
+				mapper.insertAcrEular(a);
+				if (!update.containsKey("acr_eular_score")) {
+					notes.add("ACR/EULAR 2010 重新评估（总分不变 " + acr.getTotalScore() + " 分）");
+				}
+			}
+		}
+
+		// 诊断结果告知 / 知情同意书（新表）
+		Integer informed = changed.contains("diagnosisInformed") ? flag(f.getDiagnosisInformed(), "诊断结果告知") : null;
+		Integer consent = changed.contains("consentSigned") ? flag(f.getConsentSigned(), "患者知情同意书签订") : null;
+		if (informed != null || consent != null) {
+			Map<String, Object> extra = optional(() -> mapper.getRaExtra(patientId));
+			Integer oldInformed = extra == null ? null : toInteger(extra.get("diagnosisInformed"));
+			Integer oldConsent = extra == null ? null : toInteger(extra.get("consentSigned"));
+			if (same(informed, oldInformed)) informed = null;
+			if (same(consent, oldConsent)) consent = null;
+			if (informed != null || consent != null) {
+				Map<String, Object> x = new HashMap<String, Object>();
+				x.put("patientId", patientId);
+				x.put("diagnosisInformed", informed);
+				x.put("consentSigned", consent);
+				x.put("doctorId", doctorId);
+				mapper.upsertRaExtra(x);
+				if (informed != null) notes.add("诊断结果告知：" + yesNo(oldInformed, "已告知", "未告知") + " → " + yesNo(informed, "已告知", "未告知"));
+				if (consent != null) notes.add("知情同意书：" + yesNo(oldConsent, "已签订", "未签订") + " → " + yesNo(consent, "已签订", "未签订"));
+			}
+		}
+
+		// 常见相关疾病（新表）：新勾选的插入、取消勾选的删除（只删医生勾选的）、起病年份改了的更新
+		if (changed.contains("comorbidities")) {
+			Map<String, ComorbidityInput> want = new LinkedHashMap<String, ComorbidityInput>();
+			if (f.getComorbidities() != null) {
+				for (ComorbidityInput c : f.getComorbidities()) {
+					if (c.getSinceYear() != null && (c.getSinceYear() < 1900 || c.getSinceYear() > LocalDate.now().getYear())) {
+						throw new IllegalArgumentException(c.getCode() + " 起病年份不正确");
+					}
+					want.put(c.getCode(), c);
+				}
+			}
+			Map<String, Map<String, Object>> have = new LinkedHashMap<String, Map<String, Object>>();
+			for (Map<String, Object> r : mapper.listComorbidity(patientId)) {
+				have.put((String) r.get("code"), r);
+			}
+			List<String> added = new ArrayList<String>(), removed = new ArrayList<String>(), years = new ArrayList<String>();
+			for (ComorbidityInput c : want.values()) {
+				Map<String, Object> h = have.get(c.getCode());
+				if (h == null) {
+					insertComorbidity(patientId, c.getCode(), c.getSinceYear(), "manual", null);
+					added.add(c.getCode() + (c.getSinceYear() == null ? "" : "（" + c.getSinceYear() + " 年起）"));
+				} else if (!same(h.get("sinceYear"), c.getSinceYear())) {
+					mapper.updateComorbidityYear(patientId, c.getCode(), c.getSinceYear());
+					years.add(c.getCode() + " 起病年份：" + (h.get("sinceYear") == null ? "空" : h.get("sinceYear")) + " → " + (c.getSinceYear() == null ? "空" : c.getSinceYear()));
+				}
+			}
+			for (Map.Entry<String, Map<String, Object>> h : have.entrySet()) {
+				if (!want.containsKey(h.getKey()) && mapper.deleteManualComorbidity(patientId, h.getKey()) > 0) {
+					removed.add(h.getKey());
+				}
+			}
+			if (!added.isEmpty()) notes.add("常见相关疾病新增：" + String.join("、", added));
+			if (!removed.isEmpty()) notes.add("常见相关疾病去掉：" + String.join("、", removed));
+			notes.addAll(years);
+		}
+
+		Map<String, Object> after = new HashMap<String, Object>(beforeCols);
+		after.putAll(update);
+		List<FieldChange> changes = auditLogService.diff(readable(beforeCols), readable(after), LABELS);
+		if (changes.isEmpty() && notes.isEmpty()) {
+			return 0;
+		}
+		auditLogService.record(patientId, null, "修改档案", changes, notes.isEmpty() ? null : String.join("；", notes), doctorId, operator(doctorId));
+		return changes.size() + notes.size();
+	}
+
+	private static String yesNo(Integer v, String yes, String no) {
+		return v == null ? "未填写" : v == 1 ? yes : no;
+	}
+
+	/** 新表（patient_acr_eular 等）还没建时按没有数据处理，不影响编辑老表字段 */
+	private static <T> T optional(java.util.function.Supplier<T> q) {
+		try {
+			return q.get();
+		} catch (org.springframework.dao.DataAccessException e) {
+			return null;
+		}
+	}
 
 	/** 脱落原因选项（存 patient_relation_doctor.reason） */
 	public static final List<String> WITHDRAW_REASONS = Arrays.asList("失访", "撤回知情同意", "不良事件", "死亡", "其他");

@@ -48,6 +48,22 @@ public interface PatientWriteMapper {
 
 	String getUserName(@Param("doctorId") Long doctorId);
 
+	/** 最近一次 ACR/EULAR 2010 各部分评估；没有为 null */
+	Map<String, Object> getLatestAcr(@Param("patientId") Long patientId);
+
+	/** 诊断结果告知 / 知情同意书；没有为 null */
+	Map<String, Object> getRaExtra(@Param("patientId") Long patientId);
+
+	/** 常见相关疾病：code、sinceYear、source */
+	List<Map<String, Object>> listComorbidity(@Param("patientId") Long patientId);
+
+	int updateComorbidityYear(@Param("patientId") Long patientId, @Param("code") String code, @Param("sinceYear") Integer sinceYear);
+
+	int deleteManualComorbidity(@Param("patientId") Long patientId, @Param("code") String code);
+
+	/** fields 只能是 confirm_date、happen_date */
+	int updateRelationDates(@Param("doctorId") Long doctorId, @Param("patientId") Long patientId, @Param("fields") Map<String, Object> fields);
+
 	/** 本医生名下该患者的 RA 医患关系（id、miss、脱落原因） */
 	List<Map<String, Object>> listMyRaRelations(@Param("doctorId") Long doctorId, @Param("patientId") Long patientId);
 

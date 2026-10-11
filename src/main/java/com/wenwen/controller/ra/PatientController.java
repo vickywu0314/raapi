@@ -21,6 +21,8 @@ import com.wenwen.vo.PatientCheckVo;
 import com.wenwen.vo.PatientCreateRequest;
 import com.wenwen.vo.PatientCreateResultVo;
 import com.wenwen.vo.PatientDetailVo;
+import com.wenwen.vo.PatientEditFormVo;
+import com.wenwen.vo.PatientUpdateRequest;
 import com.wenwen.vo.PatientsListVo;
 
 import io.swagger.annotations.Api;
@@ -134,6 +136,34 @@ public class PatientController {
 			result.setMessage("transferred".equals(r.getAction()) ? "已转到您名下" : "建档成功");
 		} catch (Exception e) {
 			fail(result, e, "新建患者失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "编辑档案 · 表单当前值", notes = "编辑档案页打开时调用；患者须在本医生名下", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/editForm")
+	public DataResult<PatientEditFormVo> editForm(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+		DataResult<PatientEditFormVo> result = new DataResult<PatientEditFormVo>();
+		try {
+			ok(result, patientWriteService.getEditForm(doctorId, patientId));
+		} catch (Exception e) {
+			fail(result, e, "获取档案失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "编辑档案 · 保存", notes = "请求体为 JSON（PatientUpdateRequest）。只更新 changed 里列出、且与原值不同的字段；写修改记录「修改档案」。data = 实际修改项数", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/updatePatient")
+	public DataResult<Integer> updatePatient(@RequestBody PatientUpdateRequest req) {
+		DataResult<Integer> result = new DataResult<Integer>();
+		try {
+			int n = patientWriteService.updatePatient(req);
+			ok(result, n);
+			result.setMessage(n == 0 ? "没有修改" : "已保存 " + n + " 项修改");
+		} catch (Exception e) {
+			fail(result, e, "保存档案失败");
 		}
 		return result;
 	}

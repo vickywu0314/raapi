@@ -3,6 +3,8 @@ package com.wenwen.service;
 import com.wenwen.vo.PatientCheckVo;
 import com.wenwen.vo.PatientCreateRequest;
 import com.wenwen.vo.PatientCreateResultVo;
+import com.wenwen.vo.PatientEditFormVo;
+import com.wenwen.vo.PatientUpdateRequest;
 
 /**
  * 新建患者（写老表 patient_basic_info、patient_relation_doctor）
@@ -20,6 +22,17 @@ public interface PatientWriteService {
 	 * @throws com.wenwen.util.BizException 400 参数不对 / 409 已存在
 	 */
 	PatientCreateResultVo createPatient(PatientCreateRequest req);
+
+	/** 编辑档案：表单当前值（患者须在本医生名下） */
+	PatientEditFormVo getEditForm(Long doctorId, Long patientId);
+
+	/**
+	 * 编辑档案：只更新 changed 里列出、且与原值不同的字段，写修改记录「修改档案」。
+	 *
+	 * @return 实际修改的项数（0 = 没有变化）
+	 * @throws com.wenwen.util.BizException 400 参数不对 / 404 不在名下 / 409 身份证号已被其他患者使用
+	 */
+	int updatePatient(PatientUpdateRequest req);
 
 	/**
 	 * 标记脱落：本医生名下该患者的 RA 医患关系 miss=1，写脱落原因（reason = 选项，other_miss_reason = 补充说明）

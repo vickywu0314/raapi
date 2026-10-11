@@ -25,7 +25,7 @@
 		       COALESCE(p.smoke_count_by_day, p.smokeCountByDay) AS smokeCountByDay,
 		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
 		       p.gms AS allergyHistory, p.jzs AS familyHistory, p.jws AS pastHistory, p.follow_cycle AS followCycle,
-		       p.study_no AS studyNo
+		       p.study_no AS studyNo, COALESCE(p.acr_eular_score, p.acrEularScore) AS acrEularScore
 		FROM patient_basic_info p WHERE p.id = #{patientId}
 	</select>
 
@@ -99,6 +99,40 @@
 		  consent_signed = COALESCE(VALUES(consent_signed), consent_signed),
 		  update_doctor_id = VALUES(update_doctor_id)
 	</insert>
+
+	<!-- 编辑档案 -->
+	<select id="getLatestAcr" resultType="Map">
+		SELECT joint_score AS jointScore, serology_score AS serologyScore, duration_score AS durationScore,
+		       acute_score AS acuteScore, total_score AS totalScore
+		FROM patient_acr_eular WHERE patient_id = #{patientId} ORDER BY id DESC LIMIT 1
+	</select>
+
+	<select id="getRaExtra" resultType="Map">
+		SELECT diagnosis_informed AS diagnosisInformed, consent_signed AS consentSigned
+		FROM patient_ra_extra WHERE patient_id = #{patientId}
+	</select>
+
+	<select id="listComorbidity" resultType="Map">
+		SELECT disease_code AS code, since_year AS sinceYear, source
+		FROM patient_comorbidity WHERE patient_id = #{patientId} ORDER BY id
+	</select>
+
+	<update id="updateComorbidityYear">
+		UPDATE patient_comorbidity SET since_year = #{sinceYear} WHERE patient_id = #{patientId} AND disease_code = #{code}
+	</update>
+
+	<!-- 只删医生勾选的（manual）；患者在其他病种库自动记入的（auto）不删 -->
+	<delete id="deleteManualComorbidity">
+		DELETE FROM patient_comorbidity WHERE patient_id = #{patientId} AND disease_code = #{code} AND source = 'manual'
+	</delete>
+
+	<!-- 确诊日期 / 发病时间改了时，同步本医生名下该患者 RA 医患关系上的同名字段 -->
+	<update id="updateRelationDates">
+		UPDATE patient_relation_doctor SET
+		<foreach collection="fields" index="col" item="val" separator=",">${col} = #{val}</foreach>, update_date = NOW()
+		WHERE doctor_id = #{doctorId} AND patient_id = #{patientId}
+		  AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</update>
 
 	<select id="getUserName" resultType="String">
 		SELECT name FROM `user` WHERE id = #{doctorId}

@@ -653,6 +653,28 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ---
 
+### 6.3 编辑档案 · 表单当前值
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/editForm` |
+| 入参 | `doctorId`、`patientId`（患者须在本医生名下，否则 404） |
+| 出参 | `patientId`、`studyNo`（不可改）、`acrEularScore`（总分，老数据可能只有总分）、`basic`（字段同 6.2 的 basic；`acrEular` 为最近一次各部分评估，与患者表总分一致时才带出；`comorbidities` 带 `source`：manual 医生勾选 / auto 其他病种库自动记入，页面不能取消） |
+
+### 6.4 编辑档案 · 保存
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/updatePatient`（JSON） |
+| 入参 | `doctorId`、`patientId`、`basic`（同 6.2）、`changed`：医生实际改过的字段名数组（basic 里的字段名，如 `mobile`、`weight`、`acrEular`、`comorbidities`） |
+| 规则 | **只更新 `changed` 里列出、且与库里原值不同的字段**；没改的字段不校验、不写（老数据里不规范的值原样保留）。吸烟 4 项（smoke / smokeYears / smokeCountByDay / smokeStop）作为一组一起改。收缩压同步写 `xy`（老系统读）。身份证号改成其他患者已用的 → 409 |
+| 写库 | 老表 `patient_basic_info` 只写改了的列；确诊日期 / 发病时间改了时同步本医生 RA 医患关系上的同名字段；ACR/EULAR 改了：总分写 `acr_eular_score`、各部分插 `patient_acr_eular` 一行，清除评估则 `acr_eular_score` 置空；诊断结果告知 / 知情同意书写 `patient_ra_extra`；常见相关疾病：新勾的插入、取消的删除（只删 manual）、起病年份更新 |
+| 出参 | `data` = 实际修改项数，0 = 没有变化（不写修改记录） |
+| 留痕 | 修改记录「修改档案」：字段 旧值 → 新值 |
+| 页面 | `patient-edit.html` 与新增患者共用表单和脚本（`patient-create.js`，body `data-mode="edit"`）；保存后返回来源页（浏览器后退） |
+
+---
+
 ## 七、AI 队列完整分析与有期结果分页（P03_RESULT）
 
 ### 7.1 当前医生 RA 队列

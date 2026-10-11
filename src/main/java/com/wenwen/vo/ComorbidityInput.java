@@ -10,6 +10,8 @@ public class ComorbidityInput {
 	private String code;
 	@ApiModelProperty("起病年份，可空")
 	private Integer sinceYear;
+	@ApiModelProperty("来源（只在编辑档案读取时返回）：manual 医生勾选 / auto 患者在该病种研究库自动记入，不能取消")
+	private String source;
 
 	public String getCode() {
 		return code;
@@ -22,5 +24,11 @@ public class ComorbidityInput {
 	}
 	public void setSinceYear(Integer sinceYear) {
 		this.sinceYear = sinceYear;
+	}
+	public String getSource() {
+		return source;
+	}
+	public void setSource(String source) {
+		this.source = source;
 	}
 }
