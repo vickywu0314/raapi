@@ -528,6 +528,33 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`changedCount` 修改项数、`changes[]` 修改内容。失败：`400` 格式错误（如数字、日期）、`403` 无权限、`409` 数据已被修改。
 
+### 4.5 新增随访表单
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/visitCreateForm` |
+| 入参 | `doctorId`、`patientId`（须在本医生名下、未脱落；脱落返回 409，先「恢复随访」） |
+| 出参 | 结构同 4.3 编辑随访表单（模块 → 分组 → 字段 / 清单），另有 `visitNo` 第几次随访（1 = 基线）、`visitDate` 默认今天、`optionSets` 联动选项（主症 / 次症随证型，方剂随证型） |
+| 自动带入 | 病史病情：发病时间、确诊时间取患者档案（与基本信息同一取法）；随访时间 = 随访日期；首诊时间 = 最早一次随访里填的首诊时间，没有则取最早一次随访日期（基线访视取今天）；男性患者「月经」默认选「男性」。医生都可以改 |
+
+字段（4.3 / 4.5 共用）新增属性：`options` 选项（「存库值\|显示文字」时页面显示后者，存库用老数据写法）、`showIf`「字段:值」满足才显示（隐藏的字段不提交）、`optionsFrom` / `optionSet` 选项随上级字段变化、`notBaseline` 只在第 2 次及以后的随访显示。
+`type`：text / textarea / date / number / list 多选（有 `options` 为勾选，否则文本框「、」分隔）/ radio 单选（存文字）/ radioList 单选（老数据存数组，如 `["阴性"]`）/ haq / computed / readonly。字段清单见 `docs/新增随访字段清单.md`。
+
+### 4.6 保存新增随访
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/createVisit`（JSON） |
+| 入参 | `doctorId`、`patientId`、`visitDate`（必填，不能晚于今天）、`modules`：随访表字段名 → `{fields, wx, tables}`（同 4.4） |
+| 写库 | 老表 `patient_follow_up_history` 插一行，按老系统写法：`follow_up_date` = 随访日期、`followUpDate` = NULL、`status` = 1、`research_type` = 本医生该患者的 RA 关系、`last_follow_up_id` = 该患者时间最晚的一次随访、`doctor_id` = 当前医生；**没填的字段不写 key、没填的模块存 NULL**，填了的模块加 `finish: true`；`bblsj` 不写 |
+| 计算项 | 肿胀 / 压痛关节数、DAS28-CRP / ESR、HAQ 按编辑随访同一算法算；`result.lastCrpScore` / `lastEsrScore` 取上一次随访的结果 |
+| 同步 | 按编辑 / 删除随访同一规则重算患者表、医患关系表的随访次数和首次 / 最近随访日期 |
+| 长度 | 模块 JSON 超过老表字段长度（bsbq 等 2000、bqpg 4000）返回 400 |
+| 出参 | `visitId`、`patientId`、`filledCount` 填写了几个模块 |
+| 留痕 | 修改记录「新增随访」：访视类型、日期、填写模块数 |
+
+---
+
 ## 五、数据导出（患者列表「数据导出」按钮）
 
 规则（业务确认 2026-10-06）：**近半年内**（当前月份往前 6 个月的 1 号至今，如 10 月为 4 月 1 日至今；`application.properties` 的 `ra.export.free-months`）的随访数据可直接下载；**更早的**需填写原因提交申请，申请发送到指定邮箱（`ra.export.apply-mail-to`，发邮件功能待实现，先记录到 `export_application` 表）。范围规则在后端校验。

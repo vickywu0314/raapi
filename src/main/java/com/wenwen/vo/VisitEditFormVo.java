@@ -57,4 +57,22 @@ public class VisitEditFormVo {
 	public void setModules(List<VisitEditModuleVo> modules) {
 		this.modules = modules;
 	}
+
+	@ApiModelProperty("联动选项：集合名 → 上级字段的值 → 选项（主症 / 次症随证型，方剂随证型）")
+	private java.util.Map<String, java.util.Map<String, java.util.List<String>>> optionSets;
+	@ApiModelProperty("新增随访：这是第几次随访（1 = 基线）；编辑随访为 null")
+	private Integer visitNo;
+
+	public java.util.Map<String, java.util.Map<String, java.util.List<String>>> getOptionSets() {
+		return optionSets;
+	}
+	public void setOptionSets(java.util.Map<String, java.util.Map<String, java.util.List<String>>> optionSets) {
+		this.optionSets = optionSets;
+	}
+	public Integer getVisitNo() {
+		return visitNo;
+	}
+	public void setVisitNo(Integer visitNo) {
+		this.visitNo = visitNo;
+	}
 }

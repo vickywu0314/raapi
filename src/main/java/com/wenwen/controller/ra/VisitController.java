@@ -13,6 +13,8 @@ import com.wenwen.service.VisitService;
 import com.wenwen.util.BizException;
 import com.wenwen.vo.DataResult;
 import com.wenwen.vo.VisitDetailVo;
+import com.wenwen.vo.VisitCreateRequest;
+import com.wenwen.vo.VisitCreateResultVo;
 import com.wenwen.vo.VisitEditFormVo;
 import com.wenwen.vo.VisitUpdateRequest;
 import com.wenwen.vo.VisitUpdateResultVo;
@@ -87,6 +89,60 @@ public class VisitController {
 			e.printStackTrace();
 			result.setCode("500");
 			result.setMessage("删除随访失败，已撤销本次操作");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "新增随访表单", notes = "新增随访页（visit-create.html）：按字段字典返回空表单（结构同编辑随访表单）和自动带入的值：病史病情的发病 / 确诊时间取患者档案，随访时间 = 今天，首诊时间取最早一次随访；visitNo = 第几次随访", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/visitCreateForm")
+	public DataResult<VisitEditFormVo> visitCreateForm(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+		DataResult<VisitEditFormVo> result = new DataResult<VisitEditFormVo>();
+		try {
+			result.setData(visitService.getCreateForm(doctorId, patientId));
+			result.setCode("200");
+			result.setMessage("成功");
+			result.setSuccess(true);
+		} catch (BizException e) {
+			result.setCode(e.getCode());
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (IllegalArgumentException e) {
+			result.setCode("400");
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (Exception e) {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage("获取新增随访表单失败");
+			result.setSuccess(false);
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "保存新增随访", notes = "请求体为 JSON（VisitCreateRequest）。按老系统格式插入 patient_follow_up_history（没填的字段不写、没填的模块存 NULL），病情评估计算项自动算，重算随访次数 / 日期，写修改记录「新增随访」", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/createVisit")
+	public DataResult<VisitCreateResultVo> createVisit(@RequestBody VisitCreateRequest req) {
+		DataResult<VisitCreateResultVo> result = new DataResult<VisitCreateResultVo>();
+		try {
+			result.setData(visitService.createVisit(req));
+			result.setCode("200");
+			result.setMessage("已保存本次随访");
+			result.setSuccess(true);
+		} catch (BizException e) {
+			result.setCode(e.getCode());
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (IllegalArgumentException e) {
+			result.setCode("400");
+			result.setMessage(e.getMessage());
+			result.setSuccess(false);
+		} catch (Exception e) {
+			e.printStackTrace();
+			result.setCode("500");
+			result.setMessage("保存随访失败");
 			result.setSuccess(false);
 		}
 		return result;

@@ -83,7 +83,7 @@ class VisitEditor {
 				if (single != null) {
 					holder = obj;
 					key = single;
-				} else if (m.wxMap != null && !"list".equals(f.type) && !f.key.startsWith("@")) {
+				} else if (m.wxMap != null && !f.isList() && !f.key.startsWith("@")) {
 					holder = obj.get(m.wxMap) instanceof JSONObject ? obj.getJSONObject(m.wxMap) : null;
 					if (holder == null) {
 						holder = new JSONObject(true);
@@ -305,7 +305,7 @@ class VisitEditor {
 
 	/** 表单值 → 老系统 JSON 值，保持原值类型；不合法时抛 IllegalArgumentException（提示给医生） */
 	static Object convert(Object input, String type, Object cur, String label) {
-		if ("list".equals(type)) {
+		if (VisitFieldDict.isList(type)) {
 			List<String> items = new ArrayList<String>();
 			if (input instanceof Collection) {
 				for (Object o : (Collection<?>) input) {
