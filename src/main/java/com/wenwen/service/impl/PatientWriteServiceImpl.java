@@ -86,6 +86,91 @@ public class PatientWriteServiceImpl implements PatientWriteService {
 	@Autowired
 	private AuditLogService auditLogService;
 
+	/** 脱落原因选项（存 patient_relation_doctor.reason） */
+	public static final List<String> WITHDRAW_REASONS = Arrays.asList("失访", "撤回知情同意", "不良事件", "死亡", "其他");
+
+	@Override
+	@Transactional
+	public void withdraw(Long doctorId, Long patientId, String reason, String remark) {
+		reason = trim(reason);
+		remark = trim(remark);
+		if (doctorId == null || patientId == null) {
+			throw new IllegalArgumentException("缺少医生ID或患者ID");
+		}
+		if (reason == null || !WITHDRAW_REASONS.contains(reason)) {
+			throw new IllegalArgumentException("请选择脱落原因");
+		}
+		if ("其他".equals(reason) && remark == null) {
+			throw new IllegalArgumentException("脱落原因选「其他」时请填写说明");
+		}
+		if (remark != null && remark.length() > 200) {
+			throw new IllegalArgumentException("说明不能超过 200 字");
+		}
+		List<Map<String, Object>> rels = myRaRelations(doctorId, patientId);
+		boolean allMissed = true;
+		for (Map<String, Object> r : rels) {
+			allMissed &= toInteger(r.get("miss")) != null && toInteger(r.get("miss")) == 1;
+		}
+		if (allMissed) {
+			throw new BizException("409", "该患者已是脱落状态");
+		}
+		Map<String, Object> m = new HashMap<String, Object>();
+		m.put("doctorId", doctorId);
+		m.put("patientId", patientId);
+		m.put("miss", 1);
+		m.put("reason", reason);
+		m.put("otherReason", remark);
+		mapper.setMiss(m);
+		List<FieldChange> changes = new ArrayList<FieldChange>();
+		changes.add(new FieldChange("miss", "随访状态", "随访中", "已脱落"));
+		auditLogService.record(patientId, null, "标记脱落", changes,
+				"脱落原因：" + (remark == null ? reason : reason + "（" + remark + "）"), doctorId, operator(doctorId));
+	}
+
+	@Override
+	@Transactional
+	public void reactivate(Long doctorId, Long patientId, String remark) {
+		remark = trim(remark);
+		if (doctorId == null || patientId == null) {
+			throw new IllegalArgumentException("缺少医生ID或患者ID");
+		}
+		if (remark != null && remark.length() > 200) {
+			throw new IllegalArgumentException("说明不能超过 200 字");
+		}
+		String oldReason = null;
+		for (Map<String, Object> r : myRaRelations(doctorId, patientId)) {
+			Integer miss = toInteger(r.get("miss"));
+			if (miss != null && miss == 1) {
+				oldReason = r.get("missReason") == null ? "" : (String) r.get("missReason");
+			}
+		}
+		if (oldReason == null) {
+			throw new BizException("409", "该患者不是脱落状态");
+		}
+		Map<String, Object> m = new HashMap<String, Object>();
+		m.put("doctorId", doctorId);
+		m.put("patientId", patientId);
+		m.put("miss", 0);
+		mapper.setMiss(m);
+		List<FieldChange> changes = new ArrayList<FieldChange>();
+		changes.add(new FieldChange("miss", "随访状态", "已脱落", "随访中"));
+		String note = (oldReason.isEmpty() ? "" : "原脱落原因：" + oldReason) + (remark == null ? "" : (oldReason.isEmpty() ? "" : "；") + "说明：" + remark);
+		auditLogService.record(patientId, null, "恢复随访", changes, note.isEmpty() ? null : note, doctorId, operator(doctorId));
+	}
+
+	private List<Map<String, Object>> myRaRelations(Long doctorId, Long patientId) {
+		List<Map<String, Object>> rels = mapper.listMyRaRelations(doctorId, patientId);
+		if (rels == null || rels.isEmpty()) {
+			throw new BizException("404", "没有找到该患者，或该患者不在您名下");
+		}
+		return rels;
+	}
+
+	private String operator(Long doctorId) {
+		String name = trim(mapper.getUserName(doctorId));
+		return name != null ? name : "医生 ID " + doctorId;
+	}
+
 	@Override
 	public PatientCheckVo checkCardNo(Long doctorId, String cardNo) {
 		if (doctorId == null) {

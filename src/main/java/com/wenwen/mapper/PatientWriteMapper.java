@@ -47,4 +47,10 @@ public interface PatientWriteMapper {
 	int upsertRaExtra(Map<String, Object> map);
 
 	String getUserName(@Param("doctorId") Long doctorId);
+
+	/** 本医生名下该患者的 RA 医患关系（id、miss、脱落原因） */
+	List<Map<String, Object>> listMyRaRelations(@Param("doctorId") Long doctorId, @Param("patientId") Long patientId);
+
+	/** 标记脱落 / 恢复随访：只改本医生名下该患者 RA 医患关系的 miss（脱落时同时写原因） */
+	int setMiss(Map<String, Object> map);
 }

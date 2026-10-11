@@ -11,7 +11,7 @@
 		当前医生名下患者，每行一个患者，附带计算字段：
 		visitCount 随访次数 / lastVisit 最近随访 / nextDue 下次应随访（最近随访 + follow_cycle 个月）
 		followStatus 随访状态，按优先级命中即止：
-		  withdrawn 已脱落（任一医患关系 miss=1）→ pending_first 无随访 → overdue 下次应随访已过
+		  withdrawn 已脱落（本医生名下的 RA 医患关系 miss=1）→ pending_first 无随访 → overdue 下次应随访已过
 		  → soon 14 天内到期 → active 其余
 		完整SQL候选：QC在同视图读源后统一计算/过滤/计数/分页
 	-->
@@ -37,7 +37,7 @@
 		            ELSE 'active' END AS followStatus
 		FROM patient_basic_info p
 		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) d ON d.patient_id = p.id
-		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE miss = 1 AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) w ON w.patient_id = p.id
+		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND miss = 1 AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) w ON w.patient_id = p.id
 		LEFT JOIN (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS visitCount,
 		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit,
 		                  MIN(COALESCE(f.follow_up_date, f.followUpDate)) AS firstVisit
@@ -126,7 +126,7 @@
 		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
 		       p.allergy, p.gms, p.jzs, p.jws,
 		       (SELECT CONCAT_WS('；', NULLIF(TRIM(r.reason), ''), NULLIF(TRIM(r.other_miss_reason), ''), NULLIF(TRIM(r.note), ''))
-		        FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.miss = 1 AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>) ORDER BY r.id DESC LIMIT 1) AS withdrawReason
+		        FROM patient_relation_doctor r WHERE r.patient_id = p.id AND r.doctor_id = #{doctorId} AND r.miss = 1 AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>) ORDER BY r.id DESC LIMIT 1) AS withdrawReason
 		FROM patient_basic_info p
 		WHERE p.id = #{patientId}
 		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))

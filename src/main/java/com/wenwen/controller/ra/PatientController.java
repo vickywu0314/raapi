@@ -138,6 +138,41 @@ public class PatientController {
 		return result;
 	}
 
+	@ApiOperation(value = "标记脱落", notes = "本医生名下该患者的 RA 医患关系 miss=1；reason 取 失访 / 撤回知情同意 / 不良事件 / 死亡 / 其他（选其他时 remark 必填），remark 存 other_miss_reason；写修改记录「标记脱落」", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/withdraw")
+	public DataResult<Void> withdraw(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId,
+			@RequestParam(value = "reason", required = false) @ApiParam(value = "脱落原因", required = true) String reason,
+			@RequestParam(value = "remark", required = false) @ApiParam(value = "补充说明") String remark) {
+		DataResult<Void> result = new DataResult<Void>();
+		try {
+			patientWriteService.withdraw(doctorId, patientId, reason, remark);
+			ok(result, null);
+			result.setMessage("已标记脱落");
+		} catch (Exception e) {
+			fail(result, e, "标记脱落失败");
+		}
+		return result;
+	}
+
+	@ApiOperation(value = "恢复随访", notes = "脱落的患者又回来继续随访：miss 改回 0，原脱落原因保留；写修改记录「恢复随访」", response = DataResult.class, httpMethod = "POST")
+	@PostMapping("/reactivate")
+	public DataResult<Void> reactivate(
+			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId,
+			@RequestParam(value = "remark", required = false) @ApiParam(value = "说明") String remark) {
+		DataResult<Void> result = new DataResult<Void>();
+		try {
+			patientWriteService.reactivate(doctorId, patientId, remark);
+			ok(result, null);
+			result.setMessage("已恢复随访");
+		} catch (Exception e) {
+			fail(result, e, "恢复随访失败");
+		}
+		return result;
+	}
+
 	private static <T> void ok(DataResult<T> result, T data) {
 		result.setCode("200");
 		result.setData(data);

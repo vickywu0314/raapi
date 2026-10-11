@@ -20,4 +20,18 @@ public interface PatientWriteService {
 	 * @throws com.wenwen.util.BizException 400 参数不对 / 409 已存在
 	 */
 	PatientCreateResultVo createPatient(PatientCreateRequest req);
+
+	/**
+	 * 标记脱落：本医生名下该患者的 RA 医患关系 miss=1，写脱落原因（reason = 选项，other_miss_reason = 补充说明）
+	 *
+	 * @throws com.wenwen.util.BizException 400 原因不对 / 404 不在名下 / 409 已是脱落状态
+	 */
+	void withdraw(Long doctorId, Long patientId, String reason, String remark);
+
+	/**
+	 * 恢复随访（脱落后患者又回来）：miss 改回 0，原脱落原因保留
+	 *
+	 * @throws com.wenwen.util.BizException 404 不在名下 / 409 不是脱落状态
+	 */
+	void reactivate(Long doctorId, Long patientId, String remark);
 }

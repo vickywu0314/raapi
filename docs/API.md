@@ -227,7 +227,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `comorbidities[].linkedStudyReady` | boolean | 对应病种库是否已接入 | 一期均为 `false` |
 | `lastVisitDate` | String | 最近随访 · 日期 | 随访记录最大 `follow_up_date`，`yyyy-MM-dd`；无则 `null`（显示「暂无访视」） |
 | `nextDueDate` | String | 下次应随访日期 | `lastVisitDate` + `followCycle` 个月；已脱落或无随访为 `null` |
-| `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（任一医患关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于今天 → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
+| `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（本医生名下的 RA 医患关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于今天 → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
 | `followStatusLabel` | String | 随访状态 · 标签文字 | 随访中 / 近期需随访 / 随访逾期 / 待首次随访 / 已脱落 |
 | `incomplete` | boolean | 患者信息 ·「待补全」标签 | 命中任一「缺失」类质控规则（`M_DAS28` / `M_BASELINE_LAB` / `M_COMORBIDITY` / `M_MEDICATION`，与项目总览同一套） |
 | `missingItems` | String[] | 缺失项 | 如 `["缺 DAS28 评分", "缺用药史"]` |
@@ -362,7 +362,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | 字段 | 中文含义 |
 |---|---|
 | `time` | 操作时间 `yyyy-MM-dd HH:mm` |
-| `action` | 动作：新建档案 / 修改档案 / 新增随访 / 编辑随访 / 删除随访 / 标记脱落 / 质控处理（决定标签颜色） |
+| `action` | 动作：新建档案 / 修改档案 / 新增随访 / 编辑随访 / 删除随访 / 标记脱落 / 恢复随访 / 质控处理（决定标签颜色） |
 | `visitId` | 涉及的随访 ID，档案类操作为 `null` |
 | `detail` | 修改内容；多项用「；」分隔，字段修改写成「字段：旧值 → 新值」，页面把旧值标红删除线、新值标绿 |
 | `operator` | 操作人，如「陈医生（研究者）」 |
@@ -375,6 +375,27 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 ```
 
 `diff` 只比较列出的字段、只记录有变化的；`record` 把变化拼成页面显示的 `detail`，同时把结构化明细存成 JSON（`changes` 列），以后可按字段统计和回溯。
+
+### 3.4 标记脱落
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/withdraw` |
+| 入参 | `doctorId`、`patientId`；`reason` 脱落原因（必填）：失访 / 撤回知情同意 / 不良事件 / 死亡 / 其他；`remark` 补充说明（选「其他」时必填，≤200 字） |
+| 写库 | 老表 `patient_relation_doctor`：只改**本医生名下该患者的 RA 关系**的 `miss=1`、`reason`（选项）、`other_miss_reason`（说明）、`update_date`；其他医生 / 其他病种的关系不动 |
+| 返回码 | 400 原因没选 / 404 不在名下 / 409 已是脱落状态 |
+| 留痕 | 修改记录「标记脱落」：随访状态 随访中 → 已脱落；脱落原因 |
+| 页面 | 患者详情「标记脱落」→ 弹窗选原因；成功后状态变「已脱落」，按钮变「恢复随访」 |
+
+### 3.5 恢复随访
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/reactivate` |
+| 入参 | `doctorId`、`patientId`；`remark` 说明（选填，≤200 字） |
+| 写库 | 同上关系行 `miss=0`、`update_date`；**原脱落原因保留不清**（老数据、可追溯） |
+| 返回码 | 404 不在名下 / 409 不是脱落状态 |
+| 留痕 | 修改记录「恢复随访」：随访状态 已脱落 → 随访中；附原脱落原因、说明 |
 
 ---
 

@@ -63,6 +63,24 @@
 		UPDATE patient_relation_doctor SET doctor_id = #{doctorId}, update_date = NOW() WHERE id = #{relationId}
 	</update>
 
+	<select id="listMyRaRelations" resultType="Map">
+		SELECT r.id, IFNULL(r.miss, 0) AS miss,
+		       CONCAT_WS('；', NULLIF(TRIM(r.reason), ''), NULLIF(TRIM(r.other_miss_reason), ''), NULLIF(TRIM(r.note), '')) AS missReason
+		FROM patient_relation_doctor r
+		WHERE r.doctor_id = #{doctorId} AND r.patient_id = #{patientId}
+		  AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY r.id
+	</select>
+
+	<!-- 恢复随访只把 miss 改回 0，原来的脱落原因保留不动（老系统数据） -->
+	<update id="setMiss" parameterType="Map">
+		UPDATE patient_relation_doctor SET miss = #{miss},
+		<if test="miss == 1">reason = #{reason}, other_miss_reason = #{otherReason},</if>
+		update_date = NOW()
+		WHERE doctor_id = #{doctorId} AND patient_id = #{patientId}
+		  AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</update>
+
 	<insert id="insertAcrEular" parameterType="Map">
 		INSERT INTO patient_acr_eular (patient_id, joint_score, serology_score, duration_score, acute_score, total_score, doctor_id)
 		VALUES (#{patientId}, #{jointScore}, #{serologyScore}, #{durationScore}, #{acuteScore}, #{totalScore}, #{doctorId})
