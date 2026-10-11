@@ -50,6 +50,19 @@
 
 ---
 
+## 〇、登录（服务端会话）
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/ra/auth/login` | 入参 `username`、`password`、`remember`（true = 会话 30 天，否则 12 小时无操作失效）。成功后建立会话（Cookie `JSESSIONID`），返回 `{username, doctorId, name, role}`；`name` 取 `user.name`。失败 `code=401`「用户名或密码错误」 |
+| `POST /api/ra/auth/me` | 当前登录用户；没登录 / 会话过期 `success=false, code=401`。前端每个页面打开时调一次，401 回登录页 |
+| `POST /api/ra/auth/logout` | 结束会话 |
+
+账号（测试期）：`application.properties` 的 `ra.auth.accounts`，格式「用户名:密码:医生ID」，多个用逗号分隔；现配 `yanwenjing:ra2026:82394`（言文静）。正式账号体系确定后替换 `AuthService.check()`。
+会话在后端内存里，后端重启后需重新登录。AI 队列分析（第七节）按会话里的医生鉴权，**不信任请求里传的 doctorId**；其他接口暂时仍按入参 `doctorId`（见 TODO）。
+
+---
+
 ## 一、项目总览页
 
 ### 1.1 项目总览数据

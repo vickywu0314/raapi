@@ -20,7 +20,8 @@ public class AiCohortConfiguration {
     @Bean
     @ConditionalOnMissingBean(PrincipalProvider.class)
     public PrincipalProvider cohortPrincipalProvider() {
-        return () -> { throw new CohortException(401, "UNAUTHENTICATED", "请先登录"); };
+        // 取登录会话里的医生（/api/ra/auth/login）；没登录仍为 401
+        return new com.wenwen.auth.SessionPrincipalProvider();
     }
     @Bean
     @ConditionalOnMissingBean(Clock.class)
