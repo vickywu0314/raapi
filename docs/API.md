@@ -177,7 +177,7 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | `page` | int | 否 | 页码，从 1 开始，默认 1 | `1` |
 | `size` | int | 否 | 每页条数，默认 20，最大 200；页面下拉 8 / 16 / 32 | `8` |
 
-排序：最近非空随访完整时间倒序，无日期排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
+排序：建档时间（create_date，空则 createDate）倒序，最后新建的在最上面；无建档时间的老数据排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
 
 同一次短REPEATABLE_READ取得未筛选医生RA范围、原三M/两L、原始bqpg和经keyword/followStatus筛选的完整排序候选；退出后用共享四M政策过滤、计数，再分页。totalPatients/incompleteCount始终取未受keyword/followStatus/completeness影响的医生U；超出末页返回空items并保留total。详情的incomplete/missingItems同政策，DAS复用该快照解析值；详情其他基本字段和时间线不声称获得这一新快照保证。listPatientIds不截首屏，原ExportService只接收该完整筛选ID范围，原始导出内容不变。
 
