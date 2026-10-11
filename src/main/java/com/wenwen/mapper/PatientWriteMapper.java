@@ -43,5 +43,8 @@ public interface PatientWriteMapper {
 	/** 常见相关疾病；同一病种已有则跳过 */
 	int insertComorbidity(Map<String, Object> map);
 
+	/** RA 扩展字段（诊断结果告知、知情同意书）：有则更新，无则插入；只更新传了值的字段 */
+	int upsertRaExtra(Map<String, Object> map);
+
 	String getUserName(@Param("doctorId") Long doctorId);
 }

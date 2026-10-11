@@ -73,6 +73,15 @@
 		VALUES (#{patientId}, #{code}, #{sinceYear}, #{source}, #{linkedPatientId})
 	</insert>
 
+	<insert id="upsertRaExtra" parameterType="Map">
+		INSERT INTO patient_ra_extra (patient_id, diagnosis_informed, consent_signed, update_doctor_id)
+		VALUES (#{patientId}, #{diagnosisInformed}, #{consentSigned}, #{doctorId})
+		ON DUPLICATE KEY UPDATE
+		  diagnosis_informed = COALESCE(VALUES(diagnosis_informed), diagnosis_informed),
+		  consent_signed = COALESCE(VALUES(consent_signed), consent_signed),
+		  update_doctor_id = VALUES(update_doctor_id)
+	</insert>
+
 	<select id="getUserName" resultType="String">
 		SELECT name FROM `user` WHERE id = #{doctorId}
 	</select>

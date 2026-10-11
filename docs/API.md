@@ -324,6 +324,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表的存值接纳、两位 HALF_UP canonical 与 CRP 分层；不改 ESR |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `acrEularScore` / `acrEularLabel` | ACR/EULAR 2010 分类标准总分 / 结论 | `acr_eular_score`（空则 `acrEularScore`）；≥6 分「符合 RA 分类」，<6 分「暂不符合 RA 分类」，未评估为 `null`。老系统没存各部分选项（`acr_eular_info` 全空） |
+| `diagnosisInformed` / `consentSigned` | 诊断结果告知 / 患者知情同意书 | 新表 `patient_ra_extra`：1 已告知 / 已签订，0 未告知 / 未签订，`null` 未填写（表未建时也为 `null`） |
 | `waistline` / `heartRate` | 腰围（cm）/ 心率（次/分） | `waistline`、`xl` |
 | `systolic` / `diastolic` | 血压：收缩压 / 舒张压（mmHg） | `xy_h`、`xy_l`；`xy` 是老系统另存的一份收缩压（与 `xy_h` 相同），`xy_h` 为空时用 `xy`。原样显示，不纠正（老数据有收缩压 < 舒张压、疑似填反的） |
 | `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
@@ -586,9 +587,10 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `followCycle` | 否 | `follow_cycle` | 3 / 6 / 12 / 24，默认 12 |
 | `acrEular` | 否 | 总分写 `acr_eular_score`；各部分插入新表 `patient_acr_eular` | 4 部分须全选或全不选；总分后端重算（joint 0/1/2/3/5、serology 0/2/3、duration 0/1、acute 0/1） |
 | `comorbidities[]` | 否 | 新表 `patient_comorbidity`（source=manual） | code：FM / AS / SS / RA-ILD / RA-MS |
+| `diagnosisInformed` / `consentSigned` | 否 | 新表 `patient_ra_extra`（`diagnosis_informed` / `consent_signed`） | 诊断结果告知 / 患者知情同意书签订：1 是 / 0 否；老表没有这两项 |
 
 另外：`study_no` 自动生成（RA-今天-当天序号，冲突重试）、`create_date` = 当前时间、`follow_up_count` = 0；
-医患关系 `patient_relation_doctor`：`doctor_id`、`patient_id`、`research_type` = 配置 `ra.patient.research-type`、`confirm_date`、`happen_date`、`create_date` = 当前时间，`follow_count` / `miss` / `revisit` / `last_verify_status` = 0。
+医患关系 `patient_relation_doctor`：`doctor_id`、`patient_id`、`research_type` = 配置 `ra.patient.research-type`（= 0 类风湿关节炎研究平台）、`confirm_date`、`happen_date`、`create_date` = 当前时间，`follow_count` / `miss` / `revisit` / `last_verify_status` = 0。
 
 身份证号已存在时（同 6.1 规则）：
 

@@ -229,6 +229,16 @@ public class PatientServiceImpl implements PatientService {
 		if (d.getAcrEularScore() != null) {
 			d.setAcrEularLabel(d.getAcrEularScore() >= 6 ? "符合 RA 分类" : "暂不符合 RA 分类");
 		}
+		// 诊断结果告知、知情同意书（新表 patient_ra_extra；表还没建时按未填写显示，不影响详情页）
+		try {
+			Map<String, Object> extra = patientMapper.getRaExtra(patientId);
+			if (extra != null) {
+				d.setDiagnosisInformed(toInteger(extra.get("diagnosisInformed")));
+				d.setConsentSigned(toInteger(extra.get("consentSigned")));
+			}
+		} catch (org.springframework.dao.DataAccessException e) {
+			// patient_ra_extra 未建表
+		}
 		d.setWaistline(blankToNull(str(basic.get("waistline"))));
 		d.setHeartRate(blankToNull(str(basic.get("xl"))));
 		// 血压：xy_h 收缩压、xy_l 舒张压；xy 是老系统另存的一份收缩压（查数据与 xy_h 相同），xy_h 为空时用它兜底

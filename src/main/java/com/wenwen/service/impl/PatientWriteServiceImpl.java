@@ -281,10 +281,29 @@ public class PatientWriteServiceImpl implements PatientWriteService {
 				insertComorbidity(patientId, c.getCode(), c.getSinceYear(), "manual", null);
 			}
 		}
+		Integer informed = flag(f.getDiagnosisInformed(), "诊断结果告知"), consent = flag(f.getConsentSigned(), "患者知情同意书签订");
+		if (informed != null || consent != null) {
+			Map<String, Object> x = new HashMap<String, Object>();
+			x.put("patientId", patientId);
+			x.put("diagnosisInformed", informed);
+			x.put("consentSigned", consent);
+			x.put("doctorId", doctorId);
+			mapper.upsertRaExtra(x);
+			note += (informed == null ? "" : "；诊断结果" + (informed == 1 ? "已告知" : "未告知"))
+					+ (consent == null ? "" : "；知情同意书" + (consent == 1 ? "已签订" : "未签订"));
+		}
 		auditLogService.record(patientId, null, "新建档案", changes, note, doctorId, operator);
 		vo.setPatientId(patientId);
 		vo.setStudyNo(studyNo);
 		return vo;
+	}
+
+	/** 是 / 否：1 / 0，未填 null */
+	private static Integer flag(Integer v, String label) {
+		if (v != null && v != 0 && v != 1) {
+			throw new IllegalArgumentException(label + "应为是 / 否");
+		}
+		return v;
 	}
 
 	private Integer researchType() {
