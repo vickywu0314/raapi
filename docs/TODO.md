@@ -6,7 +6,6 @@
 
 | # | 问题 | 现在的做法 | 确认后改哪里 |
 |---|---|---|---|
-| 8 | 新建患者写 `patient_relation_doctor.research_type` 填几 | 配置留空，提示未配置 | `ra.patient.research-type` |
 | 9 | research_type 5、9、999 各是什么病（6 = AS 已知） | 显示「研究类型 N」 | `PatientWriteServiceImpl.OTHER_RESEARCH` |
 | 10 | 「转到自己名下」是转走还是两位医生共享 | 转走 | 新建患者接口 |
 | 11 | 疾病分型口径：RF / 抗CCP 参考上限；取最近一次还是曾经阳性 | RF 20、抗CCP 25，取最近一次 | `ra.serology.*-uln`、`PatientServiceImpl.attachSerology` |
@@ -47,10 +46,12 @@
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
   - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
+  - `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果表
+  - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
   - `src/main/resources/sql/20261007_ai_analysis_run.sql`：独立有期分析结果表，无旧患者外键；仅开发合成库已验证，生产执行由DBA另行接收（AQC-EXT-04仍OPEN）
 - [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
-- [ ] **配置新建患者的研究类型**：`application.properties` 的 `ra.patient.research-type`（待确认 RA 研究库对应的值；留空时新建患者提示未配置、不写库）
+- [x] 新建患者的研究类型：`ra.patient.research-type=0`（2026-10-11 确认，已配置）
 
 - [ ] **整理老数据：按身份证号把患者的相关疾病写入中间表 `patient_comorbidity`**
   - 规则：RA 患者（`patient_basic_info.card_no`）与其它病种表中的患者**身份证号相同**，即认为该患者也患有该病，插入一条关联：
