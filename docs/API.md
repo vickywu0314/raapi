@@ -1172,6 +1172,38 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 
 首页 q 仅原始非空白、配对 Unicode、≤200 codepoints 导航 `ai-cohort.html?q=`+encodeURIComponent(raw)，保前后空格及 `& # ? %`/emoji，示例同验证。200 emoji 接受、201/孤立代理字符有输入提示；不取 placeholder。接收仍沿 decodeEntry→parse/既有候选处理，PARTIAL 须显式应用；首页不预填 filters 或调用模型。本地合成检查与 BROWSER_PENDING 不替代真实 authenticator、医学或上线接收。
 
+### 研究库、完整队列与患者证据问答（P05）
+
+`POST /api/ra/ai/chat` 先读取生产 typed Session 身份、检查整体 API 开关，再读取严格 UTF8 JSON。请求根恰为 `scope`、`question` 和可选 `previousQuestions`：问题 trim 后 1～500 Unicode 码点，历史最多三个同界限的前轮用户问题，省略为 `[]`。128KiB/depth8/tokens20000 流式界限，拒绝 BOM、孤立 surrogate、重复键、尾随 JSON、未知键。非法输入 400/INVALID_REQUEST，输入界限 413/LIMIT_EXCEEDED；匿名 401 且不读取 body。
+
+`scope={kind:"ALL"}` 使用默认 now；`scope={kind:"COHORT",filters:{studyCode,sex,age,sero,tx,at,act,cm,data,ids}}` 必须包含全部十字段，复用§7.1条件政策。studyCode=RA，at=now/6m；普通空枚举规范为 null。ids 为 null 或最多5000个十进制字符串 Long，去重排序且保留 `[]` 的空范围。医生关系与唯一 RA 白名单每轮重验，问题不修改条件。PATIENT 本次与全程的合同见下文。
+
+成功 data 恰含 `status,engine,reason,scope,facts,meta,auditRef`。engine=AI；ANSWER 选择1～4项事实、reason=null；UNSUPPORTED 的 facts=[]，reason 仅 SCOPE_CHANGE_REQUIRED/MEDICAL_ADVICE/UNSUPPORTED_QUESTION。scope 包含 kind、规范 filters、本轮 n；meta 含同响应头 traceId、上海 asOfDate、读起止时刻、at、实际政策版本、服务器 modelVersion 与 promptVersion=dev-chat-facts-v02。auditRef 指向已提交的独立事件。
+
+每项 fact 恰为 `{key,title,data,explanation,evidence}`；evidence 的 scopeRef=CURRENT_SCOPE，sourceFields 为后端实际源字段白名单，policyKeys 对应 meta 中实际版本。目录为 COHORT_SIZE、TARGET_RATE、ACTIVITY_DISTRIBUTION、BY_TREATMENT、FM_COMPARISON、DATA_COMPLETENESS、CLINICAL_SUMMARY、TREATMENT_LINES、PAIRED_DAS28_CHANGE。原描述/统计/CRP/治疗/FM政策不变：有效 n、未知 n、NO_DATA、组>=3及检验有效样本>=5照实返回；治疗统计不含独立全研究库基准。配对变化仅使用同人同方案可靠 baseline−evaluation，返回 pairedN/unknownN/meanDelta/status/missingReasons，正值表示分数下降，不表示疗效或因果。
+
+本轮使用一份 Clock/字典 snapshot、短 RR SourceBatch，源连接释放后派生与筛选，不创建 analysis_run 或缓存成员。模型只收到问题、最多三轮用户问题、scope kind/at/n及白名单聚合事实，不能收到服务器患者姓名、编号、证件、手机、patient/visit/doctor ID、完整 filters/ids、旧 assistant 答案、原模块 JSON、原药名或 URL。用户问题原文属于独立出站许可，本轮合成验证不批准真实原文外发。模型 inner 仅有限 status/factKeys/reason，拒绝自由数值、URL、SQL、额外字段和坏组合；实际返回的数字、中文说明与证据均来自后端。
+
+`ra.ai.chat.enabled`、`ra.ai.chat.aggregate-outbound-approved`、独立的 `ra.ai.chat.clinical-outbound-approved` 均默认 false；parse 开关与许可不打开 chat。disabled=503/CHAT_DISABLED，对应 aggregate/clinical 未批准=403/CHAT_OUTBOUND_NOT_APPROVED，先于密钥/源/网络/审计。服务器只允许 https://api.deepseek.com/chat/completions、deepseek-flash、私有 RA_AI_API_KEY 和 direct(default)/system proxy；无效配置503/AI_CONFIG_UNAVAILABLE。显式 synthetic-loopback 仅用于合成测试。独立2-owner零队列网关、标准 TLS、one-shot、无 retry/redirect/cookie，网络4.5s/Flight5s；request/response各16KiB，过大上下文413/CONTEXT_TOO_LARGE，非法回应502/AI_INVALID_RESPONSE，忙429/AI_BUSY，超时504/AI_TIMEOUT，HTTP502/AI_HTTP_ERROR，网络503/AI_IO_ERROR。caller 中断保留标记且不发布回答或补造审计。
+
+新 `ra_ai_chat_audit` 只 append event_ref/trace_id/可信 doctor_id/scope_kind/engine/outcome/model_version/prompt_version/elapsed_ms/created_at；不保存原文、回答、filters、成员/访视 IDs、临床内容或内容 hash。源成功并进入模型尝试后的正常 caller 终态同步 REQUIRES_NEW 追加，commit 后才能发布；身份/body/门/source 拒绝不写。insert 后异常必须 rollback，审计失败503/SERVICE_UNAVAILABLE且无 answer。DDL 可重执行，不修改旧表或 parse 审计。
+
+ai-chat bare URL 默认 ALL；完整队列只通过 `#kind=COHORT&filters=<RACohortConditions.encode完整条件串>` 交接，ALL 可空 fragment 或 `#kind=ALL`。query、重复/未知/mixed字段拒绝；不自动发送 URL 问题。队列“询问当前队列”只取 currentFilters，保5000 Long 和 ids=[]，不用当前页成员/保留结果/存储。对话仅 RAM，范围、身份、storage clear、离页及 bfcache 恢复清历史/答案并取消旧 owner；下一轮显式提交，30s页面 deadline，即使 fetch 不 settle 也结束 loading。旧轮卡有时间和明确历史标签，错误不显示旧数字为本轮答案。返回仅经验证同源条件页 history 或智能分析 fallback。
+
+#### 患者全程与本次访视（P05b）
+
+请求 scope 恰含 `kind:"PATIENT"`、canonical Long 字符串 `patientId`，可选同型 `visitId`；省略/null 表示全程，字符串表示本次。拒绝 filters/at/医生/结果 ID 及未知字段。响应 scope 恰为 `{kind,patientId,visitId,n}`，全程 visitId=null，n=1；没有访视的合法患者仍为一人。每轮一份 Clock/药品字典/FM配置视图与五 SELECT/RR SourceBatch；先核本人 RA 患者，再核该患者的 RA 访视。错误归属、另一医生、非 RA、不存在均404/NOT_FOUND，零模型/审计；源修改和撤权立即重读。meta.at="now" 仅表示上海 asOf，记录日期不会替换为今天；policyVersions 加 insight=dev-insight-v01。
+
+本次仅 `VISIT_MEASUREMENTS`（P02单条 visitId/observedAt/temporalStatus/七项 metrics）和 `VISIT_MEDICATION`（visitId/observedAt/status/drugs/unknownN）。后者只读目标记录 zlfa，RECORDED/NOT_RECORDED/INVALID 分开；每个已识别药物只含规范 name/category、严格日期或 null 的 startDate/endDate、sourceField 及实际 MISSING_START/INVALID_START/MISSING_END/INVALID_END 子集。未知药名仅计 unknownN，不返回原文；空模块不表示停药，不补今天方案。
+
+全程仅 `PATIENT_COURSE` 的完整 visits、`PATIENT_CLINICAL` 的 sex/age/diseaseDurationYears/sero/fm/as/clinicalProvenance、`PATIENT_TREATMENT` 的原 current/history/drugNames。共用 PatientInsightService 纯投影，原七指标、真实日期、未来/无日期、大 Long 数值排序、11域历史/12域current、估算/冲突/未知政策不变。临床摘要没有姓名、研究号、身份证或电话。PATIENT evidence 增加后端生成的 sourceVisits `[{patientId,visitId}]`，只关联本轮授权目标真实来源。
+
+clinical 批准只打开 PATIENT，aggregate 只打开 ALL/COHORT，两者互不授权。对应门先于 lazy 凭据解析、字典/临床源、网络和审计；构造网关不会预读 key。模型本轮只能选择实际提供的合法 keys；另一 focus 或聚合 key 均502/AI_INVALID_RESPONSE。本次问题不能隐式读全程，需页面显式切换；医疗建议沿 MEDICAL_ADVICE。
+
+browser facts 与出站事实分开：PATIENT 模型只收 kind/focus/n/asOf、本问题及最多三前轮用户问题，以及逐 shape 白名单实测/单位/日期/质量/缺失、派生临床状态、规范药物/类别/可靠或估算起点与有限方案状态。访视用 v1/v2 opaque refs，字典 ID 转规范药名；不发服务器姓名/编号/证件/电话、patient/visit/doctor/source/evidence ID、episodeKey、raw模块/原药名或 URL。用户问题原文属于 clinical 许可，不能声称自动脱敏。完整全程超16KiB整体request则413/CONTEXT_TOO_LARGE，零模型/审计并提示改本次；不截最近记录。
+
+患者 fragment 为 `#kind=PATIENT&patientId=<字符串>`，本次再带 visitId；query仍空，非法/重复/混scope/未知键关闭。单患者 radio 通过真实 patientSearch 搜索词/分页/total 显式选择，姓名只在 RAM；直达链接只展示目标 ID，不额外加载完整病程。选患者、切scope/focus清历史/答案并使旧搜索/回答 owner 失权；在途取消、30s期限、身份/storage clear、离页/恢复沿原边界。访视初始本次，可显式去全程并返回原本次。档案和病程成功提供全程 href，访视成功提供本次 href，加载/错误/身份/离页撤销。普通问问AI使用原 URL 字符串 ID 接此 typed 入口。返回只接受同源匹配患者/本次的档案、访视或病程 referrer 与 history；否则固定可信 ai-analysis 来源的目标页。
+
 ## 新增接口时的维护约定
 
 每加一个接口，在本文件对应页面下补一节，写清楚：页面、地址、入参（含中文含义）、出参（含中文含义和计算口径）、返回示例。
@@ -1188,4 +1220,4 @@ treatment 含原 Timeline 的完整 current summary、history 和 drugNames。hi
 
 meta 含 studyCode=RA、asOfDate、readStartedAt/readCompletedAt、与响应头一致的 traceId，以及 insight=dev-insight-v01、crp=dev-crp-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、实际 drugDictionary 和可选 fmSource。开发/合成版本不构成权威医学来源。
 
-病程页严格接受单 id 与可选单 from=ai-analysis/ai-cohort，无 from 默认首页来源。可信档案新增病程入口，来源访视与返回档案保同 from；similar 只导航现 preset=similar/id 入口，由 resolveEntry 判定实际基础。页面整份验证响应的 ID、时序、有限数值、来源形状和 trace；加载、失败、超时、身份失效和离页清除敏感数据与链接，单 flight 的迟到结果没有发布权。真实患者问答仍尚未接入。
+病程页严格接受单 id 与可选单 from=ai-analysis/ai-cohort，无 from 默认首页来源。可信档案新增病程入口，来源访视与返回档案保同 from；similar 只导航现 preset=similar/id 入口，由 resolveEntry 判定实际基础。页面整份验证响应的 ID、时序、有限数值、来源形状和 trace；加载、失败、超时、身份失效和离页清除敏感数据与链接，单 flight 的迟到结果没有发布权。患者全程问答由同 typed chat 入口接入。

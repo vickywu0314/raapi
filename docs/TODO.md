@@ -41,6 +41,8 @@
 
 ## 上线前
 
+- P05 chat上线前执行 `src/main/resources/sql/20261012_ai_chat_audit.sql` 新append审计DDL；确认生产typed身份、权威源、独立aggregate/clinical出站批准及真实原文处理边界。`ra.ai.chat.enabled` 与两类批准默认关闭，parse许可不足；合成DeepSeek/SQL/Node技术接收不批准真实患者或部署。保留固定源 `chat:cohort-states` / `chat:cohort-loopback` 与 `chat:patient-states` / `chat:patient-loopback` 浏览器补验；患者全程/本次技术实现不批准真实临床出站。
+
 - [ ] **接收P07c启动准入与运行材料**：[发布与回滚手册](AI队列发布与回滚手册.md)拥有两键关闭/重启生效、准确15路身份优先/503/零副作用、六份DDL共7新表逐文件hash及旧申请兼容前置、目标只读核查/逐statement预演与部分成功续作入口。目标host/账号/受控认证、MySQL/InnoDB/短RR/时区/索引、访问留存及已批准当前/回退工件hash/配置版本/真实部署渠道仍须AQC-EXT-04接收；本片不执行目标SQL或生产发布。
 - [ ] **接收P07c整组回退与恢复前提**：先关闭新增API/普通XLSX并复用LLM/SMTP原开关，经运维真实渠道生效，再按原进程关闭语义及已核整组工件回退；CRP阈值与全部共享消费者不能局部回退。保留旧患者/访视、新表、定义/回执/有期payload/审计/申请及attempt/from/to，不倒写历史CRP、不drop/recreate或盲重放DDL、UNKNOWN/SENT不开门重发。恢复仍需原TTL/U/权限/医学与外发政策；[API §7.9](API.md#79-启动配置准入与关闭边界)的默认true不是发布批准。八项接收进度只见[唯一登记](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务)。
 
