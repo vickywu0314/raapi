@@ -15,6 +15,8 @@ public class TrustedPatientController {
     private final com.wenwen.ai.scope.AiFeatureAvailability availability;
     private final com.wenwen.service.impl.TrustedPatientServiceImpl service;
     public TrustedPatientController(PrincipalProvider principal,com.wenwen.ai.scope.AiFeatureAvailability availability,com.wenwen.service.impl.TrustedPatientServiceImpl service){this.principal=principal;this.availability=availability;this.service=service;}
+    @PostMapping("/patientSearch")
+    public ResponseEntity<DataResult<?>> search(HttpServletRequest request){return respond(request,"search");}
     @PostMapping("/patientAuditLogs")
     public ResponseEntity<DataResult<?>> audit(HttpServletRequest request){return respond(request,"audit");}
     @PostMapping("/patientSensitive")
@@ -30,7 +32,8 @@ public class TrustedPatientController {
         try{
             com.wenwen.ai.scope.TrustedDoctor doctor=principal.requireCurrent();availability.requireApi();
             Object data;
-            if("visit".equals(operation))data=service.visit(doctor,com.wenwen.ai.query.VisitDetailQuery.read(request.getInputStream()));
+            if("search".equals(operation))data=service.search(doctor,com.wenwen.ai.query.PatientSearchQuery.read(request.getInputStream()));
+            else if("visit".equals(operation))data=service.visit(doctor,com.wenwen.ai.query.VisitDetailQuery.read(request.getInputStream()));
             else{
                 com.wenwen.ai.query.PatientDetailQuery query=com.wenwen.ai.query.PatientDetailQuery.read(request.getInputStream());
                 data="sensitive".equals(operation)?service.sensitive(doctor,query):"audit".equals(operation)?service.audit(doctor,query):service.detail(doctor,query);

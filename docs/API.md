@@ -1105,7 +1105,40 @@ SQL清单、配置关闭、状态留存及整组应用回退前提见 [AI队列�
 
 访视复用既有 `VisitService` 的本人 RA 关系及 RA 访视查询，发布前再核两个 ID 与请求一致。同医生另一患者的访视不能拼接，和他人、非 RA、不存在、撤权同为 404 / `RESOURCE_NOT_FOUND`。敏感/审计复用原患者服务的当前 RA 关系检查及读取，审计顺序仍为时间、ID 倒序。源失败返回 503 / `SERVICE_UNAVAILABLE`，不能变成 null/空成功；失败 `data=null`。正文仍为 4096 UTF-8 bytes 上限、最多读 4097，拒绝重复、额外、尾随字段和非法 ID。
 
-AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视页只允许唯一 `from=ai-cohort`、`id`、`visit`。患者与访视两个读取成功且关联匹配才整体发布。两页眼睛显式调用敏感接口；患者页复用原修改记录展开面板。收起、换身份、离页和重载清明文、审计及相关弹窗，每次展开重新读取，30 秒永久等待也由页面结束；迟到响应不能重显或影响新请求。可信图片只接受 HTTP(S) 或解析为同源 HTTP(S) 的相对地址。普通页面和旧 API 保持原默认行为；可信入口不调用旧 doctorId 写入，不新增编辑删除或 PDF 能力。
+AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视页只允许唯一固定 `from=ai-cohort` 或 `from=ai-analysis`、`id`、`visit`。混合/重复来源或额外参数拒绝，不降级旧 doctorId 接口；来源保持到访视和返回档案。患者与访视两个读取成功且关联匹配才整体发布。两页眼睛显式调用敏感接口；患者页复用原修改记录展开面板。收起、换身份、离页和重载清明文、审计及相关弹窗，每次展开重新读取，30 秒永久等待也由页面结束；迟到响应不能重显或影响新请求。可信图片只接受 HTTP(S) 或解析为同源 HTTP(S) 的相对地址。普通页面和旧 API 保持原默认行为；可信入口不调用旧 doctorId 写入，不新增编辑删除或 PDF 能力。
+
+### 7.12 本人 RA 首页只读概览
+
+`POST /api/ra/ai/overview` 仅接受严格 UTF-8 JSON 空对象 `{}`。未知键（包括 doctorId）、重复键、尾随内容、数组/null/空体/非法 UTF-8 返回 400/INVALID_REQUEST；请求最多 4096 字节，最多读 4097 判超限并返回 413/LIMIT_EXCEEDED。先由实际 PrincipalProvider.requireCurrent 验证服务器 typed session，再检查整体 AI 门；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零 body/业务 SQL 读取。header、principal.name 和本地登录信息不赋权。
+
+独立 AiOverviewController/AiOverviewService 复用 §7.1 的本人 RA 去重 U、短 REPEATABLE_READ 五 SELECT、同次上海 asOfDate、一次药品字典 snapshot 及共享 derive/select/DescriptiveAnalysis。源连接释放后才计算。包含本人已脱落 RA 关系，排除他人、非 RA、孤立关系；不调用 analyze、不创建或清理 AnalysisRun、不缓存、不新增表、不调用模型或 SMTP。源或程序失败 503/SERVICE_UNAVAILABLE，失败 data=null，不能返回空成功。统一 DataResult 与 X-Trace-Id；成功 meta.traceId 同响应 header。
+
+| data 字段 | 含义 |
+|---|---|
+| studyTotal | 本人 RA 去重 U 人数，非负整数 |
+| targetRate | `{value,meta}`；meta 含 numerator/denominator/unknownN/status/displayText，沿既有 canonical DAS28-CRP ≤2.7 与有效评估分母 |
+| modHighN | 同批有效评估且 canonical DAS28-CRP >2.7 的人数 |
+| fmN | 同批明确 FM TRUE 的人数；未知不并入阴性 |
+| missingN | 同批既有 QC MISSING 的人数 |
+| meta | studyCode=RA、at=now、asOfDate、readStartedAt/readCompletedAt（UTC Instant）、traceId、policyVersions（descriptive/qc/crp/now/clinical/serology/treatment/visitMatcher/drugDictionary 的实际开发版本） |
+
+只投影上述聚合和来源元数据，不含患者 ID、姓名、身份证、患者明细、analysisId 或 cursor。六人合成独立例：studyTotal=6、targetRate.value=0.4，meta 为 2/5/unknown1/OK/40%，modHighN=3、fmN=3、missingN=2。U 空时 studyTotal=0；U 有人但无有效评估时 target status=NO_DATA、有效0且 unknownN=U.n；有有效评估且无达标者时 status=OK/value=0/displayText=0%。首页 NO_DATA 显示“暂无可评估患者”，不得把既有 displayText 的0%作为真实零。
+
+首页五卡分别用 RACohortConditions.encode 的空条件、act=target、act=mod-high、cm=FM、data=missing 导航，保持 RA/now 默认，不传成员快照。每次加载重读，30秒永久等待、重试、身份变化和离页撤销旧展示/迟到发布权；persisted pageshow 新代重读。保留 data.js 仅作旧 shell 机械兼容，首页不消费 demo 统计，患者搜索沿下一节可信只读协议。真实 authenticator/医学与字典批准仍沿原接入义务；本地合成技术证据不代表 browser、真实账号或上线批准。
+
+### 7.13 本人 RA 患者搜索与首页交接
+
+`POST /api/ra/ai/patientSearch` 接收准确对象 `{keyword:string,page:integer,size:integer}`，三项必填。keyword 必须为配对 Unicode，最多 200 codepoints，原文传输；服务 trim 后，姓名、十进制患者 ID 和研究号 contains 匹配，反斜杠、`%`、`_` 为字面字符。空白关键词可显式查询全部本人 RA。page 为 1～2147483647，size 为 1～200；拒绝字符串数字、小数、布尔、未知/重复键、无效 UTF-8/Unicode、尾随 JSON、数组/null/空体。复用 4096 bytes 严格 reader，最多读 4097 bytes；非法输入 400/INVALID_REQUEST，超限 413/LIMIT_EXCEEDED。
+
+身份→整体 AI 门→正文→SQL 顺序沿 7.10；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零正文/连接。仅复用 `PatientService.listPatients` 当前医生 RA 查询，无 request doctorId、隐式过滤、持久写、模型或缓存。RA 关系去重；最近访视非 null 优先、日期降序、患者 ID 降序。沿现 QcSnapshotReader 短 RR 读取，不声明后续全部临床富化为同一原子快照。
+
+成功 `DataResult.data` 恰为 `{items:[{patientId:string,name:string|null,studyNo:string|null}],total:int,page:int,size:int}`，patientId 是规范正十进制 Long 字符串，三字段准确，不输出身份证、手机、临床 DTO 或医生字段。例如搜索 `9007199254740993` 的合成结果：`{items:[{patientId:"9007199254740993",name:"synthetic-patient-odd",studyNo:"RA-ODD"}],total:1,page:1,size:20}`。越界页仍 HTTP200/空 items 并保真实 total 与请求 page/size；无结果不同于匿名和 SQL 故障。源故障 503/SERVICE_UNAVAILABLE/data=null，所有请求带 X-Trace-Id。
+
+首页显式提交或 Enter，从第1页、固定 size20 开始；翻页沿已提交关键词。编辑关键词立即清列表/计数/页码并终止旧请求，编辑本身不查询；改搜索不清有效五卡。加载、0结果、错误分开，错误保 code/trace；名称/研究号以文本转义。独立 search owner 30秒超时，替换/身份/离页先撤销发布权、清 timer 后 abort；旧回包不能发布。persisted pageshow 搜索回 idle，概览重新读取，无搜索缓存。
+
+选择链接固定 `patient-visits.html?id=<encoded original ID>&from=ai-analysis`。患者页/访视页来源 allowlist 仅 ai-cohort、ai-analysis，任一出现进入严格入口；timeline 保同 from，访视返回保同 patientId/from。患者返回仅同 origin/准确来源页面且 history>1 可 back，否则对应固定来源页面；访视返回仅同 origin/准确患者页、唯一匹配 id/from、已知参数且 history>1 可 back，否则固定可信档案。原普通入口兼容，不接受任意 return 参数。
+
+首页 q 仅原始非空白、配对 Unicode、≤200 codepoints 导航 `ai-cohort.html?q=`+encodeURIComponent(raw)，保前后空格及 `& # ? %`/emoji，示例同验证。200 emoji 接受、201/孤立代理字符有输入提示；不取 placeholder。接收仍沿 decodeEntry→parse/既有候选处理，PARTIAL 须显式应用；首页不预填 filters 或调用模型。本地合成检查与 BROWSER_PENDING 不替代真实 authenticator、医学或上线接收。
 
 ## 新增接口时的维护约定
 

@@ -14,6 +14,16 @@ public class TrustedPatientServiceImpl {
     private final PatientService patients;
     private final com.wenwen.service.VisitService visits;
     public TrustedPatientServiceImpl(PatientService patients,com.wenwen.service.VisitService visits){this.patients=patients;this.visits=visits;}
+    public JsonNode search(TrustedDoctor doctor,com.wenwen.ai.query.PatientSearchQuery query){
+        com.wenwen.vo.PatientsListVo list=patients.listPatients(doctor.getId(),query.getKeyword(),null,null,query.getPage(),query.getSize());
+        com.fasterxml.jackson.databind.node.ObjectNode result=new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        result.put("total",list.getTotal());result.put("page",query.getPage());result.put("size",query.getSize());
+        com.fasterxml.jackson.databind.node.ArrayNode items=result.putArray("items");
+        for(com.wenwen.vo.PatientItemVo patient:list.getItems()){
+            com.fasterxml.jackson.databind.node.ObjectNode item=items.addObject();item.put("patientId",String.valueOf(patient.getPatientId()));item.put("name",patient.getName());item.put("studyNo",patient.getStudyNo());
+        }
+        return result;
+    }
     public JsonNode visit(TrustedDoctor doctor,com.wenwen.ai.query.VisitDetailQuery query){
         try{
             com.wenwen.vo.VisitDetailVo detail=visits.getVisitDetail(doctor.getId(),query.getVisitId());
