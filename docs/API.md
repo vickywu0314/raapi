@@ -666,7 +666,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ## 十、数据质控（data-quality.html）
 
-按当前数据实时检查**当前医生名下的 RA 患者**（含已脱落），问题不落库，数据改好后自动消失。处理记录存新表 `qc_issue_resolution`（`sql/20261012_qc_issue_resolution.sql`）；表未建时清单照常返回（`resolutionReady=false`），只是不能标记。
+按当前数据实时检查**当前医生名下的 RA 患者**（含已脱落），问题不落库，数据改好后自动消失。只查数据本身的缺失和矛盾；化验值偏高 / 偏低反映的是病情，不算数据质量问题（2026-10-12 确认）。处理记录存新表 `qc_issue_resolution`（`sql/20261012_qc_issue_resolution.sql`）；表未建时清单照常返回（`resolutionReady=false`），只是不能标记。
 
 | 接口 | 入参 | 说明 |
 |---|---|---|
@@ -678,8 +678,6 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 类型 | 规则 | `key` | 定位 |
 |---|---|---|---|
 | 缺失 | 与患者列表「待补全」同一规则：缺 DAS28 评分 / 缺基线检验 / 缺用药史 / 缺合并疾病记录 | `missing:M_DAS28` 等 | 基线访视对应模块；没有访视 → 新增随访；合并疾病 → 编辑档案 |
-| 异常值 | 化验超出合理范围或填了非数字（勾「未查」的不算；「<5」这类按数值）：血沉 0~150、CRP 0~300、hsCRP 0~300、白细胞 0.5~100、血红蛋白 30~250、血小板 5~2000、ALT/AST 0~5000、肌酐 10~2000、尿素 0.5~100 | `lab:随访ID:字段` | 该次随访 · 辅助检查 |
-| 异常值 | 档案血压收缩压 ≤ 舒张压 | `value:bp` | 编辑档案 |
 | 逻辑冲突 | 随访日期晚于今天 / 早于发病时间 | `conflict:visit-future:随访ID` / `conflict:visit-before-onset:随访ID` | 该次随访 · 病史病情 |
 | 逻辑冲突 | 确诊日期早于发病时间 | `conflict:confirm-before-onset` | 编辑档案 |
 | 逻辑冲突 | 同一天多条随访 | `conflict:same-day:日期` | 患者详情 |

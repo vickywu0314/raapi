@@ -17,39 +17,23 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.alibaba.fastjson.JSONObject;
 import com.wenwen.mapper.QualityMapper;
 import com.wenwen.service.AuditLogService;
 import com.wenwen.service.PatientService;
 import com.wenwen.service.QualityService;
 import com.wenwen.util.BizException;
-import com.wenwen.util.VisitJson;
 import com.wenwen.vo.PatientItemVo;
 
 /**
  * 数据质控规则（只读老表，按当前数据实时算；数据改好后问题自动消失）：
  * 缺失 —— 与患者列表「待补全」同一规则（缺 DAS28 评分 / 缺基线检验 / 缺用药史 / 缺合并疾病记录）；
- * 异常值 —— 化验值超出合理范围或填了非数字内容（勾了「未查」的不算）；档案血压收缩压 ≤ 舒张压；
  * 逻辑冲突 —— 随访日期晚于今天、随访日期早于发病时间、确诊日期早于发病时间、同一天多条随访。
+ * 化验值偏高 / 偏低反映的是病情，不算数据质量问题，不检查（2026-10-12 业务确认）。
  */
 @Service
 public class QualityServiceImpl implements QualityService {
 
 	private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
-	/** 化验合理范围（超出多半是录错，不是临床正常值范围）：字段 → 名称、单位、下限、上限 */
-	private static final Map<String, Object[]> LAB_RANGES = new LinkedHashMap<String, Object[]>();
-	static {
-		LAB_RANGES.put("xc", new Object[] { "血沉", "mm/h", 0, 150 });
-		LAB_RANGES.put("cfydb", new Object[] { "C反应蛋白", "mg/L", 0, 300 });
-		LAB_RANGES.put("cmcfydb", new Object[] { "超敏C反应蛋白", "mg/L", 0, 300 });
-		LAB_RANGES.put("bxb", new Object[] { "白细胞", "×10⁹/L", 0.5, 100 });
-		LAB_RANGES.put("xhdb", new Object[] { "血红蛋白", "g/L", 30, 250 });
-		LAB_RANGES.put("xxb", new Object[] { "血小板", "×10⁹/L", 5, 2000 });
-		LAB_RANGES.put("alt", new Object[] { "谷丙转氨酶", "U/L", 0, 5000 });
-		LAB_RANGES.put("ast", new Object[] { "谷草转氨酶", "U/L", 0, 5000 });
-		LAB_RANGES.put("crea", new Object[] { "肌酐", "μmol/L", 10, 2000 });
-		LAB_RANGES.put("urea", new Object[] { "尿素", "mmol/L", 0.5, 100 });
-	}
 	/** 患者列表缺失项文字 → 编码、定位 */
 	private static final Map<String, String[]> MISSING = new LinkedHashMap<String, String[]>();
 	static {
@@ -121,39 +105,6 @@ public class QualityServiceImpl implements QualityService {
 					target = target("visit", baseline, m == null ? null : m[1], "基线访视 · " + (m == null ? "病历" : m[2]));
 				}
 				issues.add(issue(p, "missing:" + code, "缺失", label, target));
-			}
-
-			// 异常值：化验
-			for (Map<String, Object> v : vs) {
-				JSONObject fz = VisitJson.parse((String) v.get("fzjc"));
-				if (fz == null) {
-					continue;
-				}
-				JSONObject wx = fz.get("xcgWx") instanceof JSONObject ? fz.getJSONObject("xcgWx") : null;
-				for (Map.Entry<String, Object[]> e : LAB_RANGES.entrySet()) {
-					String raw = VisitJson.text(fz.get(e.getKey()));
-					if (raw == null || (wx != null && VisitJson.isTrue(wx.get(e.getKey())))) {
-						continue;
-					}
-					Object[] r = e.getValue();
-					BigDecimal n = number(raw);
-					String problem = null;
-					if (n == null) {
-						problem = "填了非数字内容「" + raw + "」";
-					} else if (n.doubleValue() < ((Number) r[2]).doubleValue() || n.doubleValue() > ((Number) r[3]).doubleValue()) {
-						problem = raw + " " + r[1] + "，超出合理范围 " + r[2] + "~" + r[3];
-					}
-					if (problem != null) {
-						issues.add(issue(p, "lab:" + v.get("visitId") + ":" + e.getKey(), "异常值", r[0] + " " + problem + "（" + dateText(v) + " 随访）",
-								target("visit", v.get("visitId"), "1", dateText(v) + " 随访 · 辅助检查")));
-					}
-				}
-			}
-			// 异常值：血压
-			BigDecimal sbp = number(str(f.get("xyH"))), dbp = number(str(f.get("xyL")));
-			if (sbp != null && dbp != null && sbp.compareTo(dbp) <= 0) {
-				issues.add(issue(p, "value:bp", "异常值", "血压收缩压 " + sbp.toPlainString() + " ≤ 舒张压 " + dbp.toPlainString() + "，疑似填反",
-						target("edit", null, null, "编辑档案 · 体征")));
 			}
 
 			// 逻辑冲突
@@ -297,19 +248,6 @@ public class QualityServiceImpl implements QualityService {
 
 	private static String str(Object v) {
 		return v == null ? null : String.valueOf(v);
-	}
-
-	/** 数值：去掉前面的 < > ≤ ≥ 和空格（如「<5」）；不是数字返回 null */
-	private static BigDecimal number(String s) {
-		if (s == null) {
-			return null;
-		}
-		String t = s.trim().replaceFirst("^[<>≤≥＜＞]=?\\s*", "");
-		try {
-			return t.isEmpty() ? null : new BigDecimal(t);
-		} catch (NumberFormatException e) {
-			return null;
-		}
 	}
 
 	private static LocalDate date(String s) {

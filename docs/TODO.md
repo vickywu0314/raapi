@@ -16,7 +16,6 @@
 | 16 | 导出申请接收邮箱 | 未配置 | `ra.export.apply-mail-to` |
 | 17 | 脏器受累各类的明细选项（肺胸膜 / 心脏 / 肾脏 / 神经 / 血管炎 / 其他）PDF 没写 | 文本框，多个用「、」分隔 | `VisitFieldDict` 病情评估「脏器受累」 |
 | 18 | 心脏检查 14 项的单位（E/A、FS、EF、LVD、BNP、CK-MB 等）PDF 没写 | 按常用单位显示（m/s、%、mm、pg/mL、U/L），存库只存数值 | `VisitFieldDict` 辅助检查「心脏检查」 |
-| 20 | 数据质控的化验「合理范围」（血沉 0~150、CRP 0~300 等，用于发现录错，不是临床正常值）和逻辑冲突规则 | 按 docs/API.md 第十节 | `QualityServiceImpl.LAB_RANGES` |
 | 19 | 标记脱落的原因选项 | 失访 / 撤回知情同意 / 不良事件 / 死亡 / 其他（其他须写说明） | `PatientWriteServiceImpl.WITHDRAW_REASONS` |
 
 **新建患者 · 身份证号已存在时（2026-10-06 已确认）**
