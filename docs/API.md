@@ -1175,3 +1175,17 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 ## 新增接口时的维护约定
 
 每加一个接口，在本文件对应页面下补一节，写清楚：页面、地址、入参（含中文含义）、出参（含中文含义和计算口径）、返回示例。
+
+### 可信患者实测病程
+
+`POST /api/ra/ai/patientInsight` 仅接收 `{"patientId":"规范Long字符串"}`，复用患者详情的严格 JSON 和 4096 字节限制。身份由生产 `SessionPrincipalProvider` 的 typed 会话提供，功能门先于 body 和 SQL。匿名 401、门关闭或来源配置/读取失败 503、非本人 RA 或不存在 404；错误 `data=null`，保安全消息与 `X-Trace-Id`。接口不创建分析结果、不写旧表、不调用模型。
+
+一次上海 `asOfDate`、一次药品字典 snapshot 和现有五 SELECT/RR 批次之后，仅投影目标患者。响应四域为 `patient/visits/treatment/meta`。patient 只含字符串 ID、姓名/研究编号、已有临床派生与来源；不返回身份证、生日、电话和医生 ID 原值。临床来源字段名 `patient_basic_info.card_no` 可以保留，它不包含证件原值。
+
+visits 按真实日期升序、同日数值 Long 升序、无日期最后排列。每项含 visitId、nullable observedAt、OBSERVED/UNDATED/FUTURE 和七项 metrics：das28Crp/tjc/sjc/gh/haq/crp/pain。每项仅 value/unit/sourceVisitId/sourceField/observedAt/quality/missingReason；DAS28-CRP 直接取 canonical 实测值，缺失为 MISSING_OR_INVALID_CRP，unit=null。其他合法指标不会因 DAS 缺失被删除。pain 仍 null/UNVERIFIED_SCALE/SCALE_UNVERIFIED，不暴露 raw，也不猜 VAS。未来和无日期访视不纳入当前趋势，不补日期或额外临床节点。
+
+treatment 含原 Timeline 的完整 current summary、history 和 drugNames。history 沿同字段命名但剔除 schemeDurationMonths，保留 episodeKey/state/category/line/targetedDrugHistoryN/startDate/estimatedStartDate/endDate/startConfidence/genericDrugIds/provenance 十一字段；drugNames 仅按本次字典识别目标患者真实用药记录的实体并按 ID 去重。可靠/估算起点、空模块 carry、UNKNOWN/CONFLICT 和原第一种靶向 2 线政策不变。
+
+meta 含 studyCode=RA、asOfDate、readStartedAt/readCompletedAt、与响应头一致的 traceId，以及 insight=dev-insight-v01、crp=dev-crp-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、实际 drugDictionary 和可选 fmSource。开发/合成版本不构成权威医学来源。
+
+病程页严格接受单 id 与可选单 from=ai-analysis/ai-cohort，无 from 默认首页来源。可信档案新增病程入口，来源访视与返回档案保同 from；similar 只导航现 preset=similar/id 入口，由 resolveEntry 判定实际基础。页面整份验证响应的 ID、时序、有限数值、来源形状和 trace；加载、失败、超时、身份失效和离页清除敏感数据与链接，单 flight 的迟到结果没有发布权。真实患者问答仍尚未接入。

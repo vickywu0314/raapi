@@ -214,6 +214,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        if("p03-sources".equals(scenario)&&Arrays.asList("/api/ra/ai/patientInsight","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/resolveEntry").contains(path))return true;
         if("p01-overview".equals(scenario)||"p03-sources".equals(scenario))return Arrays.asList("/api/ra/ai/overview","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p00-trusted".equals(scenario))return Arrays.asList("/api/ra/ai/patientSearch","/api/ra/ai/overview","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientSensitive","/api/ra/ai/patientAuditLogs","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if(compositionScenario(scenario))return COMPOSITION_PATHS.contains(path);
@@ -434,7 +435,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     @Configuration @EnableWebMvc
-    public static class ConfiguredSourcesInfrastructure extends OverviewInfrastructure {
+    @Import({com.wenwen.controller.ra.PatientInsightController.class,com.wenwen.ai.insight.PatientInsightService.class})
+    public static class ConfiguredSourcesInfrastructure extends TrustedPatientInfrastructure {
         @org.springframework.beans.factory.annotation.Autowired private org.springframework.core.env.Environment environment;
         @Override @Bean public DrugDictionary dictionary(){return new com.wenwen.ai.treatment.ConfiguredDrugDictionary(environment);}
     }
