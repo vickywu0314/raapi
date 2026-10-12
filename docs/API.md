@@ -664,6 +664,39 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
 
+## 十、数据质控（data-quality.html）
+
+按当前数据实时检查**当前医生名下的 RA 患者**（含已脱落），问题不落库，数据改好后自动消失。处理记录存新表 `qc_issue_resolution`（`sql/20261012_qc_issue_resolution.sql`）；表未建时清单照常返回（`resolutionReady=false`），只是不能标记。
+
+| 接口 | 入参 | 说明 |
+|---|---|---|
+| `POST /api/ra/quality/issues` | `doctorId` | 问题清单 + 统计 |
+| `POST /api/ra/quality/resolve` | `doctorId, patientId, issueKey, note?` | 标记已处理（写修改记录「质控处理」）；问题已不存在返回 404 |
+
+**规则**
+
+| 类型 | 规则 | `key` | 定位 |
+|---|---|---|---|
+| 缺失 | 与患者列表「待补全」同一规则：缺 DAS28 评分 / 缺基线检验 / 缺用药史 / 缺合并疾病记录 | `missing:M_DAS28` 等 | 基线访视对应模块；没有访视 → 新增随访；合并疾病 → 编辑档案 |
+| 异常值 | 化验超出合理范围或填了非数字（勾「未查」的不算；「<5」这类按数值）：血沉 0~150、CRP 0~300、hsCRP 0~300、白细胞 0.5~100、血红蛋白 30~250、血小板 5~2000、ALT/AST 0~5000、肌酐 10~2000、尿素 0.5~100 | `lab:随访ID:字段` | 该次随访 · 辅助检查 |
+| 异常值 | 档案血压收缩压 ≤ 舒张压 | `value:bp` | 编辑档案 |
+| 逻辑冲突 | 随访日期晚于今天 / 早于发病时间 | `conflict:visit-future:随访ID` / `conflict:visit-before-onset:随访ID` | 该次随访 · 病史病情 |
+| 逻辑冲突 | 确诊日期早于发病时间 | `conflict:confirm-before-onset` | 编辑档案 |
+| 逻辑冲突 | 同一天多条随访 | `conflict:same-day:日期` | 患者详情 |
+
+**统计**
+
+| 字段 | 含义 |
+|---|---|
+| `cleanRate` | 无待处理问题的患者占比 %（1 位小数）=（名下患者 − 有待处理问题的患者）÷ 名下患者 |
+| `openCount` | 待处理问题条数 |
+| `affectedPatients` | 有待处理问题的患者人数 |
+| `researchReady` | 满足研究级质量要求：有随访、未脱落、没有待处理问题；数据看板「有效研究样本数」同一口径 |
+
+`issues[]`：`key, patientId, name, sex, birthYear, studyNo, visitCount, type, text, target{page: visit/edit/create/patient, visitId, section, where}, state（待处理 / 已处理）, handledBy, handledAt, note`。
+
+---
+
 ## 九、数据看板（dashboard.html）
 
 `POST /api/ra/dashboard/summary`，入参 `doctorId`。**只统计该医生名下的 RA 患者**。口径复用：随访状态 / DAS28-CRP 活动度 / 资料完整性 / 合并症 = 患者列表（`PatientService.listAllPatients`）；逾期 / 到期 / 按期随访率 / 疑似失访 = 随访管理（第八节）。
@@ -683,7 +716,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `attention.fm` | 合并 FM | 常见相关疾病有 FM |
 | `activity.dist` / `targetRate` | DAS28-CRP 分布 / 达标率 % | 最近一次评分；达标 = 缓解 + 低 |
 | `quality.completeRate` / `byItem` | 资料完整率 % / 各缺失项人数 | 患者列表「待补全」同一规则 |
-| `research.validSample` | 有效研究样本 | 有随访、资料完整、未脱落 |
+| `research.validSample` | 有效研究样本 | 有随访、未脱落、没有待处理的质控问题（= 数据质控「满足研究级质量要求」） |
 | `research.totalVisits` / `visited30` / `visited90` | 累计访视 / 近 30、90 天有随访的人数 | |
 | `risks[]` | 风险名单（各最多返回 50 人） | `rebound` 最近一次 DAS28-CRP 比上一次升高 ≥0.6；`high` 最近一次 >4.1；`overdue` 逾期超 90 天 |
 | `recentHighCrp[]` | 最近炎症指标偏高（5 人） | 最近一次 CRP > 20 mg/L，按随访日期倒序 |

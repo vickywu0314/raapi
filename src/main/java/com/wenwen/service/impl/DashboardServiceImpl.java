@@ -43,6 +43,8 @@ public class DashboardServiceImpl implements DashboardService {
 	private FollowupService followupService;
 	@Autowired
 	private DashboardMapper mapper;
+	@Autowired
+	private com.wenwen.service.QualityService qualityService;
 
 	@Override
 	public Map<String, Object> summary(Long doctorId) {
@@ -153,6 +155,9 @@ public class DashboardServiceImpl implements DashboardService {
 			items2.add(map("item", e.getKey(), "n", e.getValue()));
 		}
 		out.put("quality", map("completeRate", total == 0 ? null : Math.round((total - incomplete) * 100.0 / total), "incomplete", incomplete, "byItem", items2));
+		// 有效研究样本 = 数据质控「满足研究级质量要求」（有随访、未脱落、没有待处理的质控问题），两页一致
+		Map<String, Object> qc = qualityService.issues(doctorId, all);
+		valid = ((Number) qc.get("researchReady")).intValue();
 		out.put("research", map("validSample", valid, "totalVisits", totalVisits, "visited30", visited30, "visited90", visited90));
 
 		// 风险名单

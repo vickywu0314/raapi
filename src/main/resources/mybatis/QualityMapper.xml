@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 数据质控：只读老表；处理记录写新表 qc_issue_resolution -->
+<mapper namespace="com.wenwen.mapper.QualityMapper">
+
+	<sql id="myPatients">
+		SELECT DISTINCT r.patient_id FROM patient_relation_doctor r
+		WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</sql>
+
+	<select id="listPatientFacts" resultType="Map">
+		SELECT p.id AS patientId,
+		       DATE_FORMAT(COALESCE(p.create_date, p.createDate), '%Y-%m-%d') AS createDate,
+		       DATE_FORMAT(COALESCE(p.confirm_date, p.confirmDate), '%Y-%m-%d') AS confirmDate,
+		       DATE_FORMAT(COALESCE(p.happen_date, p.happenDate), '%Y-%m-%d') AS happenDate,
+		       COALESCE(NULLIF(p.xy_h, ''), p.xy) AS xyH, p.xy_l AS xyL
+		FROM patient_basic_info p WHERE p.id IN (<include refid="myPatients"/>)
+	</select>
+
+	<select id="listVisits" resultType="Map">
+		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate, f.fzjc
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id IN (<include refid="myPatients"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate) IS NULL, COALESCE(f.follow_up_date, f.followUpDate), f.id
+	</select>
+
+	<select id="listResolutions" resultType="Map">
+		SELECT q.patient_id AS patientId, q.issue_key AS issueKey, q.doctor_id AS doctorId, u.name AS doctorName, q.note,
+		       DATE_FORMAT(q.create_time, '%Y-%m-%d %H:%i') AS time
+		FROM qc_issue_resolution q LEFT JOIN `user` u ON u.id = q.doctor_id
+		WHERE q.patient_id IN (<include refid="myPatients"/>)
+	</select>
+
+	<insert id="insertResolution" parameterType="Map">
+		INSERT IGNORE INTO qc_issue_resolution (patient_id, issue_key, doctor_id, note)
+		VALUES (#{patientId}, #{issueKey}, #{doctorId}, #{note})
+	</insert>
+</mapper>
