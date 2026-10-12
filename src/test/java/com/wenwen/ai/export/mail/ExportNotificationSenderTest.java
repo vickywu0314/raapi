@@ -38,7 +38,7 @@ class ExportNotificationSenderTest {
     @Test void startTlsUsesTrustedSyntheticCertificateAndRealMime()throws Exception {
         NotificationSmtpPeer.TlsMaterial tls=NotificationSmtpPeer.tls(false);
         try(NotificationSmtpPeer peer=new NotificationSmtpPeer(NotificationSmtpPeer.Mode.TLS_SUCCESS,tls);ExportNotificationSender sender=new ExportNotificationSender()){
-            ExportNotificationSettings c=new ExportNotificationSettings("true","127.0.0.1",String.valueOf(peer.port()),"sender@notification.invalid","admin@notification.invalid","","","STARTTLS");ExportNotificationSender.Result r=sender.send(record(),c,Instant.now(),tls.client.getSocketFactory());assertEquals("SENT",r.state);assertTrue(r.accepted);assertTrue(r.ownerExited);assertEquals(1,peer.tlsHandshakes.get());assertEquals(1,peer.messages.size());assertEquals(1,peer.accepted.get());assertEquals(0,peer.authCommands.get());assertTrue(peer.commands.indexOf("STARTTLS")>=0);assertNull(peer.failure);
+            ExportNotificationSettings c=new ExportNotificationSettings("true","127.0.0.1",String.valueOf(peer.port()),"sender@notification.invalid","admin@notification.invalid","","","STARTTLS");ExportNotificationSender.Result r=sender.send(record(),c,Instant.now(),tls.client.getSocketFactory());assertEquals("SENT",r.state);assertTrue(r.accepted);assertTrue(r.ownerExited);assertEquals(1,peer.tlsHandshakes.get());assertEquals(Collections.singletonList("TLSv1.2"),peer.tlsProtocols);assertEquals(1,peer.messages.size());assertEquals(1,peer.accepted.get());assertEquals(0,peer.authCommands.get());assertTrue(peer.commands.indexOf("STARTTLS")>=0);assertNull(peer.failure);
         }
     }
     @Test void requiredTlsRejectsMissingCapabilityWrongSanAndUntrustedChainBeforeData()throws Exception {

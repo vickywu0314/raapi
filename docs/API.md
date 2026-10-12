@@ -1221,3 +1221,13 @@ treatment 含原 Timeline 的完整 current summary、history 和 drugNames。hi
 meta 含 studyCode=RA、asOfDate、readStartedAt/readCompletedAt、与响应头一致的 traceId，以及 insight=dev-insight-v01、crp=dev-crp-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、实际 drugDictionary 和可选 fmSource。开发/合成版本不构成权威医学来源。
 
 病程页严格接受单 id 与可选单 from=ai-analysis/ai-cohort，无 from 默认首页来源。可信档案新增病程入口，来源访视与返回档案保同 from；similar 只导航现 preset=similar/id 入口，由 resolveEntry 判定实际基础。页面整份验证响应的 ID、时序、有限数值、来源形状和 trace；加载、失败、超时、身份失效和离页清除敏感数据与链接，单 flight 的迟到结果没有发布权。患者全程问答由同 typed chat 入口接入。
+
+### P06a 当前可信源的导出与申请组合
+
+本轮沿上述既有协议，将生产 `SessionPrincipalProvider`、药品配置与明确 FM 配置形成的真实保留 COHORT/COMPARE 引用接到原生 XLSX 与唯一申请。字段自己的来源日期仍逐项检查：当前五个有效评分的 `das28Current/crpCurrent` 可显式下载；六人范围含无评分者、静态字段无来源日期或 FM 完整证据不足时保持 `NEED_APPLY`。治疗方案可靠起点匹配的 DAS28 基线独立检查日期，不能用分析新建时间或最早 RA 访视代替。
+
+比较显式 `n/das28At` 的文件保留 COUNT/CONTINUOUS 各一行与原 37 列；有效贡献来源日期参与窗口判断，未知人数不伪造日期。保留引用里的生产字典/FM 版本进入文件 metadata 与申请安全摘要。唯一 `requestId` 的 canonical 重放返回同申请，改变载荷返回 409；FAILED 可显式重试新 attempt，DATA_SILENT/ACK_DROP 的 UNKNOWN 不重发。SMTP 250 只证明受理，`deliveryStatus=UNKNOWN`；申请不产生下载权限。
+
+组合验证只使用六人合成 SQL、typed 测试会话与 `notification.invalid` loopback SMTP。真实登录、权威字典/FM、对外字段/日期批准和管理员真实收件仍由原接入/发布 owner 接收；Linux browser 与暂停的 Actions 不计作已验。
+
+现 STARTTLS 模式显式协商 TLSv1.2，保持 STARTTLS 必需、服务器身份校验和默认可信链；不降级到 TLSv1/1.1。LOOPBACK_PLAIN 的合成模式及原通知状态/网络预算保持。

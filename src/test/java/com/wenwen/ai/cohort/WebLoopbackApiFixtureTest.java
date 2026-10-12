@@ -3,6 +3,17 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 /** 首连接核库决策在任何DDL前执行，字符串负例无需触碰其他库。 */
 class WebLoopbackApiFixtureTest {
+    @Test void currentExportUsesTypedProductionSourcesAndExactRoutesWithoutGateway()throws Exception{
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p06-current";
+        assertTrue(f.typedScenario());assertEquals("seed-overview.sql",WebLoopbackApiFixture.seedForScenario(f.scenario));
+        assertEquals(WebLoopbackApiFixture.CurrentExportInfrastructure.class,f.contextConfiguration());
+        for(String path:new String[]{"/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/test/session","/api/ra/test/logout"}){assertTrue(WebLoopbackApiFixture.allowsHttpPath(f.scenario,path));assertFalse(WebLoopbackApiFixture.allowsHttpPath(f.scenario,path+"/"));assertFalse(WebLoopbackApiFixture.allowsHttpPath(f.scenario,path+"?x=1"));}
+        for(String path:new String[]{"/api/ra/ai/chat","/api/ra/ai/parse","/api/ra/ai/patientSearch","/api/ra/test/chooseDoctor"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(f.scenario,path));
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=compositionUnitContext(f,connections,"true","true");
+        try{context.refresh();assertTrue(context.getBean(com.wenwen.ai.scope.PrincipalProvider.class) instanceof com.wenwen.ai.scope.SessionPrincipalProvider);assertTrue(context.getBean(com.wenwen.ai.treatment.DrugDictionary.class) instanceof com.wenwen.ai.treatment.ConfiguredDrugDictionary);assertEquals(0,context.getBeansOfType(com.wenwen.ai.parse.AiParseGateway.class).size());assertNotNull(context.getBean(com.wenwen.ai.export.mail.ExportNotificationSender.class));assertEquals(0,connections.get());}finally{context.close();}
+        assertEquals(0,connections.get());assertFalse(context.isActive());assertNull(f.parsePeer);assertNull(f.chatPeer);assertFalse(f.control("CONTROL 1 IDENTITY_202"));assertFalse(f.control("CONTROL 1 SELECT_SQL"));assertTrue(f.control("CONTROL 1 ADVANCE_TTL"));f.close();assertFalse(f.control("CONTROL 2 ADVANCE_TTL"));
+    }
     @Test void p07CompositionAssemblesAllFifteenRealRoutesBeforeAnySql() throws Exception {
         WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-composition";
         java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
@@ -33,6 +44,7 @@ class WebLoopbackApiFixtureTest {
         properties.put("ra.ai.gateway.enabled","false");properties.put("ra.ai.gateway.outbound-approved","false");
         properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
         properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        if(fixture.currentExportScenario()){properties.put("ra.ai.fm-evidence.json",ConfiguredFmHttpTest.configuration("synthetic-fm-v1",0));properties.put("ra.ai.drug-dictionary.json",ConfiguredFmHttpTest.drugConfiguration());}
         properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
         context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("synthetic-only",properties));
         javax.sql.DataSource datasource=(javax.sql.DataSource)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{javax.sql.DataSource.class},(proxy,method,args)->{
@@ -42,7 +54,7 @@ class WebLoopbackApiFixtureTest {
             if(method.getName().equals("equals"))return proxy==args[0];
             throw new AssertionError("非预定DataSource方法");
         });
-        context.addBeanFactoryPostProcessor(factory->{factory.registerSingleton("observedDataSource",datasource);factory.registerSingleton("principalProvider",(com.wenwen.ai.scope.PrincipalProvider)fixture::scenarioPrincipal);factory.registerSingleton("clock",fixture.scenarioClock);});
+        context.addBeanFactoryPostProcessor(factory->{factory.registerSingleton("observedDataSource",datasource);if(!fixture.typedScenario())factory.registerSingleton("principalProvider",(com.wenwen.ai.scope.PrincipalProvider)fixture::scenarioPrincipal);factory.registerSingleton("clock",fixture.scenarioClock);});
         context.register(fixture.contextConfiguration());return context;
     }
     @Test void p07GlobalGateRejectsEveryRealRouteBeforeBodyAndSqlIncludingAnonymousPriority() throws Exception {
