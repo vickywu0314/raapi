@@ -1,7 +1,8 @@
 package com.wenwen.mapper;
 import com.wenwen.ai.export.ExportApplicationRecord;
 import java.util.Map;
-public interface AiExportApplicationMapper {
+import org.apache.ibatis.annotations.Mapper;
+@Mapper public interface AiExportApplicationMapper {
     ExportApplicationRecord find(Map<String,Object> query);
     int reserve(Map<String,Object> record);
     int attach(Map<String,Object> record);
