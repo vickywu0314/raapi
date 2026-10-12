@@ -98,7 +98,8 @@ public class PatientServiceImpl implements PatientService {
 		if (size < 1 || size > MAX_PAGE_SIZE) {
 			throw new IllegalArgumentException("每页条数应为 1~" + MAX_PAGE_SIZE);
 		}
-		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
+        LocalDate asOf=asOf();
+        Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness,asOf);
         com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readPatients(map);
         List<Map<String,Object>> filtered=filtered(snapshot,completeness);
         PatientsListVo vo=new PatientsListVo();
@@ -108,7 +109,6 @@ public class PatientServiceImpl implements PatientService {
         List<Map<String,Object>> rows=offset>=filtered.size()?Collections.emptyList():filtered.subList((int)offset,(int)Math.min(offset+size,filtered.size()));
 		List<PatientItemVo> items = new ArrayList<PatientItemVo>();
 		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
-		LocalDate asOf = asOf();
 		for (Map<String, Object> row : rows) {
 			PatientItemVo item = toItem(row, asOf, snapshot.getQc().get(toLong(row.get("patientId"))));
 			items.add(item);
@@ -123,7 +123,8 @@ public class PatientServiceImpl implements PatientService {
 
 	@Override
 	public List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness) {
-		Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness);
+        LocalDate asOf=asOf();
+        Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness,asOf);
         com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readPatients(map);
         List<Long> ids=new ArrayList<>();
         for(Map<String,Object> row:filtered(snapshot,completeness)) ids.add(toLong(row.get("patientId")));
@@ -137,7 +138,7 @@ public class PatientServiceImpl implements PatientService {
     }
 
 	/** 患者列表的筛选参数（校验后），不含分页 */
-	private Map<String, Object> listParams(Long doctorId, String keyword, String followStatus, String completeness) {
+	private Map<String, Object> listParams(Long doctorId, String keyword, String followStatus, String completeness,LocalDate asOf) {
 		followStatus = emptyToNull(followStatus);
 		completeness = emptyToNull(completeness);
 		if (doctorId == null) {
@@ -154,12 +155,15 @@ public class PatientServiceImpl implements PatientService {
 		map.put("keyword", escapeLike(emptyToNull(keyword == null ? null : keyword.trim())));
 		map.put("followStatus", followStatus);
 		map.put("completeness", completeness);
+        map.put("asOf",asOf.toString());
 		return map;
 	}
 
 	@Override
 	public PatientDetailVo getPatientDetail(Long doctorId, Long patientId) {
+        LocalDate asOf=asOf();
 		Map<String, Object> map = patientParams(doctorId, patientId);
+        map.put("asOf",asOf.toString());
 		Map<String, Object> basic = patientMapper.getPatientBasic(map);
 		if (basic == null) {
 			throw noAccess();
@@ -171,7 +175,6 @@ public class PatientServiceImpl implements PatientService {
 			throw noAccess();
 		}
 		Map<String, Object> row = rows.get(0);
-		LocalDate asOf=asOf();
 		PatientItemVo item = toItem(row, asOf, snapshot.getQc().get(toLong(row.get("patientId"))));
 		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
 		byId.put(item.getPatientId(), item);
@@ -192,7 +195,7 @@ public class PatientServiceImpl implements PatientService {
 		d.setFollowCycle(item.getFollowCycle());
 		d.setNextDueDate(item.getNextDueDate());
 		if (item.getNextDueDate() != null) {
-			d.setNextDueDays((int) ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(item.getNextDueDate())));
+			d.setNextDueDays((int) ChronoUnit.DAYS.between(asOf, LocalDate.parse(item.getNextDueDate())));
 		}
 		d.setIncomplete(item.isIncomplete());
 		d.setMissingItems(item.getMissingItems());
@@ -205,6 +208,8 @@ public class PatientServiceImpl implements PatientService {
 		d.setDas28Activity(item.getDas28Activity());
 		d.setDas28ActivityLabel(item.getDas28ActivityLabel());
 		d.setVisitCount(item.getVisitCount());
+        d.setFollowUpCount(item.getFollowUpCount());
+        d.setSuspectedLostToFollowUp(item.isSuspectedLostToFollowUp());
 		if ("withdrawn".equals(item.getFollowStatus())) {
 			d.setWithdrawReason(blankToNull((String) basic.get("withdrawReason")));
 		}
@@ -247,21 +252,22 @@ public class PatientServiceImpl implements PatientService {
 
 		// 随访时间线：最近的在前；时间最早的一次为基线访视
 		List<VisitItemVo> visits = new ArrayList<VisitItemVo>();
-		VisitItemVo baseline = null;
-		for (Map<String, Object> v : patientMapper.listVisits(map)) {
+		List<Map<String,Object>> visitRows=patientMapper.listVisits(map);
+        Map<Long,Integer> numbers=com.wenwen.ai.patient.PatientFollowUpPolicy.numbers(visitRows);
+		for (Map<String, Object> v : visitRows) {
 			VisitItemVo vi = new VisitItemVo();
 			vi.setVisitId(toLong(v.get("visitId")));
 			vi.setVisitDate((String) v.get("visitDate"));
 			vi.setDoctorId(toLong(v.get("doctorId")));
 			vi.setDoctorName(blankToNull((String) v.get("doctorName")));
 			visits.add(vi);
-			if (baseline == null || isEarlier(vi, baseline)) {
-				baseline = vi;
-			}
+
 		}
 		for (VisitItemVo vi : visits) {
-			vi.setBaseline(vi == baseline);
-			vi.setVisitType(vi == baseline ? "基线访视" : "常规随访");
+			int number=numbers.get(vi.getVisitId());
+            vi.setFollowUpNumber(number);
+            vi.setBaseline(number==0);
+            vi.setVisitType(com.wenwen.ai.patient.PatientFollowUpPolicy.visitType(number));
 		}
 		d.setVisits(visits);
 		return d;
@@ -388,15 +394,6 @@ public class PatientServiceImpl implements PatientService {
 		return a;
 	}
 
-	/** 日期早的在前；没有日期的视为最晚，同日期按 ID */
-	private static boolean isEarlier(VisitItemVo a, VisitItemVo b) {
-		if (a.getVisitDate() == null || b.getVisitDate() == null) {
-			return a.getVisitDate() != null || (b.getVisitDate() == null && a.getVisitId() < b.getVisitId());
-		}
-		int c = a.getVisitDate().compareTo(b.getVisitDate());
-		return c < 0 || (c == 0 && a.getVisitId() < b.getVisitId());
-	}
-
 	/** 身份证号后 4 位打码 */
 	private static String maskCardNo(String cardNo) {
 		if (cardNo == null) {
@@ -468,11 +465,13 @@ public class PatientServiceImpl implements PatientService {
         item.setBirthYear(birth==null?null:birth.getYear());
         item.setAge(com.wenwen.ai.clinical.ClinicalPolicy.age((String)row.get("cardNo"),asOf));
 		item.setVisitCount(toInt(row.get("visitCount")));
+        item.setFollowUpCount(Math.max(item.getVisitCount()-1,0));
 		item.setFollowCycle(toInt(row.get("followCycle")));
 		item.setLastVisitDate((String) row.get("lastVisitDate"));
 		item.setNextDueDate((String) row.get("nextDueDate"));
 		String status = (String) row.get("followStatus");
 		item.setFollowStatus(status);
+        item.setSuspectedLostToFollowUp(com.wenwen.ai.patient.PatientFollowUpPolicy.suspectedLost(status,item.getLastVisitDate(),asOf));
 		item.setFollowStatusLabel(FOLLOW_STATUS.get(status));
 		List<String> missing = new ArrayList<String>();
         for(String code:qc.getMissingCodes()) missing.add(MISSING_ITEMS.get(code));

@@ -10,10 +10,14 @@ public class VisitItemVo {
 	private Long visitId;
 	@ApiModelProperty("随访日期 yyyy-MM-dd；无则 null")
 	private String visitDate;
-	@ApiModelProperty("访视类型：时间最早的一次为「基线访视」，其余为「常规随访」")
+	@ApiModelProperty("访视类型：时间最早的一次为「基线访视」，其余为「第 N 次随访」")
 	private String visitType;
 	@ApiModelProperty("是否基线访视")
 	private boolean baseline;
+    @ApiModelProperty("基线为0；后续按完整时间与小ID顺序编号")
+    private int followUpNumber;
+    public int getFollowUpNumber() { return followUpNumber; }
+    public void setFollowUpNumber(int value) { followUpNumber=value; }
 	@ApiModelProperty("记录医生ID")
 	private Long doctorId;
 	@ApiModelProperty("记录医生姓名（user.name）；无则 null")

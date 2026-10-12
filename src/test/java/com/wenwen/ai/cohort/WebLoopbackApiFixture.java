@@ -186,6 +186,15 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     void schema() throws Exception {
+        if(scenario.equals("p00-trusted")){
+            try(Connection c=preparationConnection();Statement statement=c.createStatement()){
+                verifyDatabase(c);String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log"};int i=0;
+                for(String ddl:com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){statement.execute(ddl);ownedTables.add(tables[i++]);event("table-owned","table",ownedTables.get(ownedTables.size()-1));}
+                for(String row:com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("seed.sql").split(";"))if(!row.trim().isEmpty())statement.execute(row);
+                try(InputStream in=getClass().getResourceAsStream("/ai-cohort/p03c/schema.sql")){statement.execute(new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim());ownedTables.add("ra_ai_analysis_run");event("table-owned","table","ra_ai_analysis_run");}
+                event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
+            }return;
+        }
         try (Connection c=preparationConnection(); Statement s=c.createStatement()) {
             verifyDatabase(c);
             int i=0;
@@ -203,6 +212,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        if("p00-trusted".equals(scenario))return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientSensitive","/api/ra/ai/patientAuditLogs","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if(compositionScenario(scenario))return COMPOSITION_PATHS.contains(path);
         return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients").contains(path)
             || (("p03".equals(scenario)||"p04".equals(scenario))&&Arrays.asList("/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete").contains(path))
@@ -215,6 +225,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             || ("p04".equals(scenario)&&Arrays.asList("/api/ra/ai/compare","/api/ra/ai/compareResult").contains(path));
     }
     static String seedForScenario(String scenario) {
+        if("p00-trusted".equals(scenario))return "seed.sql";
         if("default".equals(scenario))return "seed.sql";
         if("p01b".equals(scenario)||"p03".equals(scenario)||"p05-rule".equals(scenario)||"p05-safety".equals(scenario))return "seed-p01b.sql";
         if("p05-apply-rule".equals(scenario)||"p05-apply-safety".equals(scenario))return "seed-p05.sql";
@@ -395,7 +406,21 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean public PrivateCohortMapper privateMapper(SqlSessionTemplate template){return template.getMapper(PrivateCohortMapper.class);}
         @Bean public AiParseAuditMapper parseAuditMapper(SqlSessionTemplate template){return template.getMapper(AiParseAuditMapper.class);}
     }
+    @Configuration @EnableWebMvc
+    @Import({com.wenwen.controller.ra.TrustedPatientController.class,com.wenwen.service.impl.TrustedPatientServiceImpl.class,com.wenwen.service.impl.PatientServiceImpl.class,com.wenwen.service.impl.VisitServiceImpl.class,com.wenwen.ai.qc.QcSnapshotReader.class,com.wenwen.service.impl.AuditLogServiceImpl.class})
+    public static class TrustedPatientInfrastructure extends Infrastructure {
+        @Override @Bean public SqlSessionFactory sqlSessionFactory(DataSource ds)throws Exception{
+            SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(ds);factory.setMapperLocations(new Resource[]{new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/PatientMapper.xml"),new ClassPathResource("mybatis/VisitMapper.xml"),new ClassPathResource("mybatis/AuditLogMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/AiAnalysisRunMapper.xml")});
+            org.apache.ibatis.session.Configuration configuration=new org.apache.ibatis.session.Configuration();configuration.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);factory.setConfiguration(configuration);return factory.getObject();
+        }
+        @Bean public com.wenwen.mapper.VisitMapper visits(SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.VisitMapper.class);}
+        @Bean public PatientMapper patients(SqlSessionTemplate t){return t.getMapper(PatientMapper.class);}
+        @Bean public ProjectMapper projects(SqlSessionTemplate t){return t.getMapper(ProjectMapper.class);}
+        @Bean public AuditLogMapper audit(SqlSessionTemplate t){return t.getMapper(AuditLogMapper.class);}
+        @Bean public PrincipalProvider principalProvider(){return new SessionPrincipalProvider();}
+    }
     Class<?> contextConfiguration() {
+        if(scenario.equals("p00-trusted"))return TrustedPatientInfrastructure.class;
         if(compositionScenario())return CompositionInfrastructure.class;
         return applicationScenario()?ApplicationInfrastructure.class:scenario.equals("p06-comparison")?ComparisonExportInfrastructure.class:scenario.equals("p06-cohort")?ExportInfrastructure.class:parseScenario()?ParseInfrastructure.class:scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class;
     }
@@ -430,7 +455,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         sources.addFirst(new MapPropertySource("synthetic-only",properties));
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("observedDataSource",observed));
         final PrincipalProvider principal=(scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04")||compositionScenario())?this::scenarioPrincipal:("synthetic".equals(identity) ? () -> new TrustedDoctor(101) : () -> {throw new CohortException(401,"UNAUTHENTICATED","请先登录");});
-        application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("principalProvider",principal));
+        if(!scenario.equals("p00-trusted"))application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("principalProvider",principal));
         if((scenario.equals("p01b")||scenario.equals("p03")||scenario.equals("p04"))) {
             scenarioDoctor.set(identity.equals("synthetic")?101:0);
             application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
@@ -446,16 +471,23 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             protected synchronized void service(HttpServletRequest request,HttpServletResponse response) throws ServletException,IOException {
                 synchronized(WebLoopbackApiFixture.this) {
                 if(!allowsHttpPath(scenario,request.getRequestURI())) {response.sendError(404);return;}
+                if(scenario.equals("p00-trusted")&&request.getRequestURI().startsWith("/api/ra/test/")){
+                    if(!"POST".equals(request.getMethod())){response.sendError(405);return;}
+                    if(request.getRequestURI().equals("/api/ra/test/session"))request.getSession(true).setAttribute(AuthenticatedDoctorSession.ATTRIBUTE,new AuthenticatedDoctorSession(new TrustedDoctor(101)));
+                    else {HttpSession session=request.getSession(false);if(session!=null)session.invalidate();}
+                    response.setStatus(204);return;
+                }
                 int selectsBefore=observed.selects,analysisInsertsBefore=observed.inserts;
                 int borrowsBefore=observed.borrowed,writesBefore=compositionWrites.get(),smtpConnectionsBefore=applicationPeer==null?0:applicationPeer.connections.get(),smtpDataBefore=applicationPeer==null?0:applicationPeer.dataCommands.get();
-                CountingRequest counted=compositionScenario()?new CountingRequest(request):null;
+                CountingRequest counted=(compositionScenario()||scenario.equals("p00-trusted"))?new CountingRequest(request):null;
                 try {dispatcher.service(counted==null?request:counted,response);}
                 finally {
                     if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/parse"))event("parse-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());
                     if(parseScenario()&&request.getRequestURI().equals("/api/ra/ai/applyParse"))event("apply-http-observation","selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get());
                     if(scenario.equals("p07-entry")&&request.getRequestURI().equals("/api/ra/ai/resolveEntry"))event("resolve-http-observation","traceId",response.getHeader("X-Trace-Id"),"selectDelta",observed.selects-selectsBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get(),"status",response.getStatus());
                     event("http-observation","borrowed",observed.borrowed,"returned",observed.returned,"active",observed.active.get(),"mysqlFailures",observed.mysqlFailures,"mysqlError",observed.lastMysqlError,"sqlState",observed.lastSqlState,"status",response.getStatus());
-                    if(counted!=null)event("composition-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"smtpConnectionDelta",applicationPeer.connections.get()-smtpConnectionsBefore,"smtpDataDelta",applicationPeer.dataCommands.get()-smtpDataBefore,"active",observed.active.get());
+                    if(scenario.equals("p00-trusted"))event("patient-http-observation","path",request.getRequestURI(),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"selectDelta",observed.selects-selectsBefore,"borrowDelta",observed.borrowed-borrowsBefore,"active",observed.active.get(),"typedProvider",application.getBean(PrincipalProvider.class) instanceof SessionPrincipalProvider);
+                    if(compositionScenario())event("composition-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"smtpConnectionDelta",applicationPeer.connections.get()-smtpConnectionsBefore,"smtpDataDelta",applicationPeer.dataCommands.get()-smtpDataBefore,"active",observed.active.get());
                 }
                 }
             }

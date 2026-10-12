@@ -109,6 +109,14 @@ public class PatientDetailVo {
     public void setAsState(String value) { asState=value; }
 	@ApiModelProperty("访视次数")
 	private int visitCount;
+    @ApiModelProperty("随访次数，不含基线")
+    private int followUpCount;
+    @ApiModelProperty("末访日期严格早于本次上海日期减两年；仅提示，已脱落或无日期为false")
+    private boolean suspectedLostToFollowUp;
+    public boolean isSuspectedLostToFollowUp() { return suspectedLostToFollowUp; }
+    public void setSuspectedLostToFollowUp(boolean value) { suspectedLostToFollowUp=value; }
+    public int getFollowUpCount() { return followUpCount; }
+    public void setFollowUpCount(int value) { followUpCount=value; }
 	@ApiModelProperty("随访时间线，最近的在前")
 	private List<VisitItemVo> visits;
 

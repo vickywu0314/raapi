@@ -179,6 +179,8 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 
 排序：最近非空随访完整时间倒序，无日期排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
 
+listPatients/listPatientIds/getPatientDetail 各在入口仅采样一次注入 Clock 并转 Asia/Shanghai asOf，SQL 到期筛选、详情 nextDueDays、疑似失访和既有临床计算均消费该次日期，不使用数据库/JVM 当前日期。
+
 同一次短REPEATABLE_READ取得未筛选医生RA范围、原三M/两L、原始bqpg和经keyword/followStatus筛选的完整排序候选；退出后用共享四M政策过滤、计数，再分页。totalPatients/incompleteCount始终取未受keyword/followStatus/completeness影响的医生U；超出末页返回空items并保留total。详情的incomplete/missingItems同政策，DAS复用该快照解析值；详情其他基本字段和时间线不声称获得这一新快照保证。listPatientIds不截首屏，原ExportService只接收该完整筛选ID范围，原始导出内容不变。
 
 #### 调用示例
@@ -211,7 +213,9 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `birthYear` | Integer | 患者信息 · 出生年份 | 截至本次 Clock 上海日期，由合法 15/18 位格式及日历提取生日（不校验真实性）；无可靠生日为 `null`，不以 legacy age/createYear 估算 |
 | `age` | Integer | 患者信息 · xx 岁（页面显示「1964 年 · 62 岁」） | 截至本次上海日期按有效生日算整周岁；无可靠生日为 `null` |
 | `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
-| `visitCount` | int | 研究信息 · 已随访 N 次；最近随访 · 累计 N 次 | 该患者随访记录条数 |
+| `visitCount` | int | 累计总访视（含基线） | 该患者总 RA 记录数；非 RA 不计 |
+| `followUpCount` | int | 随访（不含基线） | `max(visitCount−1,0)`；0 条与仅基线均为 0，只有 0 条为 `pending_first` |
+| `suspectedLostToFollowUp` | boolean | 疑似失访提示 | 非本人已脱落、末访有日期且严格早于同次上海 `asOf.minusYears(2)`；恰两年/无日期为 false，不写 miss 或新增筛选状态 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
 | `subtype` | String | 疾病资料 · 分型 | 截至本次日期，有日期的有效 RF/CCP 任一曾经阳性 → `血清阳性`；无阳性且有明确阴性 → `血清阴性`；无可分类证据 → `null` |
 | `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取截至本次日期**最新可分类且有日期**的随访；最新阴性可能与曾经阳性的 subtype 不同 |
@@ -227,7 +231,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `comorbidities[].linkedStudyReady` | boolean | 对应病种库是否已接入 | 一期均为 `false` |
 | `lastVisitDate` | String | 最近随访 · 日期 | 随访记录最大 `follow_up_date`，`yyyy-MM-dd`；无则 `null`（显示「暂无访视」） |
 | `nextDueDate` | String | 下次应随访日期 | `lastVisitDate` + `followCycle` 个月；已脱落或无随访为 `null` |
-| `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（任一医患关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于今天 → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
+| `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（当前医生同 RA 关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于同次上海 asOf → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
 | `followStatusLabel` | String | 随访状态 · 标签文字 | 随访中 / 近期需随访 / 随访逾期 / 待首次随访 / 已脱落 |
 | `incomplete` | boolean | 患者信息 ·「待补全」标签 | 命中任一「缺失」类质控规则（`M_DAS28` / `M_BASELINE_LAB` / `M_COMORBIDITY` / `M_MEDICATION`，与项目总览同一套） |
 | `missingItems` | String[] | 缺失项 | 如 `["缺 DAS28 评分", "缺用药史"]` |
@@ -311,7 +315,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 |---|---|---|
 | `patientId` / `studyNo` / `name` / `sex` / `birthYear` / `age` | 标题与标签 | 同患者列表 |
 | `followStatus` / `followStatusLabel` | 姓名旁的随访状态 | 同患者列表 |
-| `withdrawReason` | 脱落原因（已脱落时） | `patient_relation_doctor`（`miss=1`）的 `reason`、`other_miss_reason`、`note`，用「；」连接 |
+| `withdrawReason` | 脱落原因（已脱落时） | 当前医生同 RA `patient_relation_doctor`（`miss=1`，按关系 id 倒序一条）的 `reason`、`other_miss_reason`、`note`，用「；」连接 |
 | `subtype` / `rf` / `ccp` | 疾病分型 / RF / 抗CCP | 同患者列表；`subtype` 为 `null` 时显示「待补充」 |
 | `mobile` | 患者手机号 | `mobile` |
 | `cardNoMasked` / `hasCardNo` | 患者身份证号（后 4 位打码）/ 是否显示「眼睛」按钮 | `card_no` |
@@ -332,10 +336,12 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `pastHistory` | 其他病史 | `jws`（既往史） |
 | `incomplete` / `missingItems` | 其他病史下的「资料待补全」 | 同患者列表 |
 | `comorbidities[]` / `fmState` / `asState` | 常见相关疾病及三态 | 同患者列表；无关联记录不证明阴性 |
-| `visitCount` | N 次访视 | 随访记录条数 |
+| `visitCount` / `followUpCount` | 总访视 / 随访（不含基线） | 同患者列表；保留总数，新增后续计数 |
+| `suspectedLostToFollowUp` | 疑似失访提示 | 同列表的严格两年边界，不等于联系调查后的确定失访 |
 | `visits[]` | 随访时间线（最近的在前） | `patient_follow_up_history` |
 | `visits[].visitId` / `visitDate` | 随访 ID / 日期 | `id` / `follow_up_date` |
-| `visits[].visitType` / `baseline` | 访视类型 | **时间最早的一次为「基线访视」**，其余为「常规随访」 |
+| `visits[].visitType` / `baseline` | 访视类型 | 最早 `COALESCE(follow_up_date,followUpDate)` 完整时刻为基线，同完整时刻取小 ID，有日期先于无日期，全无日期取小 ID；其余按同顺序显示「第 N 次随访」 |
+| `visits[].followUpNumber` | 后续访次序号 | 基线 0，后续按上述完整顺序为 1、2…；列表仍完整时刻倒序，无日期最后，显示日期保持 yyyy-MM-dd |
 | `visits[].doctorId` / `doctorName` | 记录医生 ID / 姓名 | `doctor_id`；姓名取 `user.name`，无则 `null`（页面显示 ID） |
 
 ### 3.2 查看身份证号明文
@@ -403,7 +409,8 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 |---|---|---|
 | `visitId` / `patientId` | 随访 ID / 患者 ID | 前端核对患者 ID 与地址栏一致 |
 | `visitDate` | 随访日期 | `follow_up_date` |
-| `visitType` / `baseline` | 访视类型 | 该患者时间最早的一次为「基线访视」，其余「常规随访」（与时间线同一规则） |
+| `visitType` / `baseline` | 访视类型 | 与患者时间线复用相同完整时刻/小 ID 的共享读侧规则，基线「基线访视」、后续「第 N 次随访」 |
+| `followUpNumber` | 后续访次序号 | 基线 0、后续正整数，与时间线一致 |
 | `doctorId` / `doctorName` | 记录医生 | `doctor_id`；姓名 `user.name` |
 | `filledCount` | 有内容的模块数（共 7） | — |
 | `modules[]` | 7 个病历模块，按页面顺序 | 见下表 |
@@ -614,7 +621,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 地址 | `POST /api/ra/ai/cohort` |
 | 请求 | UTF-8 JSON 对象，例如 `{"filters":{"studyCode":"RA","at":"now","act":"target","ids":["1","7"]}}` |
 | 代码 | `AiCohortController` → `AiCohortServiceImpl` → `CohortSourceAdapter` → `AiCohortSourceMapper.xml` |
-| 身份 | `PrincipalProvider.requireCurrent()` 提供映射过的正 long 医生 id；默认生产 bean 一律401，真实登录 Adapter 尚未接入 |
+| 身份 | `PrincipalProvider.requireCurrent()` 提供映射过的正 long 医生 id；默认生产 bean 仅消费当前服务器 session 中的 `AuthenticatedDoctorSession`；缺失/失效/错类型401，真实 authenticator 映射仍须接入 |
 
 顶层仅接收 `filters` 与可选 `doctorId`；`filters` 缺省/null 按空对象处理。`doctorId` 缺省/null 不校验，否则必须是规范正整数十进制字符串且与可信医生相同；不一致403。请求 doctorId、伪造 header 和未经映射的 principal.name 都不能提供认证或扩权。
 
@@ -1067,6 +1074,38 @@ reason仅null或NOT_CONFIGURED/INVALID_MAIL_CONFIG/RECIPIENT_CHANGED/NOTIFICATIO
 关闭/重开保留同identity的定义/成功回执、分析/比较payload、导出审计以及申请/attempt/from/to；旧结果仅在原TTL内可重读，过期410/清理后404与完整U变化409保持，重开不延寿/重建旧ID。同参apply重放只读原回执，UNKNOWN/SENT不重发，FAILED仅显式retry经原claim获得新attempt；SENT只说明SMTP受理，WRITTEN只说明本地写出，均不代表送达、审批或文件grant。
 
 SQL清单、配置关闭、状态留存及整组应用回退前提见 [AI队列发布与回滚手册](AI队列发布与回滚手册.md)。真实目标库预演/部署/回退和真实接入、医学统计/字段日期发布仍由 [唯一登记的八项接收义务](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务) 接收；开关和合成context重建不授予生产发布资格。
+
+### 7.10 可信本人患者详情
+
+`POST /api/ra/ai/patientDetail`，同源 cookie、UTF-8 JSON，正文恰含一个字符串字段 `patientId`。ID 必须为规范正十进制 `1`～`9223372036854775807`；拒绝数字、前导零、额外/重复字段、尾随 JSON 和非法 UTF-8。正文上限 4096 bytes，最多读取 4097 bytes 判断超限。
+
+`SessionPrincipalProvider` 只读取已有服务器会话中 `AuthenticatedDoctorSession.ATTRIBUTE` 下的确切 typed identity，由后端 authenticator 完成 `TrustedDoctor` 映射后安装；此接口不创建会话或接受自选医生。principal.name、header、URL、body、storage 中的医生 ID 不提供身份。请求先重验身份及全局功能门，再读取正文和 SQL。
+
+成功返回 HTTP200 / `success=true` / `code="200"` / `X-Trace-Id`，`data` 复用第 3.1 节真实 `PatientService` 字段及临床政策；`patientId`、`visits[].visitId` 和非空 `visits[].doctorId` 为规范字符串，保留相邻大 ID。无访视返回 `visits=[]`，缺指标继续为 null/未知。身份证只提供现有脱敏字段，本接口不调用明文、编辑、审计、模型、导出或通知。
+
+| 结果 | HTTP / code |
+|---|---|
+| 缺失、失效或错类型 session | 401 / `UNAUTHENTICATED` |
+| 不存在、他人、非 RA、当前关系已撤销 | 404 / `RESOURCE_NOT_FOUND` |
+| 非法输入 | 400 / `INVALID_REQUEST` |
+| 超过正文上限 | 413 / `LIMIT_EXCEEDED` |
+| 功能门关闭或 SQL 源故障 | 503 / `SERVICE_UNAVAILABLE` |
+
+失败 `success=false`、`data=null`，每请求保留 trace；安全通用消息不输出患者、SQL 或凭据。每次读取当前关系，先前成功不会授予后续访问权。普通 `/api/ra/patient/patientDetail` 保留旧 ID/字段，和可信投影共同新增上述后续计数、序号及疑似失访字段；全部 ID 在可信投影仍为字符串。
+
+### 7.11 可信访视、敏感字段与修改记录
+
+沿 7.10 的 typed server-session、身份→API 门→严格正文→SQL 顺序及错误封装，新增三条只读 POST JSON：
+
+| 路径 | 恰有的字符串字段 | 成功 `data` |
+|---|---|---|
+| `/api/ra/ai/visitDetail` | `patientId`、`visitId` | 第 4.1 节既有七模块字段；患者/访视及非空医生 ID 为字符串 |
+| `/api/ra/ai/patientSensitive` | `patientId` | `{patientId,cardNo}`；没有号码是 `cardNo=null` |
+| `/api/ra/ai/patientAuditLogs` | `patientId` | `{patientId,logs}`；没有记录是 `logs=[]`，日志 ID 和非空访视 ID 为字符串 |
+
+访视复用既有 `VisitService` 的本人 RA 关系及 RA 访视查询，发布前再核两个 ID 与请求一致。同医生另一患者的访视不能拼接，和他人、非 RA、不存在、撤权同为 404 / `RESOURCE_NOT_FOUND`。敏感/审计复用原患者服务的当前 RA 关系检查及读取，审计顺序仍为时间、ID 倒序。源失败返回 503 / `SERVICE_UNAVAILABLE`，不能变成 null/空成功；失败 `data=null`。正文仍为 4096 UTF-8 bytes 上限、最多读 4097，拒绝重复、额外、尾随字段和非法 ID。
+
+AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视页只允许唯一 `from=ai-cohort`、`id`、`visit`。患者与访视两个读取成功且关联匹配才整体发布。两页眼睛显式调用敏感接口；患者页复用原修改记录展开面板。收起、换身份、离页和重载清明文、审计及相关弹窗，每次展开重新读取，30 秒永久等待也由页面结束；迟到响应不能重显或影响新请求。可信图片只接受 HTTP(S) 或解析为同源 HTTP(S) 的相对地址。普通页面和旧 API 保持原默认行为；可信入口不调用旧 doctorId 写入，不新增编辑删除或 PDF 能力。
 
 ## 新增接口时的维护约定
 

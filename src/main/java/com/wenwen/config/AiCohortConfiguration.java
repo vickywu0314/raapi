@@ -1,6 +1,5 @@
 package com.wenwen.config;
 
-import com.wenwen.ai.query.CohortException;
 import com.wenwen.ai.scope.PrincipalProvider;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,7 +23,7 @@ public class AiCohortConfiguration {
     @Bean
     @ConditionalOnMissingBean(PrincipalProvider.class)
     public PrincipalProvider cohortPrincipalProvider() {
-        return () -> { throw new CohortException(401, "UNAUTHENTICATED", "请先登录"); };
+        return new com.wenwen.ai.scope.SessionPrincipalProvider();
     }
     @Bean
     @ConditionalOnMissingBean(Clock.class)

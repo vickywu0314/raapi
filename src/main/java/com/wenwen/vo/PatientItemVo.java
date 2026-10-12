@@ -23,8 +23,16 @@ public class PatientItemVo {
 	private Integer birthYear;
 	@ApiModelProperty("当前年龄：按本次上海日期及有效生日算整周岁；无可靠生日为 null")
 	private Integer age;
-	@ApiModelProperty("已随访次数（随访记录条数）")
+	@ApiModelProperty("总RA访视记录数（含基线）")
 	private int visitCount;
+    @ApiModelProperty("随访次数，不含基线")
+    private int followUpCount;
+    @ApiModelProperty("末访日期严格早于本次上海日期减两年；仅提示，已脱落或无日期为false")
+    private boolean suspectedLostToFollowUp;
+    public boolean isSuspectedLostToFollowUp() { return suspectedLostToFollowUp; }
+    public void setSuspectedLostToFollowUp(boolean value) { suspectedLostToFollowUp=value; }
+    public int getFollowUpCount() { return followUpCount; }
+    public void setFollowUpCount(int value) { followUpCount=value; }
 	@ApiModelProperty("随访周期（月）：3 / 6 / 12 / 24")
 	private int followCycle;
 	@ApiModelProperty("疾病分型（截至本次日期 RF / 抗CCP 曾经阳性政策）：血清阳性 / 血清阴性；两项都未检测为 null（页面显示「分型未提供」）")

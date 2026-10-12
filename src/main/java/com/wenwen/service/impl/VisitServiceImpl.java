@@ -50,6 +50,9 @@ public class VisitServiceImpl implements VisitService {
 	@Autowired
 	private VisitMapper visitMapper;
 
+    @Autowired
+    private com.wenwen.mapper.PatientMapper patientMapper;
+
 	@Autowired
 	private AuditLogService auditLogService;
 
@@ -73,9 +76,10 @@ public class VisitServiceImpl implements VisitService {
 		vo.setDoctorId(toLong(row.get("doctorId")));
 		vo.setDoctorName(VisitJson.blankToNull((String) row.get("doctorName")));
 		map.put("patientId", vo.getPatientId());
-		boolean baseline = vo.getVisitId().equals(visitMapper.getBaselineVisitId(map));
-		vo.setBaseline(baseline);
-		vo.setVisitType(baseline ? "基线访视" : "常规随访");
+		int number=com.wenwen.ai.patient.PatientFollowUpPolicy.numbers(patientMapper.listVisits(map)).get(vo.getVisitId());
+        vo.setFollowUpNumber(number);
+        vo.setBaseline(number==0);
+        vo.setVisitType(com.wenwen.ai.patient.PatientFollowUpPolicy.visitType(number));
 
 		List<VisitModuleVo> modules = new ArrayList<VisitModuleVo>();
 		int filled = 0;
