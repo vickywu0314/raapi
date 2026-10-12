@@ -964,20 +964,20 @@ apply成功data恰含questionRef、parseStatus、applyMode、applied、filters�
 
 ParseAuditStore使用REQUIRES_NEW独立短事务，实际INSERT/commit完成并退出connection/session/statement/result后才公开成功。认证/格式拒绝无事件。SQL或真实INSERT后/precommit失败503/SERVICE_UNAVAILABLE、data=null，不回成功候选或filters，本次事件回滚、旧事件/源表不变。commit成功但HTTP响应写出丢失时完整事件保留；重试可以另追加事件，无跨DB/HTTP原子或幂等承诺。两路本地可用不依赖分析签名key或模型配置。
 
-本片仅Java8/真实DispatcherServlet/MyBatis/loopback合成MySQL及下述合成HTTP验证，未调用生产/真实模型或启用真实AI外发。AQC-EXT-04生产DDL/留存/访问接收、AQC-EXT-05真实服务及外发/原文政策、真实身份/医学统计与其它发布义务仍开放；受控网关不关闭这些接收条件。
+原parse/apply片以Java8/真实DispatcherServlet/MyBatis/loopback合成MySQL及下述合成HTTP验证。ai-analysis-real-data/P04a另通过显式DeepSeekParseReceptionIT，在当前获准私有环境以typed会话和合成库接收指定deepseek-flash的两条合成问句：OK与PARTIAL均实际AI/fallback=null，应用后独立SQL分别n=1与n=0；每条一次请求。没有真实患者外发。AQC-EXT-04生产DDL/留存/访问接收、AQC-EXT-05真实服务及外发/原文政策、真实身份/医学统计与其它发布义务仍开放；受控网关不关闭这些接收条件。
 
 
 #### 7.6.1 一次AI尝试的服务器配置与有限安全语言
 
-配置仅由服务器读取，parse输入不能指定endpoint/model/key。ra.ai.gateway.enabled与outbound-approved均默认false，只接受规范true/false；非法值降级AI_CONFIG_UNAVAILABLE，不使Spring本地解析服务启动失败。决定顺序是原身份/输入与本地规则B、已观察真实caller中断、enabled、批准、完整配置、EMPTY/UNSUPPORTED、完整安全语言、容量与唯一deadline。
+配置仅由服务器读取，parse输入不能指定endpoint/model/key/proxy。ra.ai.gateway.enabled与outbound-approved均默认false，只接受规范true/false；非法值降级AI_CONFIG_UNAVAILABLE，不使Spring本地解析服务启动失败。决定顺序是原身份/输入与本地规则B、已观察真实caller中断、enabled、批准、完整配置、EMPTY/UNSUPPORTED、完整安全语言、容量与唯一deadline。
 
 生产endpoint固定https://api.deepseek.com/chat/completions；无其它host/path、userinfo/query/fragment。model须非空ASCII [A-Za-z0-9._-]{1,64}；api-key须非空可打印ASCII、无空白/CR/LF且≤512，只进入Authorization，可由RA_AI_API_KEY安全注入。密钥不进入日志、异常、响应或审计，也不保存至仓库。仅受控开发可设置synthetic-loopback=true，此时必须是字面http://127.0.0.1:显式端口/chat/completions，且model=p05b-synthetic-model、api-key=p05b-loopback-key；与真实provider配置互斥，localhost及其它IP/DNS不获准。
 
 安全门完整消费原始连续词跨度，只按Locale.ROOT折大小写，不先删除/拼接空白或做NFKC/URL/HTML解码。独立保留的原v01出站完整词、ASCII词界、合法0～120年龄及原中性词，再额外接完整“吸烟”。允许空白仅ASCII空格/TAB/CR/LF，独立标点仅,，、;；:：。.!！?？()（）；斜杠/连字号/波浪号仅在既有b/tsDMARD、IL-6或完整年龄词内消费。任何未知残余整体不出站，不先删片段后外发；未获准不代表已判断它一定敏感。女性45至65岁、TNF治疗6个月、仍有高活动、女性且吸烟、吸烟人群可尝试；女性张三/宿舍/病例A、电话号码/URL/命令、女性仍有明显活动、“女 性”等跨空白拼词、U+3000/零宽或其它Unicode空白均不获准完整原句外发。本地规则仍可返回其合法候选。v02的三个新增本地词不加入出站词表：TNFi、6个月后、仍处于中高疾病活动及精确需求句即使enabled/outbound-approved为true仍RULE/AI_SAFETY_BLOCKED、modelVersion/promptVersion=null、零网络请求；本地识别或显式应用不授予原文外发许可。原已许可TNF治疗6个月和女性35-45岁仍可一次AI，不因本地扩词而全部关闭网关。
 
-至多一个POST /chat/completions；UTF8固定JSON≤16384，messages只有固定版本系统指令与完整获准question，没有患者、医生、ids、currentFilters、questionRef、历史对话或浏览器headers。响应候选与notice来自同一次请求。私有OkHttp实例禁retry、redirect、认证follow-up、proxy、cookie/cache/日志拦截器，HTTP/1.1与one-shot固定length body防重放，503+Retry-After:0也只有一次；不改TLS默认校验。错误正文不读取/记录，先cancel再由唯一owner关闭。
+至多一个POST /chat/completions；UTF8固定JSON≤16384，messages只有固定版本系统指令与完整获准question，没有患者、医生、ids、currentFilters、questionRef、历史对话或浏览器headers。响应候选与notice来自同一次请求。私有OkHttp实例禁retry、redirect、认证follow-up、cookie/cache/日志拦截器；服务器ra.ai.gateway.proxy-mode只接受direct/system，省略默认direct并显式NO_PROXY；system采用构造时服务器JVM ProxySelector，无selector时安全直连，不修改全局selector。无效值受控AI_CONFIG_UNAVAILABLE、零网络owner；request/query/storage不能提供代理或endpoint。HTTP/1.1与one-shot固定length body防重放，503+Retry-After:0也只有一次；不改TLS默认校验。错误正文不读取/记录，先cancel再由唯一owner关闭。
 
-仅200与application/json（无charset或UTF8）接收；identity或库透明gzip解压后实际body≤16384，最多读取上限+1，缺length/chunked/gzip也累计，压缩Content-Length不能绕过。两层严格UTF8/禁BOM/成对surrogate/单根/重复与尾随拒绝，streaming先限外层depth8/tokens512/单数值16字符；内content≤4096、depth4/tokens128。只接受固定官方envelope/一条stop assistant choice及恰5键inner，tool/function/reasoning文本不接受。
+仅200与application/json（无charset或UTF8）接收；identity或库透明gzip解压后实际body≤16384，最多读取上限+1，缺length/chunked/gzip也累计，压缩Content-Length不能绕过。两层严格UTF8/禁BOM/成对surrogate/单根/重复与尾随拒绝，streaming先限外层depth8/tokens512/单数值16字符；内content≤4096、depth4/tokens128。只接受固定官方envelope/一条stop assistant choice及恰5键inner，tool/function/reasoning文本不接受。usage在原白名单上仅新增可选prompt_cache_hit_tokens/prompt_cache_miss_tokens非负JSON整数；负数、小数、字符串、null、重复和未知字段仍拒绝，数值长度与全部既有限制保留；元数据不作为统计真值。字段依据为[官方缓存说明](https://api-docs.deepseek.com/guides/kv_cache)，服务/指定模型依据为[官方入口](https://api-docs.deepseek.com/)。
 
 模型普通字段先白名单、再由真实ParseQuery.normalize在caller重验。有效稀疏候选C必须恰等于本地B全部可表达条件，不漏窄条件、不新增默认at；matched/unrecognized由服务器重建，模型声明只用于一致性检查。过滤字段的R非空或原问题未映射时，有候选的实际状态为PARTIAL；status/matched/unrecognized任一不一致整体AI_INVALID_RESPONSE。正常“女性”携额外ids只能正常过滤为AI/PARTIAL并报告有限拒绝码，模型仍称OK则整体RULE降级。
 

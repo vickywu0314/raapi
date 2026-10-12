@@ -60,7 +60,7 @@ public final class AiGatewayProtocol {
     private static void nonnegative(JsonNode node) throws Invalid {if(!node.isIntegralNumber()||node.longValue()<0)throw new Invalid();}
     private static void safeMetadata(JsonNode node,boolean nullable) throws Invalid {if(nullable&&node.isNull())return;if(!node.isTextual()||!node.textValue().matches("[A-Za-z0-9._:/-]{1,128}"))throw new Invalid();}
     private static void usage(JsonNode node) throws Invalid {
-        keys(node,"prompt_tokens","completion_tokens","total_tokens","prompt_tokens_details","completion_tokens_details");
+        keys(node,"prompt_tokens","completion_tokens","total_tokens","prompt_tokens_details","completion_tokens_details","prompt_cache_hit_tokens","prompt_cache_miss_tokens");
         Iterator<String> fields=node.fieldNames();while(fields.hasNext()){String field=fields.next();JsonNode value=node.get(field);if(field.endsWith("_details")){keys(value,"cached_tokens","audio_tokens","reasoning_tokens","accepted_prediction_tokens","rejected_prediction_tokens");for(JsonNode count:value)nonnegative(count);}else nonnegative(value);}
     }
     static final class Proposal {

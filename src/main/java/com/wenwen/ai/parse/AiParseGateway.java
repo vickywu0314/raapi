@@ -20,9 +20,17 @@ public final class AiParseGateway implements AutoCloseable {
         @Override protected void afterExecute(Runnable task,Throwable failure){try{super.afterExecute(task,failure);}finally{if(task instanceof OwnedTask)((OwnedTask)task).flight.exited.countDown();}}
     };
     private final ConnectionPool pool=new ConnectionPool(0,1,TimeUnit.SECONDS);
-    private final OkHttpClient client=new OkHttpClient.Builder().connectionPool(pool).retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).proxy(java.net.Proxy.NO_PROXY).cookieJar(CookieJar.NO_COOKIES).protocols(Collections.singletonList(Protocol.HTTP_1_1)).connectTimeout(1000,TimeUnit.MILLISECONDS).readTimeout(4500,TimeUnit.MILLISECONDS).writeTimeout(1000,TimeUnit.MILLISECONDS).callTimeout(4500,TimeUnit.MILLISECONDS).build();
+    private final OkHttpClient client;
 
-    public AiParseGateway(AiGatewaySettings settings){this.settings=settings;}
+    public AiParseGateway(AiGatewaySettings settings){
+        this.settings=settings;
+        OkHttpClient.Builder builder=new OkHttpClient.Builder().connectionPool(pool).retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).cookieJar(CookieJar.NO_COOKIES).protocols(Collections.singletonList(Protocol.HTTP_1_1)).connectTimeout(1000,TimeUnit.MILLISECONDS).readTimeout(4500,TimeUnit.MILLISECONDS).writeTimeout(1000,TimeUnit.MILLISECONDS).callTimeout(4500,TimeUnit.MILLISECONDS);
+        java.net.ProxySelector selector=java.net.ProxySelector.getDefault();
+        if("system".equals(settings.proxyMode)&&selector!=null)builder.proxySelector(selector);
+        else builder.proxy(java.net.Proxy.NO_PROXY);
+        client=builder.build();
+    }
+
 
     private static final class Flight {
         final long networkDeadline,deadline;
