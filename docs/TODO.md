@@ -70,6 +70,7 @@
   - `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果表
   - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
   - `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
+  - `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`，医生手动对应过的叫法）
   - `src/main/resources/sql/20261008_private_cohort_definition.sql`：AI 私有条件定义（`ra_private_cohort_definition`、`ra_private_cohort_command`）
   - `src/main/resources/sql/20261008_ai_compare_run.sql`：AI 两队列比较结果（`ra_ai_compare_run`）
   - `src/main/resources/sql/20261008_ai_parse_audit.sql`：AI 问题解析审计（`ra_ai_parse_audit`）
@@ -80,6 +81,7 @@
 - [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
 - [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
+- [ ] **配置百度 OCR**：服务器配置 `ra.ocr.baidu.api-key`、`ra.ocr.baidu.secret-key`（不进 git），百度控制台开通「医疗检验报告单识别」「通用文字识别（高精度版）」；服务器能访问 `aip.baidubce.com:443`；`ra.upload.dir` 指向持久目录并定期备份 / 清理（病历图片含患者隐私）。病历图片外发百度需经医院 / 数据安全负责人同意
 - [x] 新建患者的研究类型：`ra.patient.research-type=0`（2026-10-11 确认，已配置）
 
 - [ ] **整理老数据：按身份证号把患者的相关疾病写入中间表 `patient_comorbidity`**
@@ -108,12 +110,12 @@
 
 - [ ] 登录：现为测试账号（`ra.auth.accounts`），正式账号从哪里来（user 表账号密码 / 单点登录，Q-24 账号找贵玉）待定；患者、随访、导出等接口仍按前端传的 `doctorId`，正式上线前要改为取登录会话里的医生（AI 队列分析已改）
 - [ ] 导出申请真实SMTP/管理员收件接收：P06b两入口及受控单次通知/安全FAILED重试已实现，实际服务器/TLS/身份/配置及受理、收件分别由AQC-EXT-06接收。UNKNOWN不可盲重发；本Flow不含审批或历史文件交付
-- [ ] OCR识别录入（患者列表、患者详情、访视详情的按钮，目前提示开发中）：百度医疗 OCR
+- [ ] OCR识别录入：已完成（2026-10-12，见 API.md 十一），只用模拟的百度返回测过；拿到真实密钥后用几家医院的真实报告单核对识别和对应效果，内置同义词按实际叫法补充（`OcrResultParser.LAB`）；识别的病历图片暂不存进随访的「检验报告」图片
 
 - [ ] 新建患者 / 编辑档案：写入 `study_no`（`StudyNoUtil` 生成）、`follow_cycle`、`patient_comorbidity`（医生勾选）
 - [ ] 疾病分型手动修改（如外院化验没录进系统）：如需要，新建表存医生手动填的分型，手动值优先于按 RF / 抗CCP 算出的值
 - [ ] 其他病史弹窗的当前情况、核心指标、治疗：目前无数据来源，返回 null
 - [ ] 所有写接口在同一事务里调用 `AuditLogService.record(...)` 写修改记录（见 docs/API.md 3.3）
-- [x] 下载病历（PDF）、标记脱落 / 恢复随访、编辑档案、新增随访、随访管理已完成（2026-10-11）；问问AI、OCR识别录入仍提示开发中
+- [x] 下载病历（PDF）、标记脱落 / 恢复随访、编辑档案、新增随访、随访管理已完成（2026-10-11）；问问AI 仍提示开发中（OCR识别录入 2026-10-12 已完成）
 - [ ] 新增 / 编辑随访：ACR20/50/70 未计算（需对比上次随访）；图片暂不能上传 / 删除；手部关节编号、脏器受累明细仍为文本框（选项待确认）；单选 / 多选已按定稿清单改为勾选（2026-10-11）
 - [ ] 删除随访（逻辑删除）方案待定：随访表加删除标记 + 删除原因；项目总览、患者列表、详情、质控等所有查询都要排除已删除的随访；写修改记录；基线访视后还有其他随访时不能删

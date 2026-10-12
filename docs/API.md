@@ -777,6 +777,69 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 ---
 
+## 十一、OCR 识别病历录入（百度医疗 OCR）
+
+入口：患者列表「OCR识别录入」、新增患者页（识别后新建患者，建档后接着录基线访视）；患者详情、访视详情、新增随访页（识别后填入本次随访）。前端弹窗 `js/shared/ocr-import.js`。
+
+**识别结果只用于填表，不直接入库**：草稿存浏览器 sessionStorage（`ra-ocr-draft`），打开 `patient-create.html?ocr=1` / `visit-create.html?id=…&ocr=1` 预填，蓝框标出填上的项，医生核对后点保存，走原来的 `createPatient` / `createVisit`（老表写法不变）。
+
+流程：上传图片存服务器 → 返回预览 URL → 识别时后端读这张图转 base64 调百度（百度访问不到内网 URL，所以不把 URL 传给百度）→ 解析成草稿。
+
+配置（`application.properties`，**密钥只放服务器，不进 git**）：
+
+| 配置 | 含义 |
+|---|---|
+| `ra.ocr.baidu.api-key` / `ra.ocr.baidu.secret-key` | 百度智能云 OCR 应用的 API Key / Secret Key；不配时识别返回 400「OCR 还没配置」 |
+| `ra.ocr.baidu.apis` | 依次调用的识别接口，默认 `medical_report_detection,accurate_basic`（医疗检验报告单识别 + 通用文字识别高精度）；某个接口失败只在 warnings 提示，全部失败才报错 |
+| `ra.ocr.baidu.base-url` | 默认 `https://aip.baidubce.com`（测试可指向本地模拟服务） |
+| `ra.upload.dir` | 上传图片保存目录，默认 `upload`（相对启动目录），图片存 `{dir}/ocr/yyyyMMdd/随机名.ext` |
+
+服务器要能访问 `aip.baidubce.com`（443）。access_token 缓存到过期前 1 天，失效（110/111）自动重取一次。
+
+### 11.1 上传病历图片
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/upload`（multipart，字段 `file`） |
+| 规则 | 只收 jpg / jpeg / png / bmp，≤15MB，须能解析为图片 |
+| 出参 | `fileId`（`yyyyMMdd/32位随机名.ext`）、`url`（预览地址 `/api/ra/files/ocr/{fileId}`）、`size` |
+
+### 11.2 图片预览
+
+`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。
+
+### 11.3 识别
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/recognize` |
+| 入参 | `fileId`（11.1 返回） |
+| 处理 | 图片超过 3MB 或长边超过 3000 像素时先压缩（JPEG 0.85）再发百度 |
+| 出参 | 见下表 |
+
+| 字段 | 含义 |
+|---|---|
+| `basic` | 新建患者预填：`name`、`gender`（1 男 / 2 女）、`age`（只显示）、`cardNo`、`mobile`、`nation`、`marry`（0 未婚 / 1 已婚 / 2 离异 / 3 丧偶）、`height`、`weight`、`happenDate`、`confirmDate`；识别不出的不返回 |
+| `visitDate` | 报告 / 采样 / 就诊日期（yyyy-MM-dd），作为随访日期 |
+| `fzjc` | 辅助检查预填：系统字段 → 值（数值取开头的数字，含 `<`、`>`；ANA、抗SS-A/SS-B、抗Ro-52 取「阳性 / 阴性」） |
+| `items[]` | 报告上的每个检验项目：`name`、`abbr`、`result`、`unit`（报告原文）；`alias`（叫法键：名称+缩写去空格括号连字符转大写）；`field` / `fieldLabel` / `fieldUnit`（对应的系统字段，对不上为 null）；`matchedBy`（`learned` 按医生以前的对应 / `builtin` 内置同义词）；`value`（填入值）；`unitWarning`（报告单位与系统单位不同，提醒换算，如肌酐 mg/dL ↔ μmol/L） |
+| `fieldOptions[]` | 可对应的系统字段（辅助检查里的化验项）：`field`、`label`（分组 · 名称）、`unit`、`type`；页面下拉框用 |
+| `lines[]` | 识别出的原文（逐行），供核对 |
+| `warnings[]` | 提示：没识别出姓名 / 身份证号（无法查重）、部分接口失败等 |
+| `fileId` / `url` | 原图 |
+
+**检验项目名称对应（各家医院叫法不同）**：① 内置同义词（中文名、英文缩写，如「超敏C-反应蛋白 / hs-CRP」→ 超敏CRP）；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（优先于内置同义词）。
+
+### 11.4 保存叫法对照
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/saveAliases`（JSON） |
+| 入参 | `doctorId`、`mappings`：`[{alias, field, name}]`（alias 为 11.3 items 的 `alias`，field 须是 `fieldOptions` 里的字段，否则忽略；name 为报告上的名称，留作样例） |
+| 写库 | 新表 `ocr_lab_alias`（`sql/20261012_ocr_lab_alias.sql`），alias 唯一，重复则更新 field；全院共用 |
+
+---
+
 ## 七、AI 队列完整分析与有期结果分页（P03_RESULT）
 
 ### 7.1 当前医生 RA 队列

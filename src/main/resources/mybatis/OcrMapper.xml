@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wenwen.mapper.OcrMapper">
+	<select id="listAliases" resultType="Map">
+		SELECT alias, field FROM ocr_lab_alias
+	</select>
+	<insert id="upsertAlias">
+		INSERT INTO ocr_lab_alias (alias, field, sample_name, doctor_id) VALUES (#{alias}, #{field}, #{sampleName}, #{doctorId})
+		ON DUPLICATE KEY UPDATE field = VALUES(field), sample_name = VALUES(sample_name), doctor_id = VALUES(doctor_id)
+	</insert>
+</mapper>
