@@ -19,7 +19,7 @@ public class AiCohortConfiguration {
     @Bean public com.wenwen.ai.result.AnalysisCursor cohortAnalysisCursor(com.wenwen.ai.result.AnalysisSettings settings){return new com.wenwen.ai.result.AnalysisCursor(settings);}
     @Bean
     @ConditionalOnMissingBean(com.wenwen.ai.treatment.DrugDictionary.class)
-    public com.wenwen.ai.treatment.DrugDictionary cohortDrugDictionary() { return new com.wenwen.ai.treatment.DevelopmentDrugDictionary(); }
+    public com.wenwen.ai.treatment.DrugDictionary cohortDrugDictionary(org.springframework.core.env.Environment environment) { return new com.wenwen.ai.treatment.ConfiguredDrugDictionary(environment); }
     @Bean
     @ConditionalOnMissingBean(PrincipalProvider.class)
     public PrincipalProvider cohortPrincipalProvider() {

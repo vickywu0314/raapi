@@ -704,7 +704,7 @@ byTx.testDenominator=EVALUABLE_KNOWN_TREATMENT。按原五类顺序只纳入eval
 
 FM的三人描述门槛不变。testDenominator=NON_MISSING_EVALUATION_METRIC，A为明确FM TRUE、B为明确FALSE，UNKNOWN排除；每指标只取同evaluation访视，DAS取score，其余取该evaluation的value，逐字段剔缺后任何组n<5为INSUFFICIENT_SAMPLE/VALID_N_LT_5。3/3可有描述而无P。BigDecimal pooled compareTo排序/去重后把不同数值编码为1..k整数double交库，避免极近小数转double损失秩；.30/.300作为真实ties。描述原值/均值/差值不使用秩码。合格后仅一distinct值为DEGENERATE/ZERO_RANK_VARIANCE，无P/warning。无ties且min(nA,nB)≤8/max≤50显式EXACT，否则显式ASYMPTOTIC，双侧、tie及continuity校正开启，禁止AUTO；ties且任组n<10加SMALL_SAMPLE_TIES。无样本/退化warnings为空。
 
-Java8使用唯一显式依赖org.apache.commons:commons-statistics-inference:1.3。独立输入/参数/期望及SciPy1.17.0版本记录见[测试资源](../src/test/resources/ai-cohort/p03b/independent-oracles.json)及[测试指南](测试运行指南.md#p03b真实统计消费与独立数值)。真实FM源仍无FALSE，pain尺度仍未核实，HTTP继续诚实不足；合成derived事实只证明实际聚合器数值，不代替临床源或最终医学/统计批准。
+Java8使用唯一显式依赖org.apache.commons:commons-statistics-inference:1.3。独立输入/参数/期望及SciPy1.17.0版本记录见[测试资源](../src/test/resources/ai-cohort/p03b/independent-oracles.json)及[测试指南](测试运行指南.md#p03b真实统计消费与独立数值)。未配置明确FM证据的legacy源仍无FALSE，pain尺度仍未核实；配置源按下文三态和原门槛描述，缺证仍诚实不足；合成derived事实只证明实际聚合器数值，不代替临床源或最终医学/统计批准。
 
 #### 实时资料完整性
 
@@ -720,7 +720,27 @@ AI与旧列表/详情CRP、RF/CCP共同读取原始bqpg/fzjc，再交既有canon
 
 血清学 ULN 共享配置为 RF20/CCP25；只接纳截至 asOf 的有日期有效结果。数字精确比较：≤ULN 阴性、ULN<值≤3×ULN 低阳、>3×ULN 高阳；支持 IU/mL/U/mL 后缀。明确「阴性」/-/—为阴性，历史「阳性」保持 low_positive；单独1～4个+为 positive。全匹配语法拒绝负数、非有限或夹杂文字。ULN20时 <20/≤20为negative；<100、>10、≥20未知；>20/≥21为positive，>60/≥60.1为high_positive；全角符号等价。未来/无日期结果不证明历史阳性。
 
-FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNOWN；未知起年保留已记录阳性并标 DATE_UNSPECIFIED，没有完整阴性来源，不产 FALSE。`clinicalProvenance` 对每个临床值给出 source/sourceField/quality/missingReason；血清学 observations 记录来源访视/字段/日期/分类，合并症 observations 记录行id/起年。来源质量至少 LEGACY_UNVERIFIED；不输出身份证原文或生日。
+未配置明确 FM 证据时，FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNOWN；未知起年保留已记录阳性并标 DATE_UNSPECIFIED，没有完整阴性来源，不产 FALSE。`clinicalProvenance` 对每个临床值给出 source/sourceField/quality/missingReason；血清学 observations 记录来源访视/字段/日期/分类，合并症 observations 记录行id/起年。来源质量至少 LEGACY_UNVERIFIED；不输出身份证原文或生日。
+
+#### 明确 FM 证据配置
+
+生产 CohortSourceAdapter 在本次五 SELECT 的短 RR 事务之前，只捕获一次 Spring Environment 的 `ra.ai.fm-evidence.json`；仅该值为 null 时 fallback `RA_AI_FM_EVIDENCE_JSON`，两者均缺失才保留 legacy positive-only 来源。存在配置就是完整替代 FM 来源，不混入旧阳性关联；空 records 使所有 FM UNKNOWN，AS 和旧普通共病系统保持原政策。配置不会授予患者 membership，仅匹配当前可信医生真实 RA 集合中的字符串 Long ID。
+
+精确 JSON 为 `{version,records:[{patientId,state,evidenceId,observedAt}]}`，所有字段必需。合成技术示例：
+
+```json
+{"version":"synthetic-fm-v1","records":[{"patientId":"4","state":"FALSE","evidenceId":"synthetic:fm4","observedAt":"2026-10-06"}]}
+```
+
+version/evidenceId 是不透明字符串，trim 后非空、Java String.length≤200，只允许 Unicode 字母/数字和 `:._-`。patientId 必须原字符串、规范正十进制 Long 1～9223372036854775807，不能 trim、前导零或用 JSON Number。state 只 TRUE/FALSE/UNKNOWN；observedAt 必须是严格可往返 ISO LocalDate。records 0～5000 项、UTF-8≤1048576 bytes、容器深度≤3，先有界流式检查再树解析；重复 key、未知字段、trailing、null、错类型或重复 patientId 整份拒绝。坏配置在 read 时返回安全 HTTP503/SERVICE_UNAVAILABLE、data=null，源 SQL/结果写为零；身份和功能门先行，不在 bean 创建时崩溃，不回显原配置或回退为空成功。
+
+仅 observedAt≤本次上海 asOfDate 的记录生效。有效 TRUE/FALSE 的 clinicalProvenance.fm 精确包含 source=CONFIGURED_FM_EVIDENCE、sourceField=ra.ai.fm-evidence.json、quality=[SOURCE_UNVERIFIED]、missingReason=null、单条 `{evidenceId,observedAt,fmState}` observation；fmState 等于 clinical.fm。显式 UNKNOWN 同样有单条 observation、reason=EXPLICIT_UNKNOWN；缺条或未来证据为 UNKNOWN、reason=NO_EFFECTIVE_FM_EVIDENCE、observations=[]。来源中不重复配置 patientId 或自由原文。cohort/overview/compare 的 meta.policyVersions 增加同批合法 fmSource；legacy 缺该键，clinical 等固定算法版本不变。
+
+单 read 的 immutable view 不受后续配置切换影响，下一 read 才读取新版本；不承诺配置与 SQL 跨源原子性、不缓存或新增后台 owner、不写原临床表。FM TRUE、明确 FALSE 和 UNKNOWN 分组，任组<3不产生比较行；各指标有效 n 的≥5检验门槛、pain SCALE_UNVERIFIED 等原统计政策不变。cm=none 仍同时要求 FM FALSE/AS FALSE，AS UNKNOWN 不匹配。
+
+payloadVersion 仍为1，以闭合且可判别的可选扩展接受旧完整 shape 或新完整 shape。codec 严格核 FM 来源与 fmSource、observation 状态一致性及日期，不放宽治疗 state 的 ACTIVE/CONFLICT/NONE/UNKNOWN；旧合法 legacy FALSE 仍可读。新旧 COHORT/COMPARE 及 ExportApplicationSummary 只允许原 policy 键集或原集加合法 fmSource，配置变化不改原 ID/值/版本/bytes。正确 hash 的语义矛盾也受控拒绝，不回源重算或修补；无迁移、历史 row 更新或新事务机制。FM 日期不增加免费导出资格，age/FM 等既有 NEED_APPLY、申请不授下载权保持。
+
+页面将“非FM”标为“明确无FM”，保未知人数；仅按已知来源显示 evidenceId/observedAt/fmState 与批次版本，旧 sourceRowId/sinceYear 仍可展示。SOURCE_UNVERIFIED 明确是来源未批准；合成来源、字典和技术测试不能关闭 AQC-EXT-03/REL-01 的真实材料及医学批准。
 
 `evaluation` 的 tjc/sjc/gh/haq/crp/pain 都取 at 选中的同一个有效 DAS28-CRP 访视，绝不拼入较新无CRP访视。每项包含 value/sourceVisitId/sourceField/observedAt/unit/quality/missingReason：
 
@@ -730,13 +750,25 @@ FM/AS 仅有正向关联：存在非未来 since_year 行为 TRUE，否则 UNKNO
 - pain：bqpg.tjScore 仅保留 scalar raw 文本，value/unit=null，quality 含 SCALE_UNVERIFIED，missingReason=UNVERIFIED_SCALE；尺度未经核实，不可汇总或猜换算
 - 其他项缺失给 MISSING_VALUE/INVALID_VALUE/OUT_OF_RANGE/NON_INTEGER；无可用 CRP 访视时六项均 value=null、missingReason=NO_VALID_CRP
 
-`meta.policyVersions` 为 statistics=dev-stats-v04、descriptive=dev-descriptive-v04、qc=dev-missing-v04、crp=dev-crp-v04、now=dev-now-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04、drugDictionary=dev-drug-v04（注入字典时报告其固定版本）；supportedFilters 为 studyCode/at/act/ids/sex/age/sero/cm/tx/data，completion=P03_RESULT。真实关节映射、历史质量、疼痛尺度与医学接收尚未确认（AQC-EXT-02 OPEN）；合成证据不关闭该义务。
+`meta.policyVersions` 为 statistics=dev-stats-v04、descriptive=dev-descriptive-v04、qc=dev-missing-v04、crp=dev-crp-v04、now=dev-now-v04、clinical=dev-clinical-v04、serology=dev-ever-serology-v04、treatment=dev-timeline-v04、visitMatcher=dev-visit-match-v04；drugDictionary 报告同次字典 snapshot 的实际版本，无配置时为 dev-drug-v04，配置协议见下文；配置 FM 时另有同次 fmSource，见上节。supportedFilters 为 studyCode/at/act/ids/sex/age/sero/cm/tx/data，completion=P03_RESULT。真实关节映射、历史质量、疼痛尺度与医学接收尚未确认（AQC-EXT-02 OPEN）；合成证据不关闭该义务。
 
 #### 治疗时间线开发政策
 
 源读取包含同一访视批量SELECT的 `zlfa`，释放连接后只解析一次 `xyList` / `zcyList` 药物行的 drugName/startTime/endTime 与定位。cyList 的 zz/fj/bccy/qtbccy 和 zywzList 不作为此五类药物行；finish、tygc/tyyy、缺行、删行或空模块均不是结构化停药。非法JSON、record型、错误list/row形状为 INVALID_MEDICATION_SOURCE，不伪装空模块或停药。
 
 默认开发字典只按trim后的精确通用名匹配：csDMARD为甲氨蝶呤/来氟米特/柳氮磺吡啶/羟氯喹；TNFi为阿达木单抗/依那西普/英夫利昔单抗/戈利木单抗/赛妥珠单抗；JAKi为托法替布/巴瑞替尼/乌帕替尼；IL-6i为托珠单抗/沙利鲁单抗；Abatacept为阿巴西普。genericId采用明确的 dev:通用名，不是真实旧字典主键。商品名/厂家变化不改变已识别identity；默认无品牌alias，商品名-only、MTX、任意长文本、category自由文字不提供身份。每次请求固定一个不可变字典视图；未映射药与已知DMARD同现亦为UNKNOWN/UNMAPPED_DRUG，字典执行异常仍503。
+
+生产 `cohortDrugDictionary` 从服务器 Spring Environment 只读获取 `ra.ai.drug-dictionary.json`，仅该值为 null 时读取 `RA_AI_DRUG_DICTIONARY_JSON`；两者均 null 才使用上述开发映射。空串、空白或坏配置不会回退。保留 `ConditionalOnMissingBean(DrugDictionary.class)` 扩展边界；配置不读取请求、文件或远程服务，不授予患者访问权。配置在 snapshot 时验证，坏值不会令 bean 创建失败；可信身份与功能门仍先行，坏配置返回 HTTP503/SERVICE_UNAVAILABLE、data=null 及 X-Trace-Id，且发生在源连接/SQL及结果写入之前，错误不含配置原文。
+
+标准 JSON 必须恰为 `{version,drugs:[{id,name,category,aliases:[]}]}`，所有字段必需，拒绝未知/重复 key、尾随内容、null 和错误类型。合成技术示例：
+
+```json
+{"version":"synthetic-drug-v1","drugs":[{"id":"synthetic:g1","name":"synthetic-generic-A","category":"TNFi","aliases":["synthetic-brand-A"]}]}
+```
+
+version/id 经 trim 后非空、Java String.length≤200，仅 Unicode 字母/数字和 `:._-`，id 是不透明字符串；这沿用保留结果的严格 identifier 协议。drugs 为 0～5000 项、aliases 为 0～20 项；name/alias 经 trim 后非空、Unicode 必须配对且≤128 codepoints。category 精确为 csDMARD/TNFi/JAKi/IL-6i/Abatacept。配置 UTF-8≤1048576 字节、容器深度≤4；先限制大小并流式检查结构，再构造字典。通用名和显式 aliases 都按 trim 后精确匹配，无大小写折叠、NFKC 或模糊匹配；同实体重复名称可去重，重复 generic ID（含相同内容）或跨实体名称碰撞拒绝整份配置。只解释已存 drugName，不从 goodsName 推导药品。
+
+cohort 与 overview 每次分析只捕获一次完整配置字符串并构造同次不可变 Snapshot。首条源 SQL 后修改 Environment 不改变在途请求的版本/分类，下一分析读取新版本；没有后台 reload/cache 或配置与 SQL 的跨源原子性承诺。generic/brand 共用同一实体，不增加靶向历史线；不同靶向实体、未知药沿既有 Timeline 的 CONFLICT/UNKNOWN。保留 AnalysisRun 的 payload、drugDictionary 及 genericDrugIds 仍是当次值，新配置不会重写旧结果；旧 dev 结果继续由原 codec 读取，权限和寿命不变。
 
 只用有合法visitDate且≤上海asOf的观察，按visitDate/id稳定排序；同日大id较新，已明确不同靶向generic的历史不丢失。日期须合法yyyy-MM-dd，start>end、非法日期标 INVALID_TREATMENT_DATE，重复实体的相互矛盾日期标 DATE_CONFLICT，不任选首行作为可靠日期。合法显式start须属于本次方案段；仅由合法且无冲突的定义成员end退出形成的新集合，以end次日为estimatedStartDate、startDate=null、startConfidence=ESTIMATED_EXPLICIT_END，并标END_DERIVED_SCHEME_START，保留原始药物日期/来源；较晚重复旧start不升级此段为EXPLICIT。缺起始日以首次观察为 ESTIMATED_FIRST_OBSERVED，可靠startDate为空，不作为可靠基线/6m起点。未来start不提前进入当前方案/已用靶向史，到达Clock日期后新请求重新判断。
 
@@ -1120,7 +1152,7 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 | modHighN | 同批有效评估且 canonical DAS28-CRP >2.7 的人数 |
 | fmN | 同批明确 FM TRUE 的人数；未知不并入阴性 |
 | missingN | 同批既有 QC MISSING 的人数 |
-| meta | studyCode=RA、at=now、asOfDate、readStartedAt/readCompletedAt（UTC Instant）、traceId、policyVersions（descriptive/qc/crp/now/clinical/serology/treatment/visitMatcher/drugDictionary 的实际开发版本） |
+| meta | studyCode=RA、at=now、asOfDate、readStartedAt/readCompletedAt（UTC Instant）、traceId、policyVersions（descriptive/qc/crp/now/clinical/serology/treatment/visitMatcher 的实际开发版本；drugDictionary 为同次配置或开发字典版本；配置 FM 时增加 fmSource） |
 
 只投影上述聚合和来源元数据，不含患者 ID、姓名、身份证、患者明细、analysisId 或 cursor。六人合成独立例：studyTotal=6、targetRate.value=0.4，meta 为 2/5/unknown1/OK/40%，modHighN=3、fmN=3、missingN=2。U 空时 studyTotal=0；U 有人但无有效评估时 target status=NO_DATA、有效0且 unknownN=U.n；有有效评估且无达标者时 status=OK/value=0/displayText=0%。首页 NO_DATA 显示“暂无可评估患者”，不得把既有 displayText 的0%作为真实零。
 

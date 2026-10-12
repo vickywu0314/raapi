@@ -604,4 +604,25 @@ class WebLoopbackApiFixtureTest {
         }finally{f.close();}
         assertTrue(f.closed);assertEquals(0,f.observed.active.get());try(java.sql.Connection c=f.raw.getConnection();java.sql.Statement q=c.createStatement();java.sql.ResultSet r=q.executeQuery("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")){r.next();assertEquals(0,r.getInt(1));}
     }
+    @Test void configuredSourcesComposeOverRealTcp()throws Exception{
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p03-sources";java.nio.file.Path base=java.nio.file.Files.createTempDirectory("configured-sources-tcp-");int port=0;
+        try{
+            f.connect();f.schema();port=f.start("synthetic",false,base.toFile());
+            assertTrue(f.application.getBean(com.wenwen.ai.scope.PrincipalProvider.class) instanceof com.wenwen.ai.scope.SessionPrincipalProvider);
+            assertEquals(401,tcp(port,"/api/ra/ai/cohort",null,"{").status);assertEquals(0,f.observed.borrowed);
+            TcpResponse login=tcp(port,"/api/ra/test/session",null,"");assertEquals(204,login.status);assertNotNull(login.cookie);
+            TcpResponse response=tcp(port,"/api/ra/ai/cohort",login.cookie,"{}");assertEquals(200,response.status);com.fasterxml.jackson.databind.JsonNode d=WebLoopbackApiFixture.JSON.readTree(response.body).path("data");
+            assertEquals(3,d.path("fm").path("nOther").asInt());assertEquals(3,d.path("fm").path("nFM").asInt());assertEquals(0,d.path("fm").path("unknownN").asInt());assertEquals(6,d.path("fm").path("rows").size());assertEquals("synthetic-fm-v1",d.path("meta").path("policyVersions").path("fmSource").asText());assertEquals("synthetic-drug-v1",d.path("meta").path("policyVersions").path("drugDictionary").asText());
+            assertTrue(f.application.getBean(com.wenwen.ai.treatment.DrugDictionary.class) instanceof com.wenwen.ai.treatment.ConfiguredDrugDictionary);
+            assertEquals(0,f.observed.active.get());assertEquals(f.observed.borrowed,f.observed.returned);assertEquals(1,f.observed.inserts);f.observed.reset();f.compositionWrites.set(0);f.observed.failInsertSql=true;
+            TcpResponse overview=tcp(port,"/api/ra/ai/overview",login.cookie,"{}");assertEquals(200,overview.status);com.fasterxml.jackson.databind.JsonNode o=WebLoopbackApiFixture.JSON.readTree(overview.body).path("data");assertEquals(6,o.path("studyTotal").asInt());assertEquals(3,o.path("fmN").asInt());assertEquals("synthetic-fm-v1",o.path("meta").path("policyVersions").path("fmSource").asText());assertEquals(5,f.observed.selects);assertEquals(1,f.observed.borrowed);assertEquals(1,f.observed.returned);assertEquals(0,f.compositionWrites.get());assertEquals(0,f.observed.inserts);assertEquals(java.util.Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),f.observed.isolations);assertEquals(1,new java.util.HashSet<>(f.observed.queryConnections).size());
+            f.observed.reset();TcpResponse tx=tcp(port,"/api/ra/ai/cohort",login.cookie,"{\"filters\":{\"tx\":\"TNFi\"}}");assertEquals(200,tx.status);com.fasterxml.jackson.databind.JsonNode t=WebLoopbackApiFixture.JSON.readTree(tx.body).path("data");assertEquals(1,t.path("n").asInt());assertEquals("2",t.path("patients").path("items").get(0).path("patientId").asText());assertEquals(WebLoopbackApiFixture.JSON.readTree("[\"synthetic:g2\"]"),t.path("patients").path("items").get(0).path("treatment").path("genericDrugIds"));
+            f.observed.reset();f.observed.failSecondSql=true;assertEquals(503,tcp(port,"/api/ra/ai/cohort",login.cookie,"{}").status);assertEquals(0,f.observed.active.get());assertEquals(f.observed.borrowed,f.observed.returned);assertEquals(0,f.observed.inserts);assertTrue(f.observed.mysqlFailures>0);f.observed.reset();
+            for(String path:new String[]{"/api/ra/ai/overview/","/api/ra/ai/overview?x=1","/api/ra/ai/patientDetail","/api/ra/test/chooseDoctor","/api/ra/ai/configureFm"})assertFalse(WebLoopbackApiFixture.allowsHttpPath(f.scenario,path));
+            assertEquals(204,tcp(port,"/api/ra/test/logout",login.cookie,"").status);f.observed.reset();assertEquals(401,tcp(port,"/api/ra/ai/cohort",login.cookie,"{").status);assertEquals(0,f.observed.selects);assertNull(f.applicationPeer);assertFalse(f.compositionScenario());
+        }finally{f.close();}
+        assertTrue(f.closed);assertEquals(0,f.observed.active.get());final int stoppedPort=port;assertThrows(java.io.IOException.class,()->{try(java.net.Socket socket=new java.net.Socket()){socket.connect(new java.net.InetSocketAddress("127.0.0.1",stoppedPort),1000);}});
+        try(java.sql.Connection c=f.raw.getConnection();java.sql.Statement q=c.createStatement();java.sql.ResultSet rows=q.executeQuery("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")){assertTrue(rows.next());assertEquals(0,rows.getInt(1));}
+    }
+
 }

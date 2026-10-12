@@ -30,9 +30,9 @@ public final class AiOverviewService {
             "missingN",DescriptiveAnalysis.completeness(derived.universe.values()).get("incompleteCount"),
             "meta",object("studyCode","RA","at","now","asOfDate",asOf.toString(),"readStartedAt",started.toString(),
                 "readCompletedAt",batch.getReadCompletedAt().toString(),"traceId",traceId,
-                "policyVersions",object("descriptive",DescriptiveAnalysis.VERSION,"qc",com.wenwen.ai.qc.MissingDataPolicy.VERSION,
+                "policyVersions",batch.withFmSource(object("descriptive",DescriptiveAnalysis.VERSION,"qc",com.wenwen.ai.qc.MissingDataPolicy.VERSION,
                     "crp","dev-crp-v04","now","dev-now-v04","clinical","dev-clinical-v04","serology","dev-ever-serology-v04",
-                    "treatment","dev-timeline-v04","visitMatcher","dev-visit-match-v04","drugDictionary",drugView.version)));
+                    "treatment","dev-timeline-v04","visitMatcher","dev-visit-match-v04","drugDictionary",drugView.version))));
     }
     private int count(CohortComputation.Derivation derived,TrustedDoctor doctor,String key,String value) {
         try {

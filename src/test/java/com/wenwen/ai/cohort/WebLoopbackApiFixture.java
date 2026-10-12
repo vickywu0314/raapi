@@ -64,7 +64,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     boolean compositionSqlFailure;
     java.util.concurrent.atomic.AtomicInteger compositionWrites=new java.util.concurrent.atomic.AtomicInteger();
     static boolean compositionScenario(String scenario){return "p07-composition".equals(scenario)||"p07-composition-time".equals(scenario);}
-    boolean typedScenario(){return "p00-trusted".equals(scenario)||"p01-overview".equals(scenario);}
+    boolean typedScenario(){return "p00-trusted".equals(scenario)||"p01-overview".equals(scenario)||"p03-sources".equals(scenario);}
     boolean compositionScenario(){return compositionScenario(scenario);}
     static boolean applicationScenario(String scenario){return Arrays.asList("p06-application-replay","p06-application-retry","p06-application-unknown").contains(scenario);}
     boolean applicationScenario(){return applicationScenario(scenario);}
@@ -191,7 +191,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             try(Connection c=preparationConnection();Statement statement=c.createStatement()){
                 verifyDatabase(c);String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log"};int i=0;
                 for(String ddl:com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){statement.execute(ddl);ownedTables.add(tables[i++]);event("table-owned","table",ownedTables.get(ownedTables.size()-1));}
-                for(String row:(scenario.equals("p01-overview")?resource(seedForScenario(scenario)):com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("seed.sql")).split(";"))if(!row.trim().isEmpty())statement.execute(row);
+                for(String row:((scenario.equals("p01-overview")||scenario.equals("p03-sources"))?resource(seedForScenario(scenario)):com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("seed.sql")).split(";"))if(!row.trim().isEmpty())statement.execute(row);
+                if("p03-sources".equals(scenario))statement.execute("UPDATE patient_follow_up_history SET zlfa=REPLACE(zlfa,'依那西普','synthetic-brand-A') WHERE patient_basic_info_id=2 AND id IN(210,220)");
                 try(InputStream in=getClass().getResourceAsStream("/ai-cohort/p03c/schema.sql")){statement.execute(new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim());ownedTables.add("ra_ai_analysis_run");event("table-owned","table","ra_ai_analysis_run");}
                 event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
             }return;
@@ -213,7 +214,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
-        if("p01-overview".equals(scenario))return Arrays.asList("/api/ra/ai/overview","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/test/session","/api/ra/test/logout").contains(path);
+        if("p01-overview".equals(scenario)||"p03-sources".equals(scenario))return Arrays.asList("/api/ra/ai/overview","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p00-trusted".equals(scenario))return Arrays.asList("/api/ra/ai/patientSearch","/api/ra/ai/overview","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientSensitive","/api/ra/ai/patientAuditLogs","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if(compositionScenario(scenario))return COMPOSITION_PATHS.contains(path);
         return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients").contains(path)
@@ -227,7 +228,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             || ("p04".equals(scenario)&&Arrays.asList("/api/ra/ai/compare","/api/ra/ai/compareResult").contains(path));
     }
     static String seedForScenario(String scenario) {
-        if("p01-overview".equals(scenario))return "seed-overview.sql";
+        if("p01-overview".equals(scenario)||"p03-sources".equals(scenario))return "seed-overview.sql";
         if("p00-trusted".equals(scenario))return "seed.sql";
         if("default".equals(scenario))return "seed.sql";
         if("p01b".equals(scenario)||"p03".equals(scenario)||"p05-rule".equals(scenario)||"p05-safety".equals(scenario))return "seed-p01b.sql";
@@ -432,8 +433,14 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             org.apache.ibatis.session.Configuration configuration=new org.apache.ibatis.session.Configuration();configuration.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);factory.setConfiguration(configuration);return factory.getObject();
         }
     }
+    @Configuration @EnableWebMvc
+    public static class ConfiguredSourcesInfrastructure extends OverviewInfrastructure {
+        @org.springframework.beans.factory.annotation.Autowired private org.springframework.core.env.Environment environment;
+        @Override @Bean public DrugDictionary dictionary(){return new com.wenwen.ai.treatment.ConfiguredDrugDictionary(environment);}
+    }
     Class<?> contextConfiguration() {
-        if("p01-overview".equals(scenario))return OverviewInfrastructure.class;
+        if("p03-sources".equals(scenario))return ConfiguredSourcesInfrastructure.class;
+        if("p01-overview".equals(scenario)||"p03-sources".equals(scenario))return OverviewInfrastructure.class;
         if(typedScenario())return TrustedPatientInfrastructure.class;
         if(compositionScenario())return CompositionInfrastructure.class;
         return applicationScenario()?ApplicationInfrastructure.class:scenario.equals("p06-comparison")?ComparisonExportInfrastructure.class:scenario.equals("p06-cohort")?ExportInfrastructure.class:parseScenario()?ParseInfrastructure.class:scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class;
@@ -442,7 +449,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if(compositionScenario()) {
             if(compositionBase==null){compositionBase=base;compositionIdentity=identity;compositionSqlFailure=sqlFailure;scenarioDoctor.set(identity.equals("synthetic")?101:0);if(scenario.equals("p07-composition-time"))scenarioClock.now.set(COMPOSITION_DAY_BEFORE);}
             if(observed==null)observed=new ObservedDataSource(compositionObservedSource(raw));
-        } else observed=new ObservedDataSource("p01-overview".equals(scenario)?compositionObservedSource(raw):raw);
+        } else observed=new ObservedDataSource(("p01-overview".equals(scenario)||"p03-sources".equals(scenario))?compositionObservedSource(raw):raw);
         observed.failSecondSql=sqlFailure;
         application=new AnnotationConfigWebApplicationContext();
         MutablePropertySources sources=application.getEnvironment().getPropertySources();
@@ -454,6 +461,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
         properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
         properties.put("ra.serology.rf-uln","20");properties.put("ra.serology.ccp-uln","25");
+        if("p03-sources".equals(scenario)){properties.put("ra.ai.fm-evidence.json",ConfiguredFmHttpTest.configuration("synthetic-fm-v1",0));properties.put("ra.ai.drug-dictionary.json",ConfiguredFmHttpTest.drugConfiguration());}
         if((scenario.equals("p05-safety")||scenario.equals("p05-apply-safety"))) {
             parsePeer=new AiGatewayLoopbackPeer();
             Map<String,Object> inner=new LinkedHashMap<>();inner.put("filters",Collections.singletonMap("sex","F"));inner.put("matched",Collections.singletonList(com.wenwen.vo.AiCohortVo.object("field","sex","value","F")));inner.put("unrecognized",Collections.emptyList());inner.put("status","OK");inner.put("notice","已生成候选条件，尚未应用。");
@@ -502,6 +510,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                     event("http-observation","borrowed",observed.borrowed,"returned",observed.returned,"active",observed.active.get(),"mysqlFailures",observed.mysqlFailures,"mysqlError",observed.lastMysqlError,"sqlState",observed.lastSqlState,"status",response.getStatus());
                     if(typedScenario())event("patient-http-observation","path",request.getRequestURI(),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"selectDelta",observed.selects-selectsBefore,"borrowDelta",observed.borrowed-borrowsBefore,"active",observed.active.get(),"typedProvider",application.getBean(PrincipalProvider.class) instanceof SessionPrincipalProvider);
                     if("p01-overview".equals(scenario))event("overview-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"active",observed.active.get(),"typedProvider",application.getBean(PrincipalProvider.class) instanceof SessionPrincipalProvider);
+                    if("p03-sources".equals(scenario))event("configured-source-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"analysisInsertDelta",observed.inserts-analysisInsertsBefore,"active",observed.active.get(),"typedProvider",application.getBean(PrincipalProvider.class) instanceof SessionPrincipalProvider);
                     if(compositionScenario())event("composition-http-observation","path",request.getRequestURI(),"traceId",response.getHeader("X-Trace-Id"),"status",response.getStatus(),"bodyBytes",counted.bodyBytes,"borrowDelta",observed.borrowed-borrowsBefore,"selectDelta",observed.selects-selectsBefore,"writeDelta",compositionWrites.get()-writesBefore,"smtpConnectionDelta",applicationPeer.connections.get()-smtpConnectionsBefore,"smtpDataDelta",applicationPeer.dataCommands.get()-smtpDataBefore,"active",observed.active.get());
                 }
                 }

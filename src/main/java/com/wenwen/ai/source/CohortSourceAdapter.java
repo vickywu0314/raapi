@@ -30,7 +30,10 @@ public final class CohortSourceAdapter {
         snapshot.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         snapshot.setReadOnly(true);
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.core.env.Environment environment;
     public SourceBatch read(long doctorId, LocalDate asOf) {
+        ConfiguredFmEvidenceSource.View fmView=new ConfiguredFmEvidenceSource(environment).snapshot();
         // Spring-managed MyBatis 的五条批量 SELECT 共享本事务。回调仅读取，不解析病例或计算。
         Map<String,Object> scope=new HashMap<>(); scope.put("doctorId",doctorId); scope.put("patientId",null);
         RawBatch raw = snapshot.execute(status -> new RawBatch(mapper.patients(doctorId),mapper.patientIds(doctorId),mapper.visits(doctorId),mapper.comorbidities(doctorId),mapper.missingIssues(scope)));
@@ -55,7 +58,7 @@ public final class CohortSourceAdapter {
             String sex=ClinicalPolicy.sex(row.getGender()); Integer age=ClinicalPolicy.age(row.getCardNo(),asOf);
             Integer duration=ClinicalPolicy.duration(row.getConfirmDate(),asOf);
             String sero=serology.getOrDefault(row.getId(),"UNKNOWN");
-            String fm=associations.getOrDefault(row.getId(),Collections.emptySet()).contains("FM")?"TRUE":"UNKNOWN";
+            String fm=fmView!=null?fmView.state(row.getId(),asOf):associations.getOrDefault(row.getId(),Collections.emptySet()).contains("FM")?"TRUE":"UNKNOWN";
             String as=associations.getOrDefault(row.getId(),Collections.emptySet()).contains("AS")?"TRUE":"UNKNOWN";
             List<Map<String,Object>> tests=new ArrayList<>();
             for (ScoreVisit visit : visits) if (visit.getPatientId()==row.getId() && visit.getObservedAt()!=null && !visit.getObservedAt().isAfter(asOf)) {
@@ -68,11 +71,11 @@ public final class CohortSourceAdapter {
                 "diseaseDurationYears",fact("COALESCE(patient_basic_info.confirm_date,patient_basic_info.confirmDate)",duration==null?"NO_VALID_CONFIRM_DATE":null),
                 "sero",object("source","LEGACY_RECORDED","sourceField","fzjc.lfsyz/fzjc.kccpkt","observations",Collections.unmodifiableList(tests),
                     "quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason","UNKNOWN".equals(sero)?"NO_CLASSIFIABLE_DATED_TEST":null),
-                "fm",associationProvenance(row.getId(),"FM",raw.comorbidities,asOf),
+                "fm",fmView==null?associationProvenance(row.getId(),"FM",raw.comorbidities,asOf):fmView.provenance(row.getId(),asOf),
                 "as",associationProvenance(row.getId(),"AS",raw.comorbidities,asOf));
             clinical.put(row.getId(),new PatientClinical(sex,age,duration,sero,fm,as,provenance));
         }
-        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing),display);
+        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing),display,fmView==null?null:fmView.version);
     }
     private static Map<String,Object> fact(String field,String missing) {
         return object("source","LEGACY_RECORDED","sourceField",field,"quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason",missing);

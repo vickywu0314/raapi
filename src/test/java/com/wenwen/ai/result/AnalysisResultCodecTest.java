@@ -37,4 +37,54 @@ class AnalysisResultCodecTest {
         assertThrows(CohortException.class,()->codec.encode(candidate(1),Collections.singletonList(row("01","3.0")),query));
         byte[] bytes=codec.encode(candidate(2),Arrays.asList(row("2","4.0"),row("1","3.0")),query);assertFalse(new String(bytes,"UTF-8").contains("synthetic-private"));assertTrue(bytes.length>0);
     }
+    @SuppressWarnings("unchecked") private static Map<String,Object> map(Object value){return (Map<String,Object>)value;}
+    private final com.fasterxml.jackson.databind.ObjectMapper json=new com.fasterxml.jackson.databind.ObjectMapper();
+    private AiCohortVo configuredCandidate(int n){
+        AiCohortVo c=candidate(n);Map<String,Object> meta=new LinkedHashMap<>(c.getMeta()),policies=new LinkedHashMap<>(map(meta.get("policyVersions")));policies.put("fmSource","synthetic:fm-v1");meta.put("policyVersions",policies);
+        return new AiCohortVo(c.getAnalysisId(),c.getN(),c.getStudyTotal(),c.getSubmittedUniqueIdsN(),c.getEffectiveIdsN(),c.getActivity(),c.getPatients(),meta,c.getStats(),c.getMetricMeta(),c.getByTx(),c.getFm(),c.getLines());
+    }
+    private Map<String,Object> configuredRow(String state){
+        Map<String,Object> r=json.convertValue(row("1","3.0"),Map.class);map(r.get("clinical")).put("fm",state);
+        map(r.get("clinicalProvenance")).put("fm",object("source","CONFIGURED_FM_EVIDENCE","sourceField","ra.ai.fm-evidence.json","quality",Collections.singletonList("SOURCE_UNVERIFIED"),"missingReason","UNKNOWN".equals(state)?"EXPLICIT_UNKNOWN":null,"observations",Collections.singletonList(object("evidenceId","synthetic:e1","observedAt","2026-10-06","fmState",state))));return r;
+    }
+    private AnalysisRun run(byte[] bytes){AnalysisRun r=new AnalysisRun();r.setPayloadVersion(1);r.setSortKey(AnalysisValues.SORT);r.setPayload(bytes);r.setPayloadSha256(AnalysisValues.sha256(bytes));r.setExpiresAtMs(java.time.Instant.parse("2026-10-07T02:15:00Z").toEpochMilli());return r;}
+    private CohortQuery query()throws Exception{return CohortQuery.read(new ByteArrayInputStream("{}".getBytes("UTF-8")),new TrustedDoctor(101));}
+    @Test void oldAndConfiguredShapesRemainClosedAndTreatmentStatesStayStrict()throws Exception{
+        AnalysisResultCodec codec=new AnalysisResultCodec();CohortQuery q=query();
+        Map<String,Object> old=json.convertValue(row("1","3.0"),Map.class);map(old.get("clinical")).put("fm","FALSE");
+        assertFalse(map(codec.decode(run(codec.encode(candidate(1),Collections.singletonList(old),q))).get("meta")).toString().contains("fmSource"));
+        for(String state:Arrays.asList("TRUE","FALSE","UNKNOWN")){Map<String,Object> decoded=codec.decode(run(codec.encode(configuredCandidate(1),Collections.singletonList(configuredRow(state)),q)));assertEquals(state,map(map(((List<?>)decoded.get("rows")).get(0)).get("clinical")).get("fm"));}
+        byte[] valid=codec.encode(configuredCandidate(1),Collections.singletonList(configuredRow("FALSE")),q);
+        for(String mutation:Arrays.asList("unknown","future","missing-version","mixed","bad-treatment","null-version","bad-evidence","extra-observation")){
+            Map<String,Object> payload=json.readValue(valid,Map.class);Map<String,Object> r=map(((List<?>)payload.get("rows")).get(0)),fm=map(map(r.get("clinicalProvenance")).get("fm")),o=map(((List<?>)fm.get("observations")).get(0));
+            if("unknown".equals(mutation))payload.put("privateCanary","bad");else if("future".equals(mutation))o.put("observedAt","2026-10-08");else if("missing-version".equals(mutation))map(map(payload.get("meta")).get("policyVersions")).remove("fmSource");else if("mixed".equals(mutation))fm.put("source","LEGACY_POSITIVE_ASSOCIATION");else if("bad-treatment".equals(mutation))map(r.get("treatment")).put("state","FALSE");else if("null-version".equals(mutation))map(map(payload.get("meta")).get("policyVersions")).put("fmSource",null);else if("bad-evidence".equals(mutation))o.put("evidenceId","private canary");else o.put("sourceRowId","1");
+            assertThrows(CohortException.class,()->codec.decode(run(json.writeValueAsBytes(payload))),mutation);
+        }
+        Map<String,Object> unknown=configuredRow("UNKNOWN");map(unknown.get("clinicalProvenance")).put("fm",object("source","CONFIGURED_FM_EVIDENCE","sourceField","ra.ai.fm-evidence.json","quality",Collections.singletonList("SOURCE_UNVERIFIED"),"missingReason","NO_EFFECTIVE_FM_EVIDENCE","observations",Collections.emptyList()));assertNotNull(codec.decode(run(codec.encode(configuredCandidate(1),Collections.singletonList(unknown),q))));
+        assertThrows(CohortException.class,()->codec.encode(candidate(1),Collections.singletonList(configuredRow("FALSE")),q));
+    }
+
+    @Test void correctHashConfiguredObservationMustAgreeWithClinicalFm()throws Exception{
+        AnalysisResultCodec codec=new AnalysisResultCodec();byte[] bytes=codec.encode(configuredCandidate(1),Collections.singletonList(configuredRow("FALSE")),query());
+        AnalysisRun valid=run(bytes);assertEquals(AnalysisValues.sha256(bytes),valid.getPayloadSha256());Map<String,Object> decoded=codec.decode(valid);assertEquals("FALSE",map(map(((List<?>)decoded.get("rows")).get(0)).get("clinical")).get("fm"));
+        Map<String,Object> altered=json.readValue(bytes,Map.class),r=map(((List<?>)altered.get("rows")).get(0)),fm=map(map(r.get("clinicalProvenance")).get("fm"));map(((List<?>)fm.get("observations")).get(0)).put("fmState","TRUE");
+        AnalysisRun corrupt=run(json.writeValueAsBytes(altered));assertEquals(1,corrupt.getPayloadVersion());assertEquals(AnalysisValues.SORT,corrupt.getSortKey());assertEquals(AnalysisValues.sha256(corrupt.getPayload()),corrupt.getPayloadSha256());assertEquals("2026-10-06",map(((List<?>)fm.get("observations")).get(0)).get("observedAt"));
+        CohortException e=assertThrows(CohortException.class,()->codec.decode(corrupt));assertEquals(503,e.getStatus());assertEquals("SERVICE_UNAVAILABLE",e.getCode());
+        Map<String,Object> badCandidate=json.convertValue(configuredRow("FALSE"),Map.class);map(((List<?>)map(map(badCandidate.get("clinicalProvenance")).get("fm")).get("observations")).get(0)).put("fmState","TRUE");assertThrows(CohortException.class,()->codec.encode(configuredCandidate(1),Collections.singletonList(badCandidate),query()));
+        assertNotNull(codec.decode(valid));
+    }
+
+    @Test void configuredExtensionCannotLeakIntoOtherFactShapes()throws Exception{
+        AnalysisResultCodec codec=new AnalysisResultCodec();byte[] valid=codec.encode(configuredCandidate(1),Collections.singletonList(configuredRow("FALSE")),query());
+        for(String key:Arrays.asList("sex","sero","scoreProvenance","crpAt","treatment")){
+            Map<String,Object> p=json.readValue(valid,Map.class),r=map(((List<?>)p.get("rows")).get(0));
+            if(Arrays.asList("sex","sero").contains(key))map(map(r.get("clinicalProvenance")).get(key)).put("source","CONFIGURED_FM_EVIDENCE");else if("scoreProvenance".equals(key))map(r.get(key)).put("source","CONFIGURED_FM_EVIDENCE");else if("crpAt".equals(key))map(r.get(key)).put("sourceField","ra.ai.fm-evidence.json");else map(map(r.get("treatment")).get("provenance")).put("field","ra.ai.fm-evidence.json");
+            assertThrows(CohortException.class,()->codec.decode(run(json.writeValueAsBytes(p))),key);
+        }
+    }
+
+    @Test void configuredFmFieldRequiresItsSourceVersion()throws Exception{
+        AnalysisResultCodec codec=new AnalysisResultCodec();byte[] valid=codec.encode(candidate(1),Collections.singletonList(row("1","3.0")),query());Map<String,Object> p=json.readValue(valid,Map.class),r=map(((List<?>)p.get("rows")).get(0));map(map(r.get("clinicalProvenance")).get("fm")).put("sourceField","ra.ai.fm-evidence.json");assertThrows(CohortException.class,()->codec.decode(run(json.writeValueAsBytes(p))));
+    }
+
 }
