@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 数据看板：只统计当前医生名下（patient_relation_doctor.doctor_id）的 RA 患者 -->
+<mapper namespace="com.wenwen.mapper.DashboardMapper">
+
+	<sql id="myPatients">
+		SELECT DISTINCT r.patient_id FROM patient_relation_doctor r
+		WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</sql>
+
+	<select id="listCreateDates" resultType="Map">
+		SELECT p.id AS patientId, DATE_FORMAT(COALESCE(p.create_date, p.createDate), '%Y-%m-%d') AS createDate
+		FROM patient_basic_info p WHERE p.id IN (<include refid="myPatients"/>)
+	</select>
+
+	<select id="listCrpVisits" resultType="Map">
+		SELECT f.patient_basic_info_id AS patientId, f.id AS visitId,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate, f.fzjc
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id IN (<include refid="myPatients"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		  AND f.fzjc LIKE '%cfydb%'
+		  AND COALESCE(f.follow_up_date, f.followUpDate) &lt;= NOW()
+		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
+	</select>
+
+	<select id="listRecentVisits" resultType="Map">
+		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId, p.name, p.study_no AS studyNo,
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
+		       (SELECT COUNT(*) FROM patient_follow_up_history g
+		        WHERE g.patient_basic_info_id = f.patient_basic_info_id
+		          AND g.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		          AND (COALESCE(g.follow_up_date, g.followUpDate) &lt; COALESCE(f.follow_up_date, f.followUpDate)
+		               OR (COALESCE(g.follow_up_date, g.followUpDate) = COALESCE(f.follow_up_date, f.followUpDate) AND g.id &lt;= f.id))) AS seq
+		FROM patient_follow_up_history f
+		JOIN patient_basic_info p ON p.id = f.patient_basic_info_id
+		WHERE f.patient_basic_info_id IN (<include refid="myPatients"/>)
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		  AND COALESCE(f.follow_up_date, f.followUpDate) &lt;= NOW()
+		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
+		LIMIT #{limit}
+	</select>
+</mapper>

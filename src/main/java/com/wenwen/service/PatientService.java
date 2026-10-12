@@ -1,6 +1,7 @@
 package com.wenwen.service;
 
 import java.util.List;
+import java.util.Map;
 
 import com.wenwen.vo.AuditLogVo;
 import com.wenwen.vo.PatientDetailVo;
@@ -23,6 +24,20 @@ public interface PatientService {
 	 * @throws IllegalArgumentException 参数不合法
 	 */
 	PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size);
+
+	/** 看板用：该医生名下全部患者（与患者列表同一套计算），以及每人上一次有效 DAS28-CRP（判断活动度回升） */
+	final class AllPatients {
+		public final List<com.wenwen.vo.PatientItemVo> items;
+		/** 患者ID → 最近一次之前的那次有效 DAS28-CRP；只有一次评分的没有 */
+		public final Map<Long, java.math.BigDecimal> previousDas28;
+
+		public AllPatients(List<com.wenwen.vo.PatientItemVo> items, Map<Long, java.math.BigDecimal> previousDas28) {
+			this.items = items;
+			this.previousDas28 = previousDas28;
+		}
+	}
+
+	AllPatients listAllPatients(Long doctorId);
 
 	/** 符合筛选条件的全部患者ID（该医生名下，不分页；数据导出用） */
 	List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness);

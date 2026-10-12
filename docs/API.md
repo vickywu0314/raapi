@@ -664,6 +664,35 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
 
+## 九、数据看板（dashboard.html）
+
+`POST /api/ra/dashboard/summary`，入参 `doctorId`。**只统计该医生名下的 RA 患者**。口径复用：随访状态 / DAS28-CRP 活动度 / 资料完整性 / 合并症 = 患者列表（`PatientService.listAllPatients`）；逾期 / 到期 / 按期随访率 / 疑似失访 = 随访管理（第八节）。
+
+| 字段 | 含义 | 取的方式 |
+|---|---|---|
+| `scale.total` | 总患者数 | 名下 RA 患者（含已脱落） |
+| `scale.active` | 活跃患者 | 未脱落，且最近一次随访在 183 天内 |
+| `scale.newThisMonth` | 本月新增 | 建档日期（`create_date`，空则 `createDate`）在本月 |
+| `scale.withdrawn` / `scale.lost` | 已脱落 / 疑似失访 | 本医生 RA 关系 `miss=1` / 随访管理的 `lost` |
+| `followup.overdue` | 已逾期 | 随访管理 `overdue` |
+| `followup.due7` / `due30` | 7 / 30 日内待随访 | 已做基线、预计日期在今天到 7 / 30 天内 |
+| `followup.pendingFirst` | 待首次随访 | 随访管理 `pending_first` |
+| `followup.onTimeRate` | 按期随访率 % | （已做基线的计划数 − 逾期）÷ 已做基线的计划数 |
+| `attention.notTarget` / `highActivity` | 未达标 / 高疾病活动 | 最近一次 DAS28-CRP 为中、高 / 高（>4.1） |
+| `attention.highCrp` | 炎症指标升高 | 最近一次填了 CRP 的随访，CRP > 10 mg/L |
+| `attention.fm` | 合并 FM | 常见相关疾病有 FM |
+| `activity.dist` / `targetRate` | DAS28-CRP 分布 / 达标率 % | 最近一次评分；达标 = 缓解 + 低 |
+| `quality.completeRate` / `byItem` | 资料完整率 % / 各缺失项人数 | 患者列表「待补全」同一规则 |
+| `research.validSample` | 有效研究样本 | 有随访、资料完整、未脱落 |
+| `research.totalVisits` / `visited30` / `visited90` | 累计访视 / 近 30、90 天有随访的人数 | |
+| `risks[]` | 风险名单（各最多返回 50 人） | `rebound` 最近一次 DAS28-CRP 比上一次升高 ≥0.6；`high` 最近一次 >4.1；`overdue` 逾期超 90 天 |
+| `recentHighCrp[]` | 最近炎症指标偏高（5 人） | 最近一次 CRP > 20 mg/L，按随访日期倒序 |
+| `recentVisits[]` | 最近完成随访（5 条） | `label`：基线访视 / 第 N 次随访 |
+
+页面上的「智能研究队列」暂不做（已隐藏）。
+
+---
+
 ## 八、随访管理页（followups.html）
 
 ### 8.1 随访计划
