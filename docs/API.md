@@ -1073,16 +1073,16 @@ reason仅null或NOT_CONFIGURED/INVALID_MAIL_CONFIG/RECIPIENT_CHANGED/NOTIFICATIO
 
 ### 7.9 启动配置准入与关闭边界
 
-新功能使用不可变 `AiFeatureAvailability`，同一context的六个真实Controller共用 `AiCohortConfiguration` 提供的单例bean。两个已解析String配置在构造时固定，不读每请求Environment，没有setter、静态可变flag、管理API、后台线程或IO。
+新功能使用不可变 `AiFeatureAvailability`，同一context的十个真实Controller共用 `AiCohortConfiguration` 提供的单例bean。两个已解析String配置在构造时固定，不读每请求Environment，没有setter、静态可变flag、管理API、后台线程或IO。
 
 | 配置键 | 缺省 | 准入语义 |
 |---|---|---|
-| `ra.ai.api.enabled` | 字符串 `true` | 只有精确 `true` 放行下表全部15路；`false`或其他已解析字符串关闭整组 |
+| `ra.ai.api.enabled` | 字符串 `true` | 只有精确 `true` 放行下表全部23路；`false`或其他已解析字符串关闭整组 |
 | `ra.export.xlsx.enabled` | 字符串 `true` | global放行后，只有精确 `true` 放行新xlsx；关闭不连带申请/重试、规则/AI或旧CSV |
 
 不采用primitive boolean宽松转换。已解析空串、`TRUE`、`False`、` true `、`1`、`yes`均禁用，不因这些字符串本身让新bean/context启动失败；不覆盖无关Spring配置或外部PropertySource故障。
 
-以下全部是POST，准确消费范围为3+2+5+2+1+2=15路：
+以下全部是POST，准确消费范围为3+2+5+2+1+2+1+5+1+1=23路：
 
 | 真实Controller | 门与完整路由 |
 |---|---|
@@ -1092,18 +1092,24 @@ reason仅null或NOT_CONFIGURED/INVALID_MAIL_CONFIG/RECIPIENT_CHANGED/NOTIFICATIO
 | ComparisonController | requireApi：`/api/ra/ai/compare`、`/api/ra/ai/compareResult` |
 | AiExportController | requireXlsx（先global后file）：`/api/ra/export/xlsx` |
 | AiExportApplicationController | requireApi：`/api/ra/export/applyAnalysis`、`/api/ra/export/retryNotification`（共用handle） |
+| AiOverviewController | requireApi：`/api/ra/ai/overview` |
+| TrustedPatientController | requireApi：`/api/ra/ai/patientSearch`、`/api/ra/ai/patientDetail`、`/api/ra/ai/visitDetail`、`/api/ra/ai/patientSensitive`、`/api/ra/ai/patientAuditLogs` |
+| PatientInsightController | requireApi：`/api/ra/ai/patientInsight` |
+| AiChatController | requireApi：`/api/ra/ai/chat`；另按 ALL/COHORT 和 PATIENT 独立要求 aggregate/clinical 出站许可 |
 
 顺序统一为原 `principal.requireCurrent()` 成功后立即检查准入，再执行原Clock/body/Service，不增第二次鉴权、不更改业务载荷/原状态机。匿名仍401/UNAUTHENTICATED，body/SQL=0。可信身份通过但global禁用时，合法资源body或畸形body `{` 都在读取前直接503/SERVICE_UNAVAILABLE/message=`队列功能暂不可用`；file单独禁用为503/SERVICE_UNAVAILABLE/message=`文件导出暂不可用`，两键同时禁用时global原因优先。复用原DataResult和本次X-Trace-Id，success=false/data=null，不回显配置原值。
 
 禁用时本次请求body读取bytes=0、数据库借用/查询/写入=0，没有新run/定义/回执/解析审计/导出审计/申请、POI文件或AI/SMTP。错误响应的JSON字节不等于文件字节；xlsx拒绝时binaryPhase仍false，不生成伪.xlsx或写后拼接JSON。
 
-缺省/显式true保留原行为，放行不替代权限、TTL/U复验、字段/日期NEED_APPLY、医学或外发批准。file关闭时其余14路仍走原合同，申请可记录，SMTP关闭仍按原FAILED/NOT_CONFIGURED；显式retry只依原状态，不能因开门重发UNKNOWN。旧 `ra.ai.gateway.enabled=false` 独立于global，API开着时parse仍可200/RULE/AI_NOT_ENABLED、候选可显式应用并留安全审计，分析与文件不因此连带停用。
+缺省/显式true保留原行为，放行不替代权限、TTL/U复验、字段/日期NEED_APPLY、医学或外发批准。file关闭时其余22路仍走原合同，申请可记录，SMTP关闭仍按原FAILED/NOT_CONFIGURED；显式retry只依原状态，不能因开门重发UNKNOWN。旧 `ra.ai.gateway.enabled=false` 独立于global，API开着时parse仍可200/RULE/AI_NOT_ENABLED、候选可显式应用并留安全审计，分析与文件不因此连带停用。
 
 原 `ExportController` 的 `/api/ra/export/range`、`/api/ra/export/visitsCsv`、`/api/ra/export/apply` 以及其他旧接口不受两键影响，不能采用路径前缀拦截误封旧接口。本片兼容观测仅为旧range成功、visitsCsv/apply非法日期仍HTTP200业务code=400，不等于完整旧CSV或真实鉴权重新验收。
 
 修改配置文件/PropertySource后必须重新创建context/重启实例；当前实例不热更新。即使旧Environment已可见false，旧实例仍用构造时值；另一个disabled新context拒新请求，旧实例已准入调用仍沿原Service完成。开关不追溯中断、不倒写持久数据或撤回外发；真正销毁context/进程仍遵从原shutdown规则，不保证被销毁实例继续成功或强杀native DNS。
 
 关闭/重开保留同identity的定义/成功回执、分析/比较payload、导出审计以及申请/attempt/from/to；旧结果仅在原TTL内可重读，过期410/清理后404与完整U变化409保持，重开不延寿/重建旧ID。同参apply重放只读原回执，UNKNOWN/SENT不重发，FAILED仅显式retry经原claim获得新attempt；SENT只说明SMTP受理，WRITTEN只说明本地写出，均不代表送达、审批或文件grant。
+
+当前四页共享上述身份/范围/门：患者与访视 ID 是字符串；私有定义动态重开，保留引用与比较/文件仍沿原 TTL 与全 U 复验。重建 context 后使用真实认证取得 typed Cookie；容器是否保存会话不构成本协议保证。问答开关 `ra.ai.chat.enabled` 及 `ra.ai.chat.aggregate-outbound-approved` / `ra.ai.chat.clinical-outbound-approved` 默认 false，parse 许可不打开 chat，模型不能修改 scope。
 
 SQL清单、配置关闭、状态留存及整组应用回退前提见 [AI队列发布与回滚手册](AI队列发布与回滚手册.md)。真实目标库预演/部署/回退和真实接入、医学统计/字段日期发布仍由 [唯一登记的八项接收义务](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务) 接收；开关和合成context重建不授予生产发布资格。
 

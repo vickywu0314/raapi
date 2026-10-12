@@ -3,6 +3,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 /** 首连接核库决策在任何DDL前执行，字符串负例无需触碰其他库。 */
 class WebLoopbackApiFixtureTest {
+    @Test void currentAnalysisAssemblesExactTwentyThreeControllersWithTypedIdentity()throws Exception {
+        WebLoopbackApiFixture fixture=new WebLoopbackApiFixture();fixture.scenario="p07-current";assertTrue(fixture.typedScenario());assertTrue(fixture.parseScenario());assertEquals("seed-overview.sql",WebLoopbackApiFixture.seedForScenario(fixture.scenario));
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();org.springframework.web.context.support.AnnotationConfigWebApplicationContext context=compositionUnitContext(fixture,connections,"false","false");
+        try{context.refresh();java.util.Set<String> actual=new java.util.TreeSet<>();for(org.springframework.web.servlet.mvc.method.RequestMappingInfo info:context.getBean(org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class).getHandlerMethods().keySet())actual.addAll(info.getPatternsCondition().getPatterns());assertEquals(23,actual.size());assertEquals(new java.util.TreeSet<>(WebLoopbackApiFixture.CURRENT_PATHS),actual);assertTrue(context.getBean(com.wenwen.ai.scope.PrincipalProvider.class) instanceof com.wenwen.ai.scope.SessionPrincipalProvider);assertTrue(context.getBean(com.wenwen.ai.treatment.DrugDictionary.class) instanceof com.wenwen.ai.treatment.ConfiguredDrugDictionary);for(String path:actual){assertTrue(WebLoopbackApiFixture.allowsHttpPath(fixture.scenario,path));assertFalse(WebLoopbackApiFixture.allowsHttpPath(fixture.scenario,path+"/"));}assertEquals(0,connections.get());}finally{context.close();}assertEquals(0,connections.get());assertFalse(context.isActive());
+    }
     @Test void currentExportUsesTypedProductionSourcesAndExactRoutesWithoutGateway()throws Exception{
         WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="p06-current";
         assertTrue(f.typedScenario());assertEquals("seed-overview.sql",WebLoopbackApiFixture.seedForScenario(f.scenario));

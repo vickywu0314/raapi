@@ -43,6 +43,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     static final String APPLICATION_REASON_CANARY="ordinary-application-canary";
     static final String SMTP_FROM="fixture-from@notification.invalid",SMTP_TO="fixture-admin@notification.invalid";
     static final List<String> COMPOSITION_PATHS=Collections.unmodifiableList(Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/resolveEntry","/api/ra/ai/parse","/api/ra/ai/applyParse","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification"));
+    static final List<String> CURRENT_PATHS;
+    static {List<String> paths=new ArrayList<>(COMPOSITION_PATHS);paths.addAll(Arrays.asList("/api/ra/ai/overview","/api/ra/ai/patientSearch","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientSensitive","/api/ra/ai/patientAuditLogs","/api/ra/ai/patientInsight","/api/ra/ai/chat"));CURRENT_PATHS=Collections.unmodifiableList(paths);}
     static final Instant COMPOSITION_DAY_BEFORE=Instant.parse("2026-10-31T15:59:59.999Z"),COMPOSITION_DAY_AFTER=Instant.parse("2026-10-31T16:00:00Z");
     static final ObjectMapper JSON = new ObjectMapper();
     final List<String> ownedTables = new ArrayList<>();
@@ -59,13 +61,16 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     boolean peerPlanDiscarded;
     NotificationSmtpPeer applicationPeer;
     boolean compositionGlobalEnabled=true,compositionFileEnabled=true;
+    boolean currentChatEnabled=true,currentAggregateApproved=true,currentClinicalApproved=true;
     int compositionPort;
     File compositionBase;
     String compositionIdentity;
     boolean compositionSqlFailure;
     java.util.concurrent.atomic.AtomicInteger compositionWrites=new java.util.concurrent.atomic.AtomicInteger();
     static boolean compositionScenario(String scenario){return "p07-composition".equals(scenario)||"p07-composition-time".equals(scenario);}
-    boolean currentExportScenario(){return "p06-current".equals(scenario);}
+    boolean currentAnalysisScenario(){return "p07-current".equals(scenario);}
+    boolean retainedContextScenario(){return compositionScenario()||currentAnalysisScenario();}
+    boolean currentExportScenario(){return "p06-current".equals(scenario)||"p07-current".equals(scenario);}
     boolean typedScenario(){return currentExportScenario()||"p00-trusted".equals(scenario)||"p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario);}
     boolean compositionScenario(){return compositionScenario(scenario);}
     static boolean applicationScenario(String scenario){return Arrays.asList("p06-application-replay","p06-application-retry","p06-application-unknown").contains(scenario);}
@@ -76,7 +81,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if("p06-application-unknown".equals(scenario))return NotificationSmtpPeer.Mode.DATA_SILENT;
         throw new IllegalArgumentException("未知申请场景");
     }
-    boolean parseScenario(){return Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety","p07-entry").contains(scenario)||compositionScenario();}
+    boolean parseScenario(){return Arrays.asList("p05-rule","p05-safety","p05-apply-rule","p05-apply-safety","p07-entry").contains(scenario)||compositionScenario()||"p07-current".equals(scenario);}
     final ScenarioClock scenarioClock=new ScenarioClock();
     final java.util.concurrent.atomic.AtomicLong scenarioDoctor=new java.util.concurrent.atomic.AtomicLong(101);
     long controlSeq;
@@ -93,8 +98,9 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         void advanceTtl(){now.updateAndGet(instant->instant.plusMillis(900000));}
     }
     final List<AiGatewayLoopbackPeer.Exchange> chatPlans=new ArrayList<>();
+    final List<AiGatewayLoopbackPeer.Exchange> chatHistory=new ArrayList<>();
     void planChat(String focus)throws Exception {
-        for(AiGatewayLoopbackPeer.Exchange e:chatPlans)if(e.received.getCount()==1)chatPeer.discardUnused(e);chatPlans.clear();
+        for(AiGatewayLoopbackPeer.Exchange e:chatPlans){if(e.received.getCount()==1)chatPeer.discardUnused(e);else if(currentAnalysisScenario())chatHistory.add(e);}chatPlans.clear();
         List<String> keys="CHAT_VISIT".equals(focus)?Arrays.asList("VISIT_MEASUREMENTS","VISIT_MEDICATION"):"CHAT_COURSE".equals(focus)?Arrays.asList("PATIENT_COURSE","PATIENT_CLINICAL","PATIENT_TREATMENT"):Collections.singletonList("TARGET_RATE");
         String content=JSON.writeValueAsString(com.wenwen.vo.AiCohortVo.object("status","ANSWER","factKeys",keys,"reason",null));for(int i=0;i<32;i++)chatPlans.add(chatPeer.json(JSON.writeValueAsString(com.wenwen.vo.AiCohortVo.object("object","chat.completion","choices",Collections.singletonList(com.wenwen.vo.AiCohortVo.object("index",0,"finish_reason","stop","message",com.wenwen.vo.AiCohortVo.object("role","assistant","content",content)))))));
     }
@@ -108,7 +114,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         String[] parts=line.split(" ",-1);Long sequence=null;
         if(parts.length==3 && parts[0].equals("CONTROL") && parts[1].matches("[1-9][0-9]{0,15}"))sequence=Long.parseLong(parts[1]);
         boolean accepted=false;
-        if(sequence!=null&&"p05-chat".equals(scenario)&&!closed&&sequence==controlSeq+1&&Arrays.asList("CHAT_PATIENT_SEED","CHAT_VISIT","CHAT_COURSE","CHAT_AGGREGATE").contains(parts[2])){if("CHAT_PATIENT_SEED".equals(parts[2]))seedPatientChat();else planChat(parts[2]);controlSeq=sequence;accepted=true;}
+        if(sequence!=null&&("p05-chat".equals(scenario)||currentAnalysisScenario())&&!closed&&sequence==controlSeq+1&&Arrays.asList("CHAT_PATIENT_SEED","CHAT_VISIT","CHAT_COURSE","CHAT_AGGREGATE").contains(parts[2])){if("CHAT_PATIENT_SEED".equals(parts[2])){if(currentAnalysisScenario())throw new IllegalArgumentException("当前六人源禁止重seed");seedPatientChat();}else planChat(parts[2]);controlSeq=sequence;accepted=true;}
 
         if(sequence!=null&&(scenario.equals("p05-safety")||scenario.equals("p05-apply-safety"))&&sequence==controlSeq+1&&parts[2].equals("PARSE_PEER_ASSERT")) {
             if(parsePeer==null||parsePeerPlan==null||parsePeer.requests.get()!=0||parsePeerPlan.received.getCount()!=1||parsePeer.failure.get()!=null)throw new AssertionError("解析安全门未保护已排计划peer");
@@ -130,7 +136,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             if(parts[2].equals("SMTP_SUCCESS")&&scenario.equals("p06-application-retry")){applicationPeer.mode=NotificationSmtpPeer.Mode.SUCCESS;controlSeq=sequence;accepted=true;}
             else if(parts[2].equals("SMTP_ASSERT")){assertApplicationPeer();controlSeq=sequence;accepted=true;}
         }
-        if(sequence!=null&&compositionScenario()&&!closed&&sequence==controlSeq+1) {
+        if(sequence!=null&&retainedContextScenario()&&!closed&&sequence==controlSeq+1) {
             String command=parts[2];
             if(Arrays.asList("REBUILD_GLOBAL_OFF","REBUILD_BOTH_OFF","REBUILD_FILE_OFF","REBUILD_ENABLED").contains(command)) {
                 rebuildComposition(!command.equals("REBUILD_GLOBAL_OFF")&&!command.equals("REBUILD_BOTH_OFF"),!command.equals("REBUILD_FILE_OFF")&&!command.equals("REBUILD_BOTH_OFF"));accepted=true;
@@ -219,7 +225,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 for(String row:((scenario.equals("p01-overview")||scenario.equals("p03-sources")||scenario.equals("p05-chat")||currentExportScenario())?resource(seedForScenario(scenario)):com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("seed.sql")).split(";"))if(!row.trim().isEmpty())statement.execute(row);
                 if("p03-sources".equals(scenario)||"p05-chat".equals(scenario)||currentExportScenario())statement.execute("UPDATE patient_follow_up_history SET zlfa=REPLACE(zlfa,'依那西普','synthetic-brand-A') WHERE patient_basic_info_id=2 AND id IN(210,220)");
                 try(InputStream in=getClass().getResourceAsStream("/ai-cohort/p03c/schema.sql")){statement.execute(new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim());ownedTables.add("ra_ai_analysis_run");event("table-owned","table","ra_ai_analysis_run");}
-                if("p05-chat".equals(scenario))try(InputStream in=getClass().getResourceAsStream("/sql/20261012_ai_chat_audit.sql")){String ddl=new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim().replace("CREATE TABLE IF NOT EXISTS","CREATE TABLE");statement.execute(ddl);ownedTables.add("ra_ai_chat_audit");event("table-owned","table","ra_ai_chat_audit");}
+                if("p05-chat".equals(scenario)||currentAnalysisScenario())try(InputStream in=getClass().getResourceAsStream("/sql/20261012_ai_chat_audit.sql")){String ddl=new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim().replace("CREATE TABLE IF NOT EXISTS","CREATE TABLE");statement.execute(ddl);ownedTables.add("ra_ai_chat_audit");event("table-owned","table","ra_ai_chat_audit");}
+                if("p07-current".equals(scenario))createParseAuditTable(statement);
                 if(currentExportScenario()){createPrivateTables(statement);createComparisonTables(statement);createExportAuditTable(statement);createApplicationTables(statement);}
                 event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
             }return;
@@ -241,6 +248,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        if("p07-current".equals(scenario))return CURRENT_PATHS.contains(path)||Arrays.asList("/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p06-current".equals(scenario))return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p05-chat".equals(scenario))return Arrays.asList("/api/ra/ai/chat","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientInsight","/api/ra/ai/patientSearch","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p03-sources".equals(scenario)&&Arrays.asList("/api/ra/ai/patientInsight","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/resolveEntry").contains(path))return true;
@@ -258,7 +266,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             || ("p04".equals(scenario)&&Arrays.asList("/api/ra/ai/compare","/api/ra/ai/compareResult").contains(path));
     }
     static String seedForScenario(String scenario) {
-        if("p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario)||"p06-current".equals(scenario))return "seed-overview.sql";
+        if("p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario)||"p06-current".equals(scenario)||"p07-current".equals(scenario))return "seed-overview.sql";
         if("p00-trusted".equals(scenario))return "seed.sql";
         if("default".equals(scenario))return "seed.sql";
         if("p01b".equals(scenario)||"p03".equals(scenario)||"p05-rule".equals(scenario)||"p05-safety".equals(scenario))return "seed-p01b.sql";
@@ -492,7 +500,21 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean public AiExportApplicationMapper applicationMapper(SqlSessionTemplate t){return t.getMapper(AiExportApplicationMapper.class);}
         @Bean public AiExportAuditMapper exportMapper(SqlSessionTemplate t){return t.getMapper(AiExportAuditMapper.class);}
     }
+    @Configuration @EnableWebMvc
+    @Import({com.wenwen.controller.ra.AiParseController.class,com.wenwen.service.impl.AiParseServiceImpl.class,com.wenwen.ai.parse.ParseAuditStore.class,com.wenwen.config.AiParseGatewayConfiguration.class,com.wenwen.config.AiChatConfiguration.class})
+    public static class CurrentAnalysisInfrastructure extends CurrentExportInfrastructure {
+        @Override @Bean public SqlSessionFactory sqlSessionFactory(DataSource ds)throws Exception {
+            SqlSessionFactoryBean f=new SqlSessionFactoryBean();f.setDataSource(ds);
+            String[] names={"ProjectMapper","AiCohortSourceMapper","AiAnalysisRunMapper","PatientMapper","AuditLogMapper","VisitMapper","PrivateCohortMapper","AiComparisonRunMapper","AiExportAuditMapper","ExportMapper","AiExportApplicationMapper","AiParseAuditMapper","AiChatAuditMapper"};
+            Resource[] resources=new Resource[names.length];for(int i=0;i<names.length;i++)resources[i]=new ClassPathResource("mybatis/"+names[i]+".xml");f.setMapperLocations(resources);
+            org.apache.ibatis.session.Configuration c=new org.apache.ibatis.session.Configuration();c.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);f.setConfiguration(c);return f.getObject();
+        }
+        @Bean public AiParseAuditMapper parseAuditMapper(SqlSessionTemplate t){return t.getMapper(AiParseAuditMapper.class);}
+        @Bean public AiChatAuditMapper chatMapper(SqlSessionTemplate t){return t.getMapper(AiChatAuditMapper.class);}
+        @Bean @org.springframework.context.annotation.Primary public ChatHttpFixture.ChatObservedDataSource chatObserved(DataSource source){return new ChatHttpFixture.ChatObservedDataSource(source);}
+    }
     Class<?> contextConfiguration() {
+        if("p07-current".equals(scenario))return CurrentAnalysisInfrastructure.class;
         if(currentExportScenario())return CurrentExportInfrastructure.class;
         if("p05-chat".equals(scenario))return ChatInfrastructure.class;
         if("p03-sources".equals(scenario))return ConfiguredSourcesInfrastructure.class;
@@ -502,7 +524,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         return applicationScenario()?ApplicationInfrastructure.class:scenario.equals("p06-comparison")?ComparisonExportInfrastructure.class:scenario.equals("p06-cohort")?ExportInfrastructure.class:parseScenario()?ParseInfrastructure.class:scenario.equals("p04")?ComparisonInfrastructure.class:scenario.equals("p03")?PrivateInfrastructure.class:Infrastructure.class;
     }
     int start(String identity, boolean sqlFailure, File base) throws Exception {
-        if(compositionScenario()) {
+        if(retainedContextScenario()) {
             if(compositionBase==null){compositionBase=base;compositionIdentity=identity;compositionSqlFailure=sqlFailure;scenarioDoctor.set(identity.equals("synthetic")?101:0);if(scenario.equals("p07-composition-time"))scenarioClock.now.set(COMPOSITION_DAY_BEFORE);}
             if(observed==null)observed=new ObservedDataSource(compositionObservedSource(raw));
         } else observed=new ObservedDataSource(("p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario)||currentExportScenario())?compositionObservedSource(raw):raw);
@@ -512,7 +534,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         // Servlet property sources are unpopulated here; remove defaults rather than consulting the host.
         for(String name:new String[]{"systemProperties","systemEnvironment","servletContextInitParams","servletConfigInitParams","jndiProperties"}) sources.remove(name);
         Map<String,Object> properties=new LinkedHashMap<>();
-        properties.put("ra.ai.api.enabled",compositionScenario()?String.valueOf(compositionGlobalEnabled):"true");properties.put("ra.export.xlsx.enabled",compositionScenario()?String.valueOf(compositionFileEnabled):(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario()||currentExportScenario())?"true":"false");
+        properties.put("ra.ai.api.enabled",retainedContextScenario()?String.valueOf(compositionGlobalEnabled):"true");properties.put("ra.export.xlsx.enabled",retainedContextScenario()?String.valueOf(compositionFileEnabled):(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario()||currentExportScenario())?"true":"false");
         properties.put("ra.ai.gateway.enabled","false");properties.put("ra.ai.gateway.outbound-approved","false");
         properties.put("ra.ai.analysis.result-ttl-seconds","900");properties.put("ra.ai.analysis.result-max-bytes","8388608");
         properties.put("ra.ai.analysis.cursor-key-base64","MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
@@ -530,9 +552,9 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             if(applicationPeer==null){applicationPeer=new NotificationSmtpPeer(NotificationSmtpPeer.Mode.SUCCESS);event("application-peer-planned","mode",applicationPeer.mode.name(),"host","127.0.0.1","smtpMode","LOOPBACK_PLAIN","auth",false,"recipientDomain","notification.invalid");}
             properties.putAll(applicationSmtpProperties(applicationPeer.port()));
         }
-        if("p05-chat".equals(scenario)){
-            chatPeer=new AiGatewayLoopbackPeer();planChat("CHAT_AGGREGATE");
-            properties.put("ra.ai.chat.enabled","true");properties.put("ra.ai.chat.aggregate-outbound-approved","true");properties.put("ra.ai.chat.clinical-outbound-approved","true");properties.put("ra.ai.chat.synthetic-loopback","true");properties.put("ra.ai.chat.endpoint",chatPeer.endpoint());properties.put("ra.ai.chat.model","p05a-synthetic-model");properties.put("ra.ai.chat.api-key","p05a-loopback-key");event("chat-peer-planned","responses",32);
+        if("p05-chat".equals(scenario)||currentAnalysisScenario()){
+            if(chatPeer==null){chatPeer=new AiGatewayLoopbackPeer();planChat("CHAT_AGGREGATE");}
+            properties.put("ra.ai.chat.enabled",String.valueOf(currentChatEnabled));properties.put("ra.ai.chat.aggregate-outbound-approved",String.valueOf(currentAggregateApproved));properties.put("ra.ai.chat.clinical-outbound-approved",String.valueOf(currentClinicalApproved));properties.put("ra.ai.chat.synthetic-loopback","true");properties.put("ra.ai.chat.endpoint",chatPeer.endpoint());properties.put("ra.ai.chat.model","p05a-synthetic-model");properties.put("ra.ai.chat.api-key","p05a-loopback-key");event("chat-peer-planned","responses",32);
         }
         sources.addFirst(new MapPropertySource("synthetic-only",properties));
         application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("observedDataSource",observed));
@@ -545,7 +567,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if(compositionScenario()||currentExportScenario())application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
         application.register(contextConfiguration());
         tomcat=new Tomcat();tomcat.setBaseDir(base.getAbsolutePath());
-        tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(compositionScenario()?compositionPort:0);
+        tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(retainedContextScenario()?compositionPort:0);
         Context context=tomcat.addContext("",base.getAbsolutePath());
         context.setParentClassLoader(WebLoopbackApiFixture.class.getClassLoader());
         DispatcherServlet dispatcher=new DispatcherServlet(application);
@@ -587,14 +609,14 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         List<String> names=new ArrayList<>();for(org.springframework.core.env.PropertySource<?> source:sources)names.add(source.getName());
         if(sources.contains("systemProperties")||sources.contains("systemEnvironment"))throw new IllegalStateException("环境隔离失败");
         int gatewayBeans=0;
-        for(String name:application.getBeanDefinitionNames())if(name.toLowerCase(Locale.ROOT).contains("gateway")){if(!parseScenario()&&!("p05-chat".equals(scenario)&&"chatGateway".equals(name)))throw new IllegalStateException("不应装配gateway");gatewayBeans++;}
+        for(String name:application.getBeanDefinitionNames())if(name.toLowerCase(Locale.ROOT).contains("gateway")){if(!parseScenario()&&!(("p05-chat".equals(scenario)||currentAnalysisScenario())&&"chatGateway".equals(name)))throw new IllegalStateException("不应装配gateway");gatewayBeans++;}
         if(parseScenario()&&(application.getBeansOfType(com.wenwen.ai.parse.AiParseGateway.class).size()!=1||application.getBeansOfType(com.wenwen.ai.parse.AiGatewaySettings.class).size()!=1||application.getBeansOfType(com.wenwen.ai.parse.ParseAuditStore.class).size()!=1))throw new IllegalStateException("解析最小装配不符");
         event("context-isolated","propertySources",names,"gatewayBeans",gatewayBeans,"identity",identity);
-        if(compositionScenario()) {
+        if(retainedContextScenario()) {
             String failure=application.getBean(com.wenwen.ai.parse.AiParseGateway.class).parse("女性",new com.wenwen.ai.parse.RuleParser().parse("女性"),new TrustedDoctor(101)).getFallback();
             if(!"AI_NOT_ENABLED".equals(failure)||parsePeer!=null)throw new IllegalStateException("组合fixture不得开启AI外发");
             compositionPort=tomcat.getConnector().getLocalPort();
-            event("composition-context","port",compositionPort,"globalEnabled",compositionGlobalEnabled,"fileEnabled",compositionFileEnabled,"paths",COMPOSITION_PATHS,"gatewayFailure",failure,"gatewayEnabled",false,"gatewayOutboundApproved",false,"parsePeerPresent",false,"epochMs",scenarioClock.instant().toEpochMilli());
+            event("composition-context","port",compositionPort,"globalEnabled",compositionGlobalEnabled,"fileEnabled",compositionFileEnabled,"paths",currentAnalysisScenario()?CURRENT_PATHS:COMPOSITION_PATHS,"gatewayFailure",failure,"gatewayEnabled",false,"gatewayOutboundApproved",false,"parsePeerPresent",false,"epochMs",scenarioClock.instant().toEpochMilli());
         }
         return tomcat.getConnector().getLocalPort();
     }
@@ -641,7 +663,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             // 这些read均使用外层raw；不混入生产请求borrow/select计数。
             try(ResultSet database=statement.executeQuery("SELECT DATABASE()")){if(!database.next()||!"ra_synthetic_test".equals(database.getString(1)))throw new IllegalStateException("组合重建库发生变化");}
             for(String table:ownedTables) {
-                if(!table.matches("[a-z_]+"))throw new IllegalStateException("非owned表名");
+                if(!table.matches("[a-z_]+")&&!"`user`".equals(table))throw new IllegalStateException("非owned表名");
                 List<String> rows=new ArrayList<>();StringBuilder header=new StringBuilder();
                 try(ResultSet result=statement.executeQuery("SELECT * FROM "+table)) {
                     ResultSetMetaData metadata=result.getMetaData();int columns=metadata.getColumnCount();
@@ -674,7 +696,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         if(first!=null)throw first;application=null;tomcat=null;
     }
     void rebuildComposition(boolean global,boolean file) throws Exception {
-        if(!compositionScenario()||application==null||!application.isActive()||compositionBase==null)throw new IllegalStateException("组合重建没有活动owner");
+        if(!retainedContextScenario()||application==null||!application.isActive()||compositionBase==null)throw new IllegalStateException("组合重建没有活动owner");
         Map<String,Object> before=compositionRows();DataSource sameRaw=raw;ScenarioClock sameClock=scenarioClock;NotificationSmtpPeer samePeer=applicationPeer;List<String> sameTables=new ArrayList<>(ownedTables);int samePort=compositionPort;
         stopCompositionContext();
         // 从旧context真实退出到新context发布前核完整保库；失败不得重seed或假恢复。
@@ -699,7 +721,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     @Override public synchronized void close() throws Exception {
         if(closed)return;closed=true;Exception first=null;
         if(currentExportScenario())try{assertCurrentExportOwners();}catch(Exception|AssertionError e){first=new IllegalStateException("当前导出owner未正常退出",e);}
-        if("p05-chat".equals(scenario)&&application!=null&&application.isActive())try{ChatHttpFixture o=new ChatHttpFixture(){};o.context=application;o.observed=observed;o.auditObserved=application.getBean(ChatHttpFixture.ChatObservedDataSource.class);o.networkExited();o.auditExited();event("chat-owners-observed","active",0,"sqlActive",0,"statements",0,"results",0,"beforeFallback",true);}catch(Exception e){first=e;}
+        if(("p05-chat".equals(scenario)||currentAnalysisScenario())&&application!=null&&application.isActive())try{ChatHttpFixture o=new ChatHttpFixture(){};o.context=application;o.observed=observed;o.auditObserved=application.getBean(ChatHttpFixture.ChatObservedDataSource.class);o.networkExited();o.auditExited();event("chat-owners-observed","active",0,"sqlActive",0,"statements",0,"results",0,"beforeFallback",true);}catch(Exception e){first=e;}
         if(tomcat!=null)try{tomcat.stop();}catch(Exception e){if(first==null)first=e;}
         if(application!=null)try{application.close();}catch(Exception e){if(first==null)first=e;}
         if(parseScenario()&&application!=null)event("parse-context-closed","active",application.isActive());

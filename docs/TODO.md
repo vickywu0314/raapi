@@ -43,10 +43,10 @@
 
 - P05 chat上线前执行 `src/main/resources/sql/20261012_ai_chat_audit.sql` 新append审计DDL；确认生产typed身份、权威源、独立aggregate/clinical出站批准及真实原文处理边界。`ra.ai.chat.enabled` 与两类批准默认关闭，parse许可不足；合成DeepSeek/SQL/Node技术接收不批准真实患者或部署。保留固定源 `chat:cohort-states` / `chat:cohort-loopback` 与 `chat:patient-states` / `chat:patient-loopback` 浏览器补验；患者全程/本次技术实现不批准真实临床出站。
 
-- [ ] **接收P07c启动准入与运行材料**：[发布与回滚手册](AI队列发布与回滚手册.md)拥有两键关闭/重启生效、准确15路身份优先/503/零副作用、六份DDL共7新表逐文件hash及旧申请兼容前置、目标只读核查/逐statement预演与部分成功续作入口。目标host/账号/受控认证、MySQL/InnoDB/短RR/时区/索引、访问留存及已批准当前/回退工件hash/配置版本/真实部署渠道仍须AQC-EXT-04接收；本片不执行目标SQL或生产发布。
+- [ ] **接收当前启动准入与运行材料（历史P07c起点）**：[发布与回滚手册](AI队列发布与回滚手册.md)拥有两键关闭/重启生效、当前准确23路身份优先/503/零副作用、七份DDL共8新表逐文件hash及旧申请兼容前置、目标只读核查/逐statement预演与部分成功续作入口。目标host/账号/受控认证、MySQL/InnoDB/短RR/时区/索引、访问留存及已批准当前/回退工件hash/配置版本/真实部署渠道仍须AQC-EXT-04接收；此待办不执行目标SQL或生产发布。
 - [ ] **接收P07c整组回退与恢复前提**：先关闭新增API/普通XLSX并复用LLM/SMTP原开关，经运维真实渠道生效，再按原进程关闭语义及已核整组工件回退；CRP阈值与全部共享消费者不能局部回退。保留旧患者/访视、新表、定义/回执/有期payload/审计/申请及attempt/from/to，不倒写历史CRP、不drop/recreate或盲重放DDL、UNKNOWN/SENT不开门重发。恢复仍需原TTL/U/权限/医学与外发政策；[API §7.9](API.md#79-启动配置准入与关闭边界)的默认true不是发布批准。八项接收进度只见[唯一登记](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务)。
 
-下方原业务/旧迁移待办保持原有归属；P07c的SQL清单只选择六份新DDL及旧申请兼容核查，不把已有旧迁移/回填列表变成本Flow自动执行清单。
+下方原业务/旧迁移待办保持原有归属；历史P07c片只核六份当时的新DDL及旧申请兼容，当前准入清单为手册七份DDL共8新表。目标SQL仍须DBA逐项批准，不把已有旧迁移/回填列表变成本Flow自动执行清单。
 
 - [ ] **接收P06b申请companion DDL与状态留存**：[20261008_ai_export_request.sql](../src/main/resources/sql/20261008_ai_export_request.sql)仅新增InnoDB/utf8mb4专表，无患者/旧表FK或后台恢复。与现存export_application同短事务创建，主键owner/requestId与applicationId唯一；仅本片旧行mail_to/mail_sent可更新，旧status/CSV/apply不变。DBA接收目标引擎/索引/权限/摘要与自由reason访问留存，再安装表/启用新入口；回滚先关新applyAnalysis/retryNotification和SMTP，不删除旧申请/companion或把UNKNOWN改FAILED。AQC-EXT-04仍OPEN。
 - [ ] **接收P06b真实SMTP和管理员收件**：ra.export.smtp.enabled默认false，生产仅强制STARTTLS/默认信任与hostname；host/port/from与唯一ra.export.apply-mail-to、安全凭据渠道、有限模板由SK/管理员/运维批准。凭据不入仓库/消息/日志；测试PKCS12及LOOPBACK_PLAIN不用于生产。首次绑定to/from后改地址会RECIPIENT_CHANGED。真实无患者通知的SMTP受理与管理员收件分别确认，不能以loopback或SENT自闭AQC-EXT-06；文件字段/日期发布AQC-REL-02仍OPEN。
@@ -55,7 +55,7 @@
 - [ ] **接收P06a普通XLSX审计DDL与对外字段/日期政策**：[20261008_ai_export_audit.sql](../src/main/resources/sql/20261008_ai_export_audit.sql)只新增ra_ai_export_audit（25列/InnoDB/无旧表外键），记录PREPARING/NEED_APPLY/READY生成事实与NOT_STARTED/REJECTED/STARTED/WRITTEN/FAILED传输事实，不是下载许可或送达证明。DBA接收目标版本/权限、索引、访问/留存，再安装新表与入口；回滚先停新xlsx入口，保留已提交审计，不自动删表/事件。AQC-EXT-04保持OPEN。
 - [ ] **接收P06a真实对外发布**：业务/数据负责人确认实际默认15字段/比较12指标、ID/静态字段无日不豁免、显式日期子集、上海月首减6自然月及比较窗外affectedN=整个validN（非实际越窗人数）、metadata/精度/隐私与网络UNKNOWN边界；AQC-REL-02仍OPEN。缺省/绑定6可用，其他可绑定整数仅新接口503；坏文本保持真实bean装配失败。仅共享maxBytes容量，生产旧CSV/申请流程不因开发证据获得新权限；无本片SMTP/后台文件/下载重试。
 
-- [ ] **接收规则解析专用追加审计DDL与访问/留存政策**：[20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql)只新增ra_ai_parse_audit（InnoDB、无旧表外键），保存可信actor/action、白名单普通条件摘要/状态/版本/trace，禁止原问句、其hash、ids/其hash、病例或notice。部署先由DBA核目标版本/权限/留存，再安装表和两路API；缺表时parse/apply失败503、不回部分候选。回滚先停止两路入口，保留已提交事件供审计接收，不自动删表/丢事件；后续受控移除须另行批准留存方案。AQC-EXT-04保持OPEN；模型网关默认禁出站，仅合成loopback协议已验证；真实AI/原文政策仍由AQC-EXT-05接收，技术验证不关闭生产义务。
+- [ ] **接收规则解析专用追加审计DDL与访问/留存政策**：[20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql)只新增ra_ai_parse_audit（InnoDB、无旧表外键），保存可信actor/action、白名单普通条件摘要/状态/版本/trace，禁止原问句、其hash、ids/其hash、病例或notice。部署先由DBA核目标版本/权限/留存，再安装表和两路API；缺表时parse/apply失败503、不回部分候选。回滚先停止两路入口，保留已提交事件供审计接收，不自动删表/丢事件；后续受控移除须另行批准留存方案。AQC-EXT-04保持OPEN；模型网关默认禁出站；原合成loopback协议之外，ai-analysis-real-data/P04及P05四次固定源合成DeepSeek真实服务调用已作限定技术接收，真实临床问题/字段、原文外发和部署政策仍由AQC-EXT-05接收，技术验证不关闭生产义务。
 
 - [ ] **接收P05b真实AI启用与外发政策**：默认ra.ai.gateway.enabled=false/outbound-approved=false；真实启用前由GY/数据安全负责人在安全渠道接收固定endpoint/model/额度与凭据，以及批准的文本范围、部署、原文访问/留存（可明确不存）决定。受控p05b-synthetic-model/p05b-loopback-key只用于字面127.0.0.1，不配置真实key或以合成测试关闭AQC-EXT-05。凭据仅服务器安全注入，禁止仓库/消息/审计/异常/日志保存；不得扩大到自由中文、患者上下文或任意URL。
 - [ ] **接收P05b部署生命周期边界**：正常/可终止socket先真实owner退出再短审计，caller中断503且保flag/无成功事件；最多2个daemon、无队列/重试。5秒是单次网关预算，不是入口/审计/写回SLA。native DNS不可强杀，未退者保真实容量和未terminated状态；不得以RULE/TIMEOUT事件或容器关闭返回误称所有平台资源已退。现成DDL仅版本列实填，无新增表；模型已外发后的审计失败不能撤回HTTP或自动重发。真实身份/目标DB/医学统计/通知与发布义务继续由对应接收owner关闭。
@@ -105,7 +105,7 @@
 - [ ] 疾病分型手动修改（如外院化验没录进系统）：如需要，新建表存医生手动填的分型，手动值优先于按 RF / 抗CCP 算出的值
 - [ ] 其他病史弹窗的当前情况、核心指标、治疗：目前无数据来源，返回 null
 - [ ] 所有写接口在同一事务里调用 `AuditLogService.record(...)` 写修改记录（见 docs/API.md 3.3）
-- [ ] 患者详情 / 访视详情页按钮（下载病历、问问AI、标记脱落、AI 拍照导入）、编辑档案、新增随访：接口未做，前端暂时提示「开发中」或仍为演示页（删除随访、编辑随访已完成）
+- [ ] 患者详情 / 访视详情页的普通下载病历、标记脱落、AI 拍照导入、编辑档案、新增随访仍待接入；可信 AI 来源已提供只读档案/访视/实测病程及本次/全程问答。当前 ALL/COHORT/PATIENT 问答已实现带后台事实/来源，默认出站关闭，真实临床与原文许可仍由 AQC-EXT-05 接收；不新增回答转条件、PDF、CRUD 或审批。
 - [ ] 编辑随访：ACR20/50/70 未重算（需对比上次随访）；图片暂不能上传 / 删除；多选项暂为文本框（「、」分隔），选项清单确认后可改为勾选
 - [ ] 删除随访（逻辑删除）方案待定：随访表加删除标记 + 删除原因；项目总览、患者列表、详情、质控等所有查询都要排除已删除的随访；写修改记录；基线访视后还有其他随访时不能删
 
