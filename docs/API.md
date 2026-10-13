@@ -54,11 +54,11 @@ JSON响应使用下面这个外层结构，业务数据在 `data` 里；文件�
 
 | 接口 | 说明 |
 |---|---|
-| `POST /api/ra/auth/login` | 入参 `username`、`password`、`remember`（true = 会话 30 天，否则 12 小时无操作失效）。成功后建立会话（Cookie `JSESSIONID`），返回 `{username, doctorId, name, role}`；`name` 取 `user.name`。失败 `code=401`「用户名或密码错误」 |
+| `POST /api/ra/auth/login` | 使用本环境配置的账号与密码登录，成功后建立服务端会话；请求字段为 `username`、`password` |
 | `POST /api/ra/auth/me` | 当前登录用户；没登录 / 会话过期 `success=false, code=401`。前端每个页面打开时调一次，401 回登录页 |
 | `POST /api/ra/auth/logout` | 结束会话 |
 
-账号（测试期）：`application.properties` 的 `ra.auth.accounts`，格式「用户名:密码:医生ID」，多个用逗号分隔；现配 `yanwenjing:ra2026:82394`（言文静）。正式账号体系确定后替换 `AuthService.check()`。
+登录账号与密码由部署者通过仓库外受限配置 `ra.auth.accounts` 提供；文档不分发固定密码。开发只使用独立合成测试账号，配置方法见[本地开发与模型配置](本地开发与模型配置.md)。
 会话在后端内存里，后端重启后需重新登录。AI 队列分析（第七节）按会话里的医生鉴权，**不信任请求里传的 doctorId**；其他接口暂时仍按入参 `doctorId`（见 TODO）。
 
 ---
@@ -219,7 +219,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 
 | 字段 | 类型 | 页面列 / 中文含义 | 计算口径 |
 |---|---|---|---|
-| `patientId` | Long | 患者信息 · ID号 | `patient_basic_info.id` |
+| `patientId` | 规范十进制字符串 | 患者信息 · ID号，JSON 中精确表示，不接受 number 回退 | `patient_basic_info.id` |
 | `name` | String | 患者信息 · 姓名 | `name` |
 | `gender` | Integer | 性别编码 | `gender`：1 男 / 2 女 |
 | `sex` | String | 患者信息 · 性别 | 男 / 女；其它值为 `null` |
@@ -264,7 +264,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
         "size": 8,
         "items": [
             {
-                "patientId": 1,
+                "patientId": "1",
                 "studyNo": "RA-20240301-00001",
                 "name": "林书豪",
                 "gender": 1,
@@ -306,7 +306,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 
 ## 三、患者详情页
 
-页面：患者管理 → 点列表中的患者（`patient-visits.html?id=患者ID`）。三个接口都**只能查看自己名下的患者**，不在名下返回 `403`「患者不存在，或不在您名下」。
+页面：患者管理 → 点列表中的患者（`patient-visits.html?id=患者ID`）。3.1 详情按服务端 typed 身份读取本人 RA，不可访问返回 HTTP404；3.2/3.3 保留原路由及医生提示协议，本片不声明其鉴权已闭合。
 
 ### 3.1 患者详情（基本信息 + 随访时间线）
 
@@ -319,8 +319,8 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 
 | 参数 | 类型 | 必填 | 中文含义 |
 |---|---|---|---|
-| `doctorId` | Long | 是 | 当前登录医生 ID |
-| `patientId` | Long | 是 | 患者 ID |
+| `doctorId` | 规范十进制字符串 | 否 | 仅一致性提示；存在时必须等于服务端 typed 会话医生 ID |
+| `patientId` | 规范十进制字符串 | 是 | 单个正十进制 ID，无前导零，最大 Long.MAX_VALUE |
 
 #### 出参（`data` 字段）
 
@@ -357,6 +357,11 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `visits[].visitType` / `baseline` | 访视类型 | 最早 `COALESCE(follow_up_date,followUpDate)` 完整时刻为基线，同完整时刻取小 ID，有日期先于无日期，全无日期取小 ID；其余按同顺序显示「第 N 次随访」 |
 | `visits[].followUpNumber` | 后续访次序号 | 基线 0，后续按上述完整顺序为 1、2…；列表仍完整时刻倒序，无日期最后，显示日期保持 yyyy-MM-dd |
 | `visits[].doctorId` / `doctorName` | 记录医生 ID / 姓名 | `doctor_id`；姓名取 `user.name`，无则 `null`（页面显示 ID） |
+
+
+旧详情方法先验证服务端 `AuthenticatedDoctorSession`，再解析表单；`from/source`、浏览器 doctorId、header 与 principal.name 不授予权限。每次响应含 `X-Trace-Id`。失败 `success=false/data=null`：HTTP401 `UNAUTHENTICATED`、400 `INVALID_REQUEST`（缺失/坏/重复ID）、403 `FORBIDDEN`（医生提示不一致）、404 `RESOURCE_NOT_FOUND`（非本人RA/不存在/删除/撤权）、503 `SERVICE_UNAVAILABLE`（源故障）。成功仍HTTP200/code `200`，完整档案字段保留，普通详情不依赖AI feature开关。
+
+详情 `patientId` 和时间线 `visitId/doctorId` 在 JSON 中为字符串；访视详情 `visitId/patientId/doctorId`、编辑/新增表单 `visitId/patientId` 同样定向为字符串，null 保持 null；内部 Long 与计数不变。`patient_ra_extra` 仅实际 MySQL 缺表1146/42S02兼容null，坏列及其它SQL失败返回503。四页详情请求省略doctorId提示，使用同一30秒页面owner，完成URL对应整组校验后才发布档案/表单，身份撤销或失败清旧状态。其它旧访视/写入路由的授权不因此声明已闭合。
 
 ### 3.2 查看身份证号明文
 
@@ -570,7 +575,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 计算项 | 肿胀 / 压痛关节数、DAS28-CRP / ESR、HAQ 按编辑随访同一算法算；`result.lastCrpScore` / `lastEsrScore` 取上一次随访的结果 |
 | 同步 | 按编辑 / 删除随访同一规则重算患者表、医患关系表的随访次数和首次 / 最近随访日期 |
 | 长度 | 模块 JSON 超过老表字段长度（bsbq 等 2000、bqpg 4000）返回 400 |
-| 出参 | `visitId`、`patientId`、`filledCount` 填写了几个模块 |
+| 出参 | `visitId`、`patientId` 为规范十进制字符串（null 保持 null）；`filledCount` 仍为数字，表示填写了几个模块。新增页核对患者 ID 与入口一致、访视 ID 为规范字符串后才跳转 |
 | 留痕 | 修改记录「新增随访」：访视类型、日期、填写模块数 |
 
 ---

@@ -26,7 +26,7 @@ public abstract class TrustedPatientHttpFixture {
     protected ObservedSource observed;
     protected BodyCounter body;
     protected final ObjectMapper json = new ObjectMapper();
-    @Configuration @EnableWebMvc @Import({AiCohortConfiguration.class,com.wenwen.service.impl.PatientServiceImpl.class,com.wenwen.ai.qc.QcSnapshotReader.class,com.wenwen.service.impl.AuditLogServiceImpl.class,com.wenwen.service.impl.VisitServiceImpl.class})
+    @Configuration @EnableWebMvc @Import({AiCohortConfiguration.class,com.wenwen.service.impl.PatientServiceImpl.class,com.wenwen.ai.qc.QcSnapshotReader.class,com.wenwen.service.impl.AuditLogServiceImpl.class,com.wenwen.service.impl.VisitServiceImpl.class,com.wenwen.controller.ra.PatientController.class,com.wenwen.controller.ra.VisitController.class,com.wenwen.service.impl.PatientWriteServiceImpl.class})
     public static class Infrastructure {
         @Bean public DriverManagerDataSource rawSource() {
             String url=System.getenv("RA_TEST_MYSQL_URL"), user=System.getenv("RA_TEST_MYSQL_USER"), password=System.getenv("RA_TEST_MYSQL_PASSWORD");
@@ -41,11 +41,12 @@ public abstract class TrustedPatientHttpFixture {
         @Bean public org.springframework.transaction.PlatformTransactionManager transactions(DataSource ds){return new DataSourceTransactionManager(ds);}
         @Bean public org.apache.ibatis.session.SqlSessionFactory sqlSessionFactory(DataSource ds)throws Exception{
             org.mybatis.spring.SqlSessionFactoryBean f=new org.mybatis.spring.SqlSessionFactoryBean();f.setDataSource(ds);
-            f.setMapperLocations(new org.springframework.core.io.Resource[]{new org.springframework.core.io.ClassPathResource("mybatis/ProjectMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/PatientMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/AuditLogMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/VisitMapper.xml")});return f.getObject();}
+            f.setMapperLocations(new org.springframework.core.io.Resource[]{new org.springframework.core.io.ClassPathResource("mybatis/ProjectMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/PatientMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/AuditLogMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/VisitMapper.xml"),new org.springframework.core.io.ClassPathResource("mybatis/PatientWriteMapper.xml")});return f.getObject();}
         @Bean public org.mybatis.spring.SqlSessionTemplate template(org.apache.ibatis.session.SqlSessionFactory f){return new org.mybatis.spring.SqlSessionTemplate(f);}
         @Bean public com.wenwen.mapper.PatientMapper patients(org.mybatis.spring.SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.PatientMapper.class);}
         @Bean public com.wenwen.mapper.ProjectMapper projects(org.mybatis.spring.SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.ProjectMapper.class);}
         @Bean public com.wenwen.mapper.VisitMapper visits(org.mybatis.spring.SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.VisitMapper.class);}
+        @Bean public com.wenwen.mapper.PatientWriteMapper patientWrites(org.mybatis.spring.SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.PatientWriteMapper.class);}
         @Bean public com.wenwen.mapper.AuditLogMapper audit(org.mybatis.spring.SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.AuditLogMapper.class);}
     }
     protected final java.util.List<String> ownedTables=new java.util.ArrayList<>();
@@ -73,6 +74,6 @@ public abstract class TrustedPatientHttpFixture {
         context.refresh();raw=context.getBean(DriverManagerDataSource.class);observed=context.getBean(ObservedSource.class);body=new BodyCounter();http=MockMvcBuilders.webAppContextSetup(context).addFilters(body).build();
         try(Connection c=raw.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT DATABASE()")){org.junit.jupiter.api.Assertions.assertTrue(r.next());org.junit.jupiter.api.Assertions.assertEquals("ra_synthetic_test",r.getString(1));}
     }
-    protected void seed()throws Exception{String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log"};int i=0;for(String ddl:resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){sql(ddl);ownedTables.add(tables[i++]);}for(String row:resource("seed.sql").split(";"))if(!row.trim().isEmpty())sql(row);}
+    protected void seed()throws Exception{String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log","patient_ra_extra"};int i=0;for(String ddl:resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){sql(ddl);ownedTables.add(tables[i++]);}for(String row:resource("seed.sql").split(";"))if(!row.trim().isEmpty())sql(row);}
     @AfterEach public void close() throws Exception {try{for(int i=ownedTables.size()-1;i>=0;i--)sql("DROP TABLE "+ownedTables.get(i));}finally{if(context!=null)context.close();}}
 }

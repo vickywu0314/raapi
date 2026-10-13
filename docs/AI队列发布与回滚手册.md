@@ -118,14 +118,14 @@ ra.export.smtp.enabled=false
 - 定义与成功回执长期保留；逻辑删除释放活动名称，不物理删回执，不恢复被删定义。
 - 分析/比较按原共享TTL，创建时仅本表限清1000条过期行；无请求不承诺整点物理清除，已清缺行404、到期仍按原410。重开不延寿或重建旧ID。
 - 解析审计、导出审计、旧申请/companion的访问权限、自由reason与摘要留存由外部owner接收；开关不增加查询/恢复管理API，不自动删除审计或申请。
-- DDL部署账号与运行账号分离，按目标环境审批最小权限。运行新表分析/比较需SELECT/INSERT/DELETE，定义需SELECT/INSERT/UPDATE、成功回执SELECT/INSERT、解析审计INSERT、导出审计INSERT/UPDATE、companion SELECT/INSERT/UPDATE。旧源保持SELECT；申请只INSERT旧表并更新本片创建行的mail_to/mail_sent，不能获准批改旧status或旧患者/访视。
+- DDL部署账号与运行账号分离，按目标环境审批最小权限。运行新表分析/比较需SELECT/INSERT/DELETE，定义需SELECT/INSERT/UPDATE、成功回执SELECT/INSERT、解析审计INSERT、问答审计INSERT、导出审计INSERT/UPDATE、companion SELECT/INSERT/UPDATE。旧源保持SELECT；申请只INSERT旧表并更新本片创建行的mail_to/mail_sent，不能获准批改旧status或旧患者/访视。
 
 ## 5. DBA只读核查与受控预演
 
 先将账号、库与受控认证文件经安全渠道填写并核实，再执行；认证文件不得放仓库或公开输出。下列命令是形状，未提供目标值，不代表已连接或执行。`--defaults-extra-file` 必须作为mysql的第一个选项，不把密码放命令行或环境示例。
 
 ```sh
-# 从仓库根核对六个新文件及旧前置；不能用目录通配执行所有历史SQL。
+# 从仓库根核对七个新文件及旧前置；不能用目录通配执行所有历史SQL。
 sha256sum \
  raapi/src/main/resources/sql/20261007_ai_analysis_run.sql \
  raapi/src/main/resources/sql/20261008_private_cohort_definition.sql \
@@ -133,6 +133,7 @@ sha256sum \
  raapi/src/main/resources/sql/20261008_ai_parse_audit.sql \
  raapi/src/main/resources/sql/20261008_ai_export_audit.sql \
  raapi/src/main/resources/sql/20261008_ai_export_request.sql \
+ raapi/src/main/resources/sql/20261012_ai_chat_audit.sql \
  raapi/src/main/resources/sql/20261006_export_application.sql
 
 # DBA核实AUTH_FILE、TARGET_DB、目标连接及权限后，在批准的受控渠道保存结果。

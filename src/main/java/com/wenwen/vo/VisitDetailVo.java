@@ -1,6 +1,8 @@
 package com.wenwen.vo;
 
 import java.util.List;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -31,12 +33,14 @@ public class VisitDetailVo {
 	@ApiModelProperty("7 个病历模块，按页面顺序（病史病情、辅助检查、病情评估、中医诊断、治疗方案、不良反应、不良事件）")
 	private List<VisitModuleVo> modules;
 
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getVisitId() {
 		return visitId;
 	}
 	public void setVisitId(Long visitId) {
 		this.visitId = visitId;
 	}
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getPatientId() {
 		return patientId;
 	}
@@ -61,6 +65,7 @@ public class VisitDetailVo {
 	public void setBaseline(boolean baseline) {
 		this.baseline = baseline;
 	}
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getDoctorId() {
 		return doctorId;
 	}

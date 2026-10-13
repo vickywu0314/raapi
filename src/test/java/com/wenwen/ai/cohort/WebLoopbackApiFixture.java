@@ -71,7 +71,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     boolean currentAnalysisScenario(){return "p07-current".equals(scenario);}
     boolean retainedContextScenario(){return compositionScenario()||currentAnalysisScenario();}
     boolean currentExportScenario(){return "p06-current".equals(scenario)||"p07-current".equals(scenario);}
-    boolean typedScenario(){return currentExportScenario()||"p00-trusted".equals(scenario)||"p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario);}
+    boolean typedScenario(){return "issue1-detail".equals(scenario)||currentExportScenario()||"p00-trusted".equals(scenario)||"p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario);}
     boolean compositionScenario(){return compositionScenario(scenario);}
     static boolean applicationScenario(String scenario){return Arrays.asList("p06-application-replay","p06-application-retry","p06-application-unknown").contains(scenario);}
     boolean applicationScenario(){return applicationScenario(scenario);}
@@ -220,7 +220,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     void schema() throws Exception {
         if(typedScenario()){
             try(Connection c=preparationConnection();Statement statement=c.createStatement()){
-                verifyDatabase(c);String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log"};int i=0;
+                verifyDatabase(c);String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log","patient_ra_extra"};int i=0;
                 for(String ddl:com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){statement.execute(ddl);ownedTables.add(tables[i++]);event("table-owned","table",ownedTables.get(ownedTables.size()-1));}
                 for(String row:((scenario.equals("p01-overview")||scenario.equals("p03-sources")||scenario.equals("p05-chat")||currentExportScenario())?resource(seedForScenario(scenario)):com.wenwen.ai.patient.TrustedPatientHttpFixture.resource("seed.sql")).split(";"))if(!row.trim().isEmpty())statement.execute(row);
                 if("p03-sources".equals(scenario)||"p05-chat".equals(scenario)||currentExportScenario())statement.execute("UPDATE patient_follow_up_history SET zlfa=REPLACE(zlfa,'依那西普','synthetic-brand-A') WHERE patient_basic_info_id=2 AND id IN(210,220)");
@@ -248,6 +248,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        if("issue1-detail".equals(scenario))return Arrays.asList("/api/ra/patient/patientDetail","/api/ra/visit/visitDetail","/api/ra/visit/visitEditForm","/api/ra/visit/visitCreateForm","/api/ra/ai/cohort","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p07-current".equals(scenario))return CURRENT_PATHS.contains(path)||Arrays.asList("/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p06-current".equals(scenario))return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p05-chat".equals(scenario))return Arrays.asList("/api/ra/ai/chat","/api/ra/ai/patientDetail","/api/ra/ai/visitDetail","/api/ra/ai/patientInsight","/api/ra/ai/patientSearch","/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/test/session","/api/ra/test/logout").contains(path);
@@ -267,7 +268,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     }
     static String seedForScenario(String scenario) {
         if("p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario)||"p06-current".equals(scenario)||"p07-current".equals(scenario))return "seed-overview.sql";
-        if("p00-trusted".equals(scenario))return "seed.sql";
+        if("p00-trusted".equals(scenario)||"issue1-detail".equals(scenario))return "seed.sql";
         if("default".equals(scenario))return "seed.sql";
         if("p01b".equals(scenario)||"p03".equals(scenario)||"p05-rule".equals(scenario)||"p05-safety".equals(scenario))return "seed-p01b.sql";
         if("p05-apply-rule".equals(scenario)||"p05-apply-safety".equals(scenario))return "seed-p05.sql";
@@ -462,6 +463,16 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean public PrincipalProvider principalProvider(){return new SessionPrincipalProvider();}
     }
     @Configuration @EnableWebMvc
+    @Import({com.wenwen.controller.ra.PatientController.class,com.wenwen.controller.ra.VisitController.class,com.wenwen.service.impl.PatientWriteServiceImpl.class})
+    public static class LegacyPatientInfrastructure extends TrustedPatientInfrastructure {
+        @Override @Bean public SqlSessionFactory sqlSessionFactory(DataSource ds)throws Exception{
+            SqlSessionFactoryBean f=new SqlSessionFactoryBean();f.setDataSource(ds);
+            f.setMapperLocations(new Resource[]{new ClassPathResource("mybatis/ProjectMapper.xml"),new ClassPathResource("mybatis/PatientMapper.xml"),new ClassPathResource("mybatis/VisitMapper.xml"),new ClassPathResource("mybatis/AuditLogMapper.xml"),new ClassPathResource("mybatis/AiCohortSourceMapper.xml"),new ClassPathResource("mybatis/AiAnalysisRunMapper.xml"),new ClassPathResource("mybatis/PatientWriteMapper.xml")});
+            org.apache.ibatis.session.Configuration c=new org.apache.ibatis.session.Configuration();c.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);f.setConfiguration(c);return f.getObject();
+        }
+        @Bean public com.wenwen.mapper.PatientWriteMapper patientWrites(SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.PatientWriteMapper.class);}
+    }
+    @Configuration @EnableWebMvc
     @Import({com.wenwen.controller.ra.AiOverviewController.class,com.wenwen.ai.overview.AiOverviewService.class})
     public static class OverviewInfrastructure extends Infrastructure {
         @Bean public PrincipalProvider principalProvider(){return new SessionPrincipalProvider();}
@@ -514,6 +525,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean @org.springframework.context.annotation.Primary public ChatHttpFixture.ChatObservedDataSource chatObserved(DataSource source){return new ChatHttpFixture.ChatObservedDataSource(source);}
     }
     Class<?> contextConfiguration() {
+        if("issue1-detail".equals(scenario))return LegacyPatientInfrastructure.class;
         if("p07-current".equals(scenario))return CurrentAnalysisInfrastructure.class;
         if(currentExportScenario())return CurrentExportInfrastructure.class;
         if("p05-chat".equals(scenario))return ChatInfrastructure.class;

@@ -278,7 +278,12 @@ public class PatientServiceImpl implements PatientService {
 				d.setConsentSigned(toInteger(extra.get("consentSigned")));
 			}
 		} catch (org.springframework.dao.DataAccessException e) {
-			// patient_ra_extra 未建表
+			// Only the deployed optional table's actual absence is compatible.
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+            if (!(root instanceof java.sql.SQLException)
+                    || ((java.sql.SQLException) root).getErrorCode() != 1146
+                    || !"42S02".equals(((java.sql.SQLException) root).getSQLState())) throw e;
 		}
 		d.setWaistline(blankToNull(str(basic.get("waistline"))));
 		d.setHeartRate(blankToNull(str(basic.get("xl"))));

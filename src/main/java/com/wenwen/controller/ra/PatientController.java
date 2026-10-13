@@ -1,6 +1,10 @@
 package com.wenwen.controller.ra;
 
 import java.util.List;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import com.wenwen.ai.scope.PrincipalProvider;
+import com.wenwen.ai.query.CohortException;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -39,6 +43,9 @@ public class PatientController {
 	private PatientService patientService;
 
 	@Autowired
+	private PrincipalProvider principalProvider;
+
+	@Autowired
 	private PatientWriteService patientWriteService;
 
 	@ApiOperation(value = "患者列表", notes = "患者列表页：列表、模糊查询、筛选、分页、页头汇总；只返回该医生名下患者", response = DataResult.class, httpMethod = "POST")
@@ -72,17 +79,48 @@ public class PatientController {
 
 	@ApiOperation(value = "患者详情", notes = "患者详情页（patient-visits.html）：基本信息 + 常见相关疾病 + 随访时间线；只能查看自己名下患者", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/patientDetail")
-	public DataResult<PatientDetailVo> patientDetail(
-			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
-			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
-		DataResult<PatientDetailVo> result = new DataResult<PatientDetailVo>();
-		try {
-			ok(result, patientService.getPatientDetail(doctorId, patientId));
-		} catch (Exception e) {
-			fail(result, e, "获取患者详情失败");
-		}
-		return result;
-	}
+	public ResponseEntity<DataResult<PatientDetailVo>> patientDetail(HttpServletRequest request) {
+        String trace = UUID.randomUUID().toString();
+        DataResult<PatientDetailVo> result = new DataResult<PatientDetailVo>();
+        int status = 200;
+        try {
+            long doctorId = principalProvider.requireCurrent().getId();
+            long patientId = detailId(request.getParameterValues("patientId"));
+            String[] hint = request.getParameterValues("doctorId");
+            if (hint != null && detailId(hint) != doctorId) {
+                throw new CohortException(403, "FORBIDDEN", "无权访问");
+            }
+            ok(result, patientService.getPatientDetail(doctorId, patientId));
+        } catch (CohortException e) {
+            status = e.getStatus();
+            detailFailure(result, e.getCode(), status == 401 ? "请先登录" : "请求无法完成");
+        } catch (BizException e) {
+            status = 404;
+            detailFailure(result, "RESOURCE_NOT_FOUND", "患者不可访问");
+        } catch (Exception e) {
+            status = 503;
+            detailFailure(result, "SERVICE_UNAVAILABLE", "服务暂不可用");
+        }
+        return ResponseEntity.status(status).header("X-Trace-Id", trace).body(result);
+    }
+
+    private static long detailId(String[] values) {
+        if (values == null || values.length != 1 || !values[0].matches("[1-9][0-9]{0,18}")) {
+            throw new CohortException(400, "INVALID_REQUEST", "请求无效");
+        }
+        try {
+            return Long.parseLong(values[0]);
+        } catch (NumberFormatException e) {
+            throw new CohortException(400, "INVALID_REQUEST", "请求无效");
+        }
+    }
+
+    private static void detailFailure(DataResult<PatientDetailVo> result, String code, String message) {
+        result.setCode(code);
+        result.setMessage(message);
+        result.setSuccess(false);
+        result.setData(null);
+    }
 
 	@ApiOperation(value = "查看身份证号明文", notes = "患者详情页身份证号旁的「眼睛」按钮", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/patientSensitive")

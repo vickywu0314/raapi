@@ -1,5 +1,8 @@
 package com.wenwen.vo;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
@@ -13,12 +16,14 @@ public class VisitCreateResultVo {
 	@ApiModelProperty("填写了几个模块")
 	private int filledCount;
 
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getVisitId() {
 		return visitId;
 	}
 	public void setVisitId(Long visitId) {
 		this.visitId = visitId;
 	}
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getPatientId() {
 		return patientId;
 	}

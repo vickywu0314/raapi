@@ -2,6 +2,8 @@ package com.wenwen.vo;
 
 import java.math.BigDecimal;
 import java.util.List;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -70,6 +72,7 @@ public class PatientItemVo {
     public String getAsState() { return asState; }
     public void setAsState(String value) { asState=value; }
 
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getPatientId() {
 		return patientId;
 	}

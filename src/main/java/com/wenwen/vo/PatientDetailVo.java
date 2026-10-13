@@ -2,6 +2,8 @@ package com.wenwen.vo;
 
 import java.math.BigDecimal;
 import java.util.List;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -124,6 +126,7 @@ public class PatientDetailVo {
 	@ApiModelProperty("随访时间线，最近的在前")
 	private List<VisitItemVo> visits;
 
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getPatientId() {
 		return patientId;
 	}

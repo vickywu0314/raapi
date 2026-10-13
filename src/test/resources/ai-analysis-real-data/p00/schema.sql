@@ -4,3 +4,4 @@ CREATE TABLE patient_follow_up_history (id BIGINT PRIMARY KEY, patient_basic_inf
 CREATE TABLE patient_comorbidity (id BIGINT PRIMARY KEY, patient_id BIGINT, disease_code VARCHAR(30), since_year INT) ENGINE=InnoDB;
 CREATE TABLE `user` (id BIGINT PRIMARY KEY, name VARCHAR(100)) ENGINE=InnoDB;
 CREATE TABLE patient_audit_log (id BIGINT PRIMARY KEY, patient_id BIGINT NOT NULL, visit_id BIGINT, action VARCHAR(50), detail TEXT, operator_name VARCHAR(100), create_time DATETIME) ENGINE=InnoDB;
+CREATE TABLE patient_ra_extra (patient_id BIGINT PRIMARY KEY, diagnosis_informed TINYINT NULL, consent_signed TINYINT NULL) ENGINE=InnoDB;

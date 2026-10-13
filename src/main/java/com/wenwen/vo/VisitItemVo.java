@@ -1,4 +1,6 @@
 package com.wenwen.vo;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -23,6 +25,7 @@ public class VisitItemVo {
 	@ApiModelProperty("记录医生姓名（user.name）；无则 null")
 	private String doctorName;
 
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getVisitId() {
 		return visitId;
 	}
@@ -47,6 +50,7 @@ public class VisitItemVo {
 	public void setBaseline(boolean baseline) {
 		this.baseline = baseline;
 	}
+	@JsonSerialize(using = ToStringSerializer.class)
 	public Long getDoctorId() {
 		return doctorId;
 	}

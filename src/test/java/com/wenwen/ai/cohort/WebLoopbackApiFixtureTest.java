@@ -681,4 +681,31 @@ class WebLoopbackApiFixtureTest {
         }finally{f.close();}assertTrue(f.closed);
     }
 
+    @Test void legacyDetailCookieUsesCurrentSqlAndExactFormIdsOverTcp()throws Exception{
+        assertTrue(WebLoopbackApiFixture.allowsHttpPath("issue1-detail","/api/ra/patient/patientDetail"));
+        WebLoopbackApiFixture f=new WebLoopbackApiFixture();f.scenario="issue1-detail";java.nio.file.Path base=java.nio.file.Files.createTempDirectory("issue1-detail-tcp-");
+        try{
+            f.connect();f.schema();int port=f.start("synthetic",false,base.toFile());
+            assertTrue(f.application.getBean(com.wenwen.ai.scope.PrincipalProvider.class) instanceof com.wenwen.ai.scope.SessionPrincipalProvider);
+            assertEquals(401,tcpForm(port,"/api/ra/patient/patientDetail",null,"patientId=9007199254740993&doctorId=101").status);
+            TcpResponse login=tcp(port,"/api/ra/test/session",null,"");assertEquals(204,login.status);assertNotNull(login.cookie);
+            for(String id:new String[]{"9007199254740992","9007199254740993","9223372036854775807"}){
+                TcpResponse r=tcpForm(port,"/api/ra/patient/patientDetail",login.cookie,"patientId="+id);assertEquals(200,r.status);assertTrue(r.body.contains("\"patientId\":\""+id+"\""));assertEquals(id,WebLoopbackApiFixture.JSON.readTree(r.body).path("data").path("patientId").textValue());
+            }
+            assertEquals(403,tcpForm(port,"/api/ra/patient/patientDetail",login.cookie,"patientId=9007199254740993&doctorId=202").status);
+            for(String route:new String[]{"visitDetail","visitEditForm","visitCreateForm"}){
+                TcpResponse r=tcpForm(port,"/api/ra/visit/"+route,login.cookie,"doctorId=101&"+(route.equals("visitCreateForm")?"patientId=9007199254740993":"visitId=9007199254741003"));assertEquals(200,r.status);
+                com.fasterxml.jackson.databind.JsonNode d=WebLoopbackApiFixture.JSON.readTree(r.body).path("data");assertEquals("9007199254740993",d.path("patientId").textValue());if(!route.equals("visitCreateForm"))assertEquals("9007199254741003",d.path("visitId").textValue());
+            }
+            try(java.sql.Connection c=f.raw.getConnection();java.sql.Statement q=c.createStatement()){q.execute("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=9007199254740993");}
+            assertEquals(404,tcpForm(port,"/api/ra/patient/patientDetail",login.cookie,"patientId=9007199254740993").status);
+            f.observed.failSecondSql=true;assertEquals(503,tcpForm(port,"/api/ra/patient/patientDetail",login.cookie,"patientId=9007199254740992").status);f.observed.failSecondSql=false;
+            assertEquals(204,tcp(port,"/api/ra/test/logout",login.cookie,"").status);f.observed.reset();assertEquals(401,tcpForm(port,"/api/ra/patient/patientDetail",login.cookie,"patientId=bad").status);assertEquals(0,f.observed.borrowed);assertEquals(0,f.observed.active.get());
+        }finally{f.close();}
+        try(java.sql.Connection c=f.raw.getConnection();java.sql.Statement q=c.createStatement();java.sql.ResultSet r=q.executeQuery("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")){assertTrue(r.next());assertEquals(0,r.getInt(1));}
+    }
+    static TcpResponse tcpForm(int port,String path,String cookie,String body)throws Exception{
+        java.net.HttpURLConnection c=(java.net.HttpURLConnection)new java.net.URL("http://127.0.0.1:"+port+path).openConnection();c.setRequestMethod("POST");c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/x-www-form-urlencoded");if(cookie!=null)c.setRequestProperty("Cookie",cookie);
+        try(java.io.OutputStream out=c.getOutputStream()){out.write(body.getBytes("UTF-8"));}TcpResponse r=new TcpResponse();r.status=c.getResponseCode();java.io.InputStream in=r.status>=400?c.getErrorStream():c.getInputStream();r.body="";if(in!=null)try(java.util.Scanner q=new java.util.Scanner(in,"UTF-8").useDelimiter("\\A")){if(q.hasNext())r.body=q.next();}c.disconnect();return r;
+    }
 }
