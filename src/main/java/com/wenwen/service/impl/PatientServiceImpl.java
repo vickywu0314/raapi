@@ -522,7 +522,7 @@ public class PatientServiceImpl implements PatientService {
 		item.setNextDueDate((String) row.get("nextDueDate"));
 		String status = (String) row.get("followStatus");
 		item.setFollowStatus(status);
-        item.setSuspectedLostToFollowUp(com.wenwen.ai.patient.PatientFollowUpPolicy.suspectedLost(status,item.getLastVisitDate(),asOf));
+        item.setSuspectedLostToFollowUp(com.wenwen.ai.patient.PatientFollowUpPolicy.suspectedLost(status,item.getVisitCount(),item.getLastVisitDate(),(String)row.get("createDate"),asOf));
 		item.setFollowStatusLabel(FOLLOW_STATUS.get(status));
 		List<String> missing = new ArrayList<String>();
         for(String code:qc.getMissingCodes()) missing.add(MISSING_ITEMS.get(code));

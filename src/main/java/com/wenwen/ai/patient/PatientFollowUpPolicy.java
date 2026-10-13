@@ -16,5 +16,9 @@ public final class PatientFollowUpPolicy {
     public static boolean suspectedLost(String status,String lastVisitDate,java.time.LocalDate asOf) {
         return !"withdrawn".equals(status)&&lastVisitDate!=null&&java.time.LocalDate.parse(lastVisitDate).isBefore(asOf.minusYears(2));
     }
+    /** 仅真正没有 RA 访视时取建档日期；已有无日期访视不得推断为未访视。 */
+    public static boolean suspectedLost(String status,int visitCount,String lastVisitDate,String createDate,java.time.LocalDate asOf) {
+        return suspectedLost(status,visitCount==0?createDate:lastVisitDate,asOf);
+    }
     public static String visitType(int number) { return number==0?"基线访视":"第 "+number+" 次随访"; }
 }

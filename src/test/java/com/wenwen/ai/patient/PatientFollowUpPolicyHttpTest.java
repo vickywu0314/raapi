@@ -88,4 +88,50 @@ class PatientFollowUpPolicyHttpTest extends TrustedPatientHttpFixture {
         sql("UPDATE patient_follow_up_history SET follow_up_date='2020-01-01' WHERE id=9007199254741001");sql("UPDATE patient_relation_doctor SET miss=1 WHERE doctor_id=101 AND patient_id=9007199254740992 AND research_type=0");
         org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",java.time.Clock.fixed(java.time.Instant.parse("2028-02-29T00:00:00Z"),java.time.ZoneOffset.UTC));JsonNode d=detail(EVEN);assertEquals("withdrawn",d.path("followStatus").asText());assertFalse(d.path("suspectedLostToFollowUp").asBoolean());
     }
+    private void assertLostAcrossReads(boolean lost, int count, String status)throws Exception {
+        PatientService service=context.getBean(PatientService.class);
+        JsonNode trusted=detail(EVEN);
+        assertEquals(lost,trusted.path("suspectedLostToFollowUp").asBoolean(),"可信档案");
+        assertEquals(count,trusted.path("visitCount").asInt());assertEquals(status,trusted.path("followStatus").asText());
+        org.springframework.test.web.servlet.MvcResult legacy=http.perform(post("/api/ra/patient/patientDetail").session(session(101)).param("patientId",Long.toString(EVEN))).andReturn();
+        assertEquals(200,legacy.getResponse().getStatus());
+        assertEquals(lost,json.readTree(legacy.getResponse().getContentAsByteArray()).path("data").path("suspectedLostToFollowUp").asBoolean(),"普通档案");
+        com.wenwen.vo.PatientItemVo listed=service.listPatients(101L,null,null,null,1,200).getItems().stream().filter(p->p.getPatientId()==EVEN).findFirst().get();
+        assertEquals(lost,listed.isSuspectedLostToFollowUp(),"分页列表");assertEquals(status,listed.getFollowStatus());
+        assertEquals(lost,service.listAllPatients(101L).items.stream().filter(p->p.getPatientId()==EVEN).findFirst().get().isSuspectedLostToFollowUp(),"全量列表");
+        assertTrue(service.listPatientIds(101L,null,status,null).contains(EVEN));
+    }
+    @Test void unvisitedOldCreationIsFlaggedThroughRealMapperAndBothDetailRoutes()throws Exception {
+        seed();sql("DELETE FROM patient_follow_up_history WHERE patient_basic_info_id=9007199254740992 AND research_type<>6");
+        sql("UPDATE patient_basic_info SET create_date='2024-10-11 23:59:59',createDate='2026-10-12' WHERE id=9007199254740992");
+        org.springframework.test.util.ReflectionTestUtils.setField(context.getBean(PatientService.class),"clock",java.time.Clock.fixed(java.time.Instant.parse("2026-10-11T16:00:00Z"),java.time.ZoneOffset.UTC));
+        assertLostAcrossReads(true,0,"pending_first"); // 仍有非RA记录，不能阻止无RA访视回退。
+    }
+    @Test void creationFallbackKeepsDatePrecedenceShanghaiLeapAndUnknownBoundaries()throws Exception {
+        seed();sql("DELETE FROM patient_follow_up_history WHERE patient_basic_info_id=9007199254740992 AND research_type<>6");
+        PatientService service=context.getBean(PatientService.class);
+        String[] clocks={"2026-10-11T15:59:59Z","2026-10-11T16:00:00Z","2026-10-11T16:00:00Z","2026-10-11T16:00:00Z","2026-10-11T16:00:00Z","2026-10-11T16:00:00Z","2026-10-11T16:00:00Z","2028-02-29T00:00:00Z","2028-02-29T00:00:00Z"};
+        String[] created={"2024-10-11","2024-10-11","2024-10-12","2024-10-13","2027-01-01",null,null,"2026-02-28","2026-02-27"};
+        String[] camel={null,null,"2020-01-01",null,null,null,"2024-10-11",null,null};
+        boolean[] lost={false,true,false,false,false,false,true,false,true};
+        for(int i=0;i<clocks.length;i++) {
+            sql("UPDATE patient_basic_info SET create_date="+(created[i]==null?"NULL":"'"+created[i]+"'")+",createDate="+(camel[i]==null?"NULL":"'"+camel[i]+"'")+" WHERE id=9007199254740992");
+            org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",java.time.Clock.fixed(java.time.Instant.parse(clocks[i]),java.time.ZoneOffset.UTC));
+            assertLostAcrossReads(lost[i],0,"pending_first");
+        }
+        sql("UPDATE patient_basic_info SET create_date='2020-01-01' WHERE id=9007199254740992");
+        sql("UPDATE patient_relation_doctor SET miss=1 WHERE doctor_id=101 AND patient_id=9007199254740992 AND research_type=0");
+        assertLostAcrossReads(false,0,"withdrawn");
+    }
+    @Test void oldCreationNeverSubstitutesForAnExistingUndatedOrRecentRaVisit()throws Exception {
+        seed();sql("UPDATE patient_basic_info SET create_date='2020-01-01' WHERE id=9007199254740992");
+        PatientService service=context.getBean(PatientService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",java.time.Clock.fixed(java.time.Instant.parse("2026-10-12T00:00:00Z"),java.time.ZoneOffset.UTC));
+        assertLostAcrossReads(false,1,"active");
+        sql("UPDATE patient_follow_up_history SET follow_up_date=NULL,followUpDate=NULL WHERE id=9007199254741001");
+        assertLostAcrossReads(false,1,"active");
+        sql("UPDATE patient_follow_up_history SET follow_up_date='2024-10-11' WHERE id=9007199254741001");
+        assertLostAcrossReads(true,1,"overdue");
+    }
+
 }

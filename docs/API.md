@@ -228,7 +228,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `studyNo` | String | 研究信息 · 研究编号 | `study_no`，如 `RA-20261003-00001` |
 | `visitCount` | int | 累计总访视（含基线） | 该患者总 RA 记录数；非 RA 不计 |
 | `followUpCount` | int | 随访（不含基线） | `max(visitCount−1,0)`；0 条与仅基线均为 0，只有 0 条为 `pending_first` |
-| `suspectedLostToFollowUp` | boolean | 疑似失访提示 | 非本人已脱落、末访有日期且严格早于同次上海 `asOf.minusYears(2)`；恰两年/无日期为 false，不写 miss 或新增筛选状态 |
+| `suspectedLostToFollowUp` | boolean | 疑似失访提示 | 非本人已脱落：有 RA 访视时取末访日期，仅零 RA 访视时回退建档日期（`COALESCE(create_date,createDate)`）；参考日期严格早于同次上海 `asOf.minusYears(2)` 才标记。恰两年、参考日期为空/未来或有访视但无可用日期均为 false；不写 miss 或新增筛选状态 |
 | `followCycle` | int | 研究信息 · 每 N 个月 | `follow_cycle`：3 / 6 / 12 / 24，默认 12 |
 | `subtype` | String | 疾病资料 · 分型 | 截至本次日期，有日期的有效 RF/CCP 任一曾经阳性 → `血清阳性`；无阳性且有明确阴性 → `血清阴性`；无可分类证据 → `null` |
 | `rf` / `ccp` | Object | 疾病资料 · 分型下方的 RF / CCP 结果 | 随访辅助检查 `fzjc.lfsyz`（类风湿因子 RF）/ `fzjc.kccpkt`（抗CCP抗体），各取截至本次日期**最新可分类且有日期**的随访；最新阴性可能与曾经阳性的 subtype 不同 |
@@ -351,7 +351,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `incomplete` / `missingItems` | 其他病史下的「资料待补全」 | 同患者列表 |
 | `comorbidities[]` / `fmState` / `asState` | 常见相关疾病及三态 | 同患者列表；无关联记录不证明阴性 |
 | `visitCount` / `followUpCount` | 总访视 / 随访（不含基线） | 同患者列表；保留总数，新增后续计数 |
-| `suspectedLostToFollowUp` | 疑似失访提示 | 同列表的严格两年边界，不等于联系调查后的确定失访 |
+| `suspectedLostToFollowUp` | 疑似失访提示 | 同列表的严格两年边界与零 RA 访视时建档日期回退，不等于联系调查后的确定失访 |
 | `visits[]` | 随访时间线（最近的在前） | `patient_follow_up_history` |
 | `visits[].visitId` / `visitDate` | 随访 ID / 日期 | `id` / `follow_up_date` |
 | `visits[].visitType` / `baseline` | 访视类型 | 最早 `COALESCE(follow_up_date,followUpDate)` 完整时刻为基线，同完整时刻取小 ID，有日期先于无日期，全无日期取小 ID；其余按同顺序显示「第 N 次随访」 |
