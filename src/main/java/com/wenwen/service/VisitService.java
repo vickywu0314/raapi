@@ -35,4 +35,10 @@ public interface VisitService {
 	 * @throws com.wenwen.util.BizException 403 无权限；409 打开后数据已被修改
 	 */
 	VisitUpdateResultVo updateVisit(VisitUpdateRequest req);
+
+	/** 新增随访表单：空表单 + 自动带入的值（病史病情的发病 / 确诊时间取患者档案、随访时间 = 今天、首诊时间取最早一次随访；男性患者月经选「男性」） */
+	com.wenwen.vo.VisitEditFormVo getCreateForm(Long doctorId, Long patientId);
+
+	/** 新增随访：按老系统格式插入 patient_follow_up_history，重算随访次数 / 日期，写修改记录 */
+	com.wenwen.vo.VisitCreateResultVo createVisit(com.wenwen.vo.VisitCreateRequest req);
 }

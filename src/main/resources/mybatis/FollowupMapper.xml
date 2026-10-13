@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 随访管理：当前医生名下、未脱落（本医生 RA 医患关系没有 miss=1）的 RA 患者 -->
+<mapper namespace="com.wenwen.mapper.FollowupMapper">
+
+	<select id="listPlanRows" resultType="Map">
+		SELECT p.id AS patientId, p.study_no AS studyNo, p.name, p.gender, p.card_no AS cardNo,
+		       p.follow_cycle AS followCycle,
+		       DATE_FORMAT(COALESCE(p.create_date, p.createDate), '%Y-%m-%d') AS createDate,
+		       IFNULL(v.visitCount, 0) AS visitCount,
+		       DATE_FORMAT(v.lastVisit, '%Y-%m-%d') AS lastVisitDate
+		FROM patient_basic_info p
+		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor
+		      WHERE doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) d ON d.patient_id = p.id
+		LEFT JOIN (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS visitCount,
+		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit
+		           FROM patient_follow_up_history f
+		           WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		             AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
+		           GROUP BY f.patient_basic_info_id) v ON v.pid = p.id
+		WHERE NOT EXISTS (SELECT 1 FROM patient_relation_doctor w
+		                  WHERE w.patient_id = p.id AND w.doctor_id = #{doctorId} AND w.miss = 1
+		                    AND w.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
+	</select>
+</mapper>

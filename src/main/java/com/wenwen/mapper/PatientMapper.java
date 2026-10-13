@@ -27,6 +27,9 @@ public interface PatientMapper {
 	/** 详情页患者表其它字段，入参 doctorId / patientId；不在该医生名下返回 null */
 	Map<String, Object> getPatientBasic(Map<String, Object> map);
 
+	/** 患者档案 RA 扩展字段：diagnosisInformed、consentSigned；没有记录返回 null（表未建时抛异常，调用方按未填写处理） */
+	Map<String, Object> getRaExtra(@Param("patientId") Long patientId);
+
 	/** 随访时间线，入参 patientId；最近的在前 */
 	List<Map<String, Object>> listVisits(Map<String, Object> map);
 

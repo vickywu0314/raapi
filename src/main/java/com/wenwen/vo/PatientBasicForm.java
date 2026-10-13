@@ -50,6 +50,10 @@ public class PatientBasicForm {
 	private String familyHistory;
 	@ApiModelProperty("既往史")
 	private String pastHistory;
+	@ApiModelProperty("诊断结果告知：1 已告知 / 0 未告知")
+	private Integer diagnosisInformed;
+	@ApiModelProperty("患者知情同意书签订：1 已签订 / 0 未签订")
+	private Integer consentSigned;
 	@ApiModelProperty("随访周期（月）：3 / 6 / 12 / 24，默认 12")
 	private Integer followCycle;
 	@ApiModelProperty("ACR/EULAR 2010 评估；未评估为 null")
@@ -200,5 +204,17 @@ public class PatientBasicForm {
 	}
 	public void setComorbidities(List<ComorbidityInput> comorbidities) {
 		this.comorbidities = comorbidities;
+	}
+	public Integer getConsentSigned() {
+		return consentSigned;
+	}
+	public void setConsentSigned(Integer consentSigned) {
+		this.consentSigned = consentSigned;
+	}
+	public Integer getDiagnosisInformed() {
+		return diagnosisInformed;
+	}
+	public void setDiagnosisInformed(Integer diagnosisInformed) {
+		this.diagnosisInformed = diagnosisInformed;
 	}
 }

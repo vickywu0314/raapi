@@ -12,7 +12,7 @@ public class VisitEditFieldVo {
 	private String label;
 	@ApiModelProperty("单位")
 	private String unit;
-	@ApiModelProperty("text 文本 / date 日期 / list 多选（数组）/ number 数字 / haq HAQ 选项 / computed 保存时自动计算（只读）/ readonly 只读 / wxonly 只有「未查」")
+	@ApiModelProperty("text 文本 / textarea 多行文本 / date 日期 / number 数字 / list 多选（数组）/ radio 单选（文字）/ radioList 单选（存数组）/ haq HAQ 选项 / computed 保存时自动计算（只读）/ readonly 只读")
 	private String type;
 	@ApiModelProperty("当前值：list 为字符串数组，其它为字符串；无则 null")
 	private Object value;
@@ -54,5 +54,46 @@ public class VisitEditFieldVo {
 	}
 	public void setWx(Boolean wx) {
 		this.wx = wx;
+	}
+
+	@ApiModelProperty("选项（单选 / 多选）；「存库值|显示文字」时页面显示后者；为空时多选用文本框")
+	private java.util.List<String> options;
+	@ApiModelProperty("显示条件「字段:值」：该字段等于 / 包含该值时才显示")
+	private String showIf;
+	@ApiModelProperty("选项随该字段的值变化（如主症随主证），选项取 optionSets[optionSet][该字段的值]")
+	private String optionsFrom;
+	private String optionSet;
+	@ApiModelProperty("true = 只在第 2 次及以后的随访显示")
+	private Boolean notBaseline;
+
+	public java.util.List<String> getOptions() {
+		return options;
+	}
+	public void setOptions(java.util.List<String> options) {
+		this.options = options;
+	}
+	public String getShowIf() {
+		return showIf;
+	}
+	public void setShowIf(String showIf) {
+		this.showIf = showIf;
+	}
+	public String getOptionsFrom() {
+		return optionsFrom;
+	}
+	public void setOptionsFrom(String optionsFrom) {
+		this.optionsFrom = optionsFrom;
+	}
+	public String getOptionSet() {
+		return optionSet;
+	}
+	public void setOptionSet(String optionSet) {
+		this.optionSet = optionSet;
+	}
+	public Boolean getNotBaseline() {
+		return notBaseline;
+	}
+	public void setNotBaseline(Boolean notBaseline) {
+		this.notBaseline = notBaseline;
 	}
 }

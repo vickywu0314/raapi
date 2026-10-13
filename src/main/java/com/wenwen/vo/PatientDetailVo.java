@@ -77,6 +77,10 @@ public class PatientDetailVo {
 	private Integer acrEularScore;
 	@ApiModelProperty("ACR/EULAR 2010 结论：≥6 分「符合 RA 分类」，<6 分「暂不符合 RA 分类」；未评估为 null")
 	private String acrEularLabel;
+	@ApiModelProperty("诊断结果告知：1 已告知 / 0 未告知 / null 未填（patient_ra_extra）")
+	private Integer diagnosisInformed;
+	@ApiModelProperty("患者知情同意书签订：1 已签订 / 0 未签订 / null 未填（patient_ra_extra）")
+	private Integer consentSigned;
 	@ApiModelProperty("腰围（cm），patient_basic_info.waistline")
 	private String waistline;
 	@ApiModelProperty("心率（次/分），patient_basic_info.xl")
@@ -401,5 +405,17 @@ public class PatientDetailVo {
 	}
 	public void setVisits(List<VisitItemVo> visits) {
 		this.visits = visits;
+	}
+	public Integer getConsentSigned() {
+		return consentSigned;
+	}
+	public void setConsentSigned(Integer consentSigned) {
+		this.consentSigned = consentSigned;
+	}
+	public Integer getDiagnosisInformed() {
+		return diagnosisInformed;
+	}
+	public void setDiagnosisInformed(Integer diagnosisInformed) {
+		this.diagnosisInformed = diagnosisInformed;
 	}
 }

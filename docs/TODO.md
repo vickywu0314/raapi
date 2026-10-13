@@ -6,7 +6,6 @@
 
 | # | 问题 | 现在的做法 | 确认后改哪里 |
 |---|---|---|---|
-| 8 | 新建患者写 `patient_relation_doctor.research_type` 填几 | 配置留空，提示未配置 | `ra.patient.research-type` |
 | 9 | research_type 5、9、999 各是什么病（6 = AS 已知） | 显示「研究类型 N」 | `PatientWriteServiceImpl.OTHER_RESEARCH` |
 | 10 | 「转到自己名下」是转走还是两位医生共享 | 转走 | 新建患者接口 |
 | 11 | 疾病分型口径：RF / 抗CCP 参考上限；取最近一次还是曾经阳性 | RF 20、抗CCP 25，取最近一次 | `ra.serology.*-uln`、`PatientServiceImpl.attachSerology` |
@@ -15,6 +14,9 @@
 | 14 | 手部关节编号 1~20 对应哪个关节（对照在老系统前端） | 显示编号 | 访视详情 / 关节图 |
 | 15 | 检验参考范围用哪套 | 不标红异常值 | 访视详情 |
 | 16 | 导出申请接收邮箱 | 未配置 | `ra.export.apply-mail-to` |
+| 17 | 脏器受累各类的明细选项（肺胸膜 / 心脏 / 肾脏 / 神经 / 血管炎 / 其他）PDF 没写 | 文本框，多个用「、」分隔 | `VisitFieldDict` 病情评估「脏器受累」 |
+| 18 | 心脏检查 14 项的单位（E/A、FS、EF、LVD、BNP、CK-MB 等）PDF 没写 | 按常用单位显示（m/s、%、mm、pg/mL、U/L），存库只存数值 | `VisitFieldDict` 辅助检查「心脏检查」 |
+| 19 | 标记脱落的原因选项 | 失访 / 撤回知情同意 / 不良事件 / 死亡 / 其他（其他须写说明） | `PatientWriteServiceImpl.WITHDRAW_REASONS` |
 
 **新建患者 · 身份证号已存在时（2026-10-06 已确认）**
 - 不在 RA 研究库（research_type 不在 0/1/2/3/4/7，如 6 = AS）：不新建患者行，复用该患者，新增一条 RA 医患关系挂到当前医生名下；原来的病种自动记入「其他病史」（`patient_comorbidity`）。
@@ -67,12 +69,22 @@
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
   - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
+  - `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果表
+  - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
+  - `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
+  - `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`，医生手动对应过的叫法）
+  - `src/main/resources/sql/20261008_private_cohort_definition.sql`：AI 私有条件定义（`ra_private_cohort_definition`、`ra_private_cohort_command`）
+  - `src/main/resources/sql/20261008_ai_compare_run.sql`：AI 两队列比较结果（`ra_ai_compare_run`）
+  - `src/main/resources/sql/20261008_ai_parse_audit.sql`：AI 问题解析审计（`ra_ai_parse_audit`）
+  - `src/main/resources/sql/20261008_ai_export_audit.sql`：AI 普通 XLSX 导出审计（`ra_ai_export_audit`）
+  - `src/main/resources/sql/20261008_ai_export_request.sql`：AI 导出申请（`ra_ai_export_request`）
   - `src/main/resources/sql/20261007_ai_analysis_run.sql`：独立有期分析结果表，无旧患者外键；仅开发合成库已验证，生产执行由DBA另行接收（AQC-EXT-04仍OPEN）
 - [ ] **接收比较专表与共享保留配置**：`src/main/resources/sql/20261008_ai_compare_run.sql`新增独立`ra_ai_compare_run`，不改单队列v1/旧表或建旧外键。共享TTL/cap/key门槛、每创建稳定限清1000过期比较行、cleanup+INSERT同短事务、owner/expiry/当前完整U复验仅在隔离合成MySQL8.4.11验证。DBA/运维接收目标版本、InnoDB/短RR、保留策略和生产DDL；无后台清理，已清缺行404，commit后传输失败可留TTL孤立行。AQC-EXT-04仍OPEN；来源日期摘要未代替P06导出字段/窗口与AQC-REL-02接收
 - [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
 - [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
-- [ ] **配置新建患者的研究类型**：`application.properties` 的 `ra.patient.research-type`（待确认 RA 研究库对应的值；留空时新建患者提示未配置、不写库）
+- [ ] **配置百度 OCR**：服务器配置 `ra.ocr.baidu.api-key`、`ra.ocr.baidu.secret-key`（不进 git），百度控制台开通「医疗检验报告单识别」「通用文字识别（高精度版）」；服务器能访问 `aip.baidubce.com:443`；`ra.upload.dir` 指向持久目录并定期备份 / 清理（病历图片含患者隐私）。病历图片外发百度需经医院 / 数据安全负责人同意
+- [x] 新建患者的研究类型：`ra.patient.research-type=0`（2026-10-11 确认，已配置）
 
 - [ ] **整理老数据：按身份证号把患者的相关疾病写入中间表 `patient_comorbidity`**
   - 规则：RA 患者（`patient_basic_info.card_no`）与其它病种表中的患者**身份证号相同**，即认为该患者也患有该病，插入一条关联：
@@ -98,15 +110,16 @@
 
 ## 后续接口
 
+- [ ] 登录：现为测试账号（`ra.auth.accounts`），正式账号从哪里来（user 表账号密码 / 单点登录，Q-24 账号找贵玉）待定；患者、随访、导出等接口仍按前端传的 `doctorId`，正式上线前要改为取登录会话里的医生（AI 队列分析已改）
 - [ ] 导出申请真实SMTP/管理员收件接收：P06b两入口及受控单次通知/安全FAILED重试已实现，实际服务器/TLS/身份/配置及受理、收件分别由AQC-EXT-06接收。UNKNOWN不可盲重发；本Flow不含审批或历史文件交付
-- [ ] OCR识别录入（患者列表、患者详情、访视详情的按钮，目前提示开发中）：百度医疗 OCR
+- [ ] OCR识别录入：已完成（2026-10-12，见 API.md 十一），只用模拟的百度返回测过；拿到真实密钥后用几家医院的真实报告单核对识别和对应效果，内置同义词按实际叫法补充（`OcrResultParser.LAB`）；识别的病历图片暂不存进随访的「检验报告」图片
 
 - [ ] 新建患者 / 编辑档案：写入 `study_no`（`StudyNoUtil` 生成）、`follow_cycle`、`patient_comorbidity`（医生勾选）
 - [ ] 疾病分型手动修改（如外院化验没录进系统）：如需要，新建表存医生手动填的分型，手动值优先于按 RF / 抗CCP 算出的值
 - [ ] 其他病史弹窗的当前情况、核心指标、治疗：目前无数据来源，返回 null
 - [ ] 所有写接口在同一事务里调用 `AuditLogService.record(...)` 写修改记录（见 docs/API.md 3.3）
-- [ ] 患者详情 / 访视详情页的普通下载病历、标记脱落、AI 拍照导入、编辑档案、新增随访仍待接入；可信 AI 来源已提供只读档案/访视/实测病程及本次/全程问答。当前 ALL/COHORT/PATIENT 问答已实现带后台事实/来源，默认出站关闭，真实临床与原文许可仍由 AQC-EXT-05 接收；不新增回答转条件、PDF、CRUD 或审批。
-- [ ] 编辑随访：ACR20/50/70 未重算（需对比上次随访）；图片暂不能上传 / 删除；多选项暂为文本框（「、」分隔），选项清单确认后可改为勾选
+- [x] 下载病历（PDF）、标记脱落 / 恢复随访、编辑档案、新增随访、随访管理已完成（2026-10-11）；OCR识别录入于2026-10-12接入。当前可信 AI 来源提供只读档案/访视/实测病程及本次/全程问答，ALL/COHORT/PATIENT 问答带后台事实/来源；默认出站关闭，真实临床与原文许可仍由 AQC-EXT-05 接收，不新增回答转条件或审批。
+- [ ] 新增 / 编辑随访：ACR20/50/70 未计算（需对比上次随访）；图片暂不能上传 / 删除；手部关节编号、脏器受累明细仍为文本框（选项待确认）；单选 / 多选已按定稿清单改为勾选（2026-10-11）
 - [ ] 删除随访（逻辑删除）方案待定：随访表加删除标记 + 删除原因；项目总览、患者列表、详情、质控等所有查询都要排除已删除的随访；写修改记录；基线访视后还有其他随访时不能删
 
 - P06a 当前 typed 身份、生产药品/FM 配置 → 保留引用 → 原生 XLSX/唯一申请已接入合成组合验证；真实身份/权威内容、实际对外字段和来源日期窗口批准、真实 SMTP 管理员收件继续由原 EXT-06/REL-02 等唯一 owner 接收。`SENT` 不表示收到、申请不表示审批或下载权。六 pure 固定源外部接收及 `cohort:current-export-loopback` 保留 BROWSER_PENDING，Actions 暂停；不据合成技术结果启用生产通知或对外文件。

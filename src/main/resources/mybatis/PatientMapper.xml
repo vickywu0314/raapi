@@ -23,6 +23,7 @@
 		       p.age,
 		       p.card_no AS cardNo,
 		       YEAR(COALESCE(p.create_date, p.createDate)) AS createYear,
+		       COALESCE(p.create_date, p.createDate) AS createTime,
 		       p.follow_cycle AS followCycle,
 		       IFNULL(v.visitCount, 0) AS visitCount,
 		       v.lastVisit,
@@ -61,7 +62,7 @@
 		</where>
 	</sql>
 
-	<!-- 默认排序：最近随访倒序，无随访的排最后 -->
+	<!-- 默认排序：建档时间倒序（最后新建的在最上面），无建档时间的老数据排最后，同时间按患者 ID 倒序 -->
 	<select id="listPatients" resultType="Map" parameterType="Map">
 		SELECT x.patientId, x.studyNo, x.name, x.gender, x.age, x.cardNo, x.createYear, x.followCycle, x.visitCount,
 		       DATE_FORMAT(x.firstVisit, '%Y-%m-%d') AS firstVisitDate,
@@ -70,7 +71,7 @@
 		       x.followStatus
 		FROM (<include refid="patientRows"/>) x
 		<include refid="filters"/>
-		ORDER BY x.lastVisit IS NULL, x.lastVisit DESC, x.patientId DESC
+		ORDER BY x.createTime IS NULL, x.createTime DESC, x.patientId DESC
 	</select>
 
 	<!--
@@ -129,6 +130,11 @@
 		FROM patient_basic_info p
 		WHERE p.id = #{patientId}
 		  AND p.id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
+	</select>
+
+	<select id="getRaExtra" resultType="Map">
+		SELECT diagnosis_informed AS diagnosisInformed, consent_signed AS consentSigned
+		FROM patient_ra_extra WHERE patient_id = #{patientId}
 	</select>
 
 	<!-- 随访时间线：最近的在前；无日期的排最后；记录医生姓名取 user.name -->

@@ -122,6 +122,42 @@ public class PatientServiceImpl implements PatientService {
 	}
 
 	@Override
+	public AllPatients listAllPatients(Long doctorId) {
+		LocalDate asOf = asOf();
+		Map<String, Object> map = listParams(doctorId, null, null, null, asOf);
+		com.wenwen.ai.qc.QcSnapshot snapshot = qcReader.readPatients(map);
+		List<PatientItemVo> items = new ArrayList<PatientItemVo>();
+		Map<Long, PatientItemVo> byId = new HashMap<Long, PatientItemVo>();
+		for (Map<String, Object> row : snapshot.getRows()) {
+			PatientItemVo item = toItem(row, asOf, snapshot.getQc().get(toLong(row.get("patientId"))));
+			items.add(item);
+			byId.put(item.getPatientId(), item);
+		}
+		attachComorbidities(byId, asOf);
+		attachDas28(byId, asOf, snapshot);
+		attachSerology(byId, asOf);
+		// 上一次有效 DAS28：截至今天、按日期 / ID 排序的倒数第二次（与「最近一次」同一 Matcher 规则选出最近一次后，再取它之前的）
+		Map<Long, List<com.wenwen.ai.clinical.VisitMatcher.Visit>> visits = new HashMap<>();
+		for (com.wenwen.ai.clinical.VisitMatcher.Visit v : snapshot.getVisits()) {
+			if (v.getObservedAt() != null && !v.getObservedAt().isAfter(asOf) && v.getScore() != null) {
+				visits.computeIfAbsent(v.getPatientId(), k -> new ArrayList<>()).add(v);
+			}
+		}
+		Map<Long, java.math.BigDecimal> previous = new HashMap<Long, java.math.BigDecimal>();
+		for (Map.Entry<Long, List<com.wenwen.ai.clinical.VisitMatcher.Visit>> e : visits.entrySet()) {
+			com.wenwen.ai.clinical.VisitMatcher.Visit latest = com.wenwen.ai.clinical.VisitMatcher.now(e.getValue(), e.getKey(), asOf);
+			com.wenwen.ai.clinical.VisitMatcher.Visit prev = null;
+			for (com.wenwen.ai.clinical.VisitMatcher.Visit v : e.getValue()) {
+				if (latest == null || v.getId() == latest.getId()) continue;
+				boolean before = v.getObservedAt().isBefore(latest.getObservedAt()) || (v.getObservedAt().equals(latest.getObservedAt()) && v.getId() < latest.getId());
+				if (before && (prev == null || v.getObservedAt().isAfter(prev.getObservedAt()) || (v.getObservedAt().equals(prev.getObservedAt()) && v.getId() > prev.getId()))) prev = v;
+			}
+			if (prev != null) previous.put(e.getKey(), prev.getScore());
+		}
+		return new AllPatients(items, previous);
+	}
+
+	@Override
 	public List<Long> listPatientIds(Long doctorId, String keyword, String followStatus, String completeness) {
         LocalDate asOf=asOf();
         Map<String, Object> map = listParams(doctorId, keyword, followStatus, completeness,asOf);
@@ -233,6 +269,16 @@ public class PatientServiceImpl implements PatientService {
 		d.setAcrEularScore(toInteger(basic.get("acrEularScore")));
 		if (d.getAcrEularScore() != null) {
 			d.setAcrEularLabel(d.getAcrEularScore() >= 6 ? "符合 RA 分类" : "暂不符合 RA 分类");
+		}
+		// 诊断结果告知、知情同意书（新表 patient_ra_extra；表还没建时按未填写显示，不影响详情页）
+		try {
+			Map<String, Object> extra = patientMapper.getRaExtra(patientId);
+			if (extra != null) {
+				d.setDiagnosisInformed(toInteger(extra.get("diagnosisInformed")));
+				d.setConsentSigned(toInteger(extra.get("consentSigned")));
+			}
+		} catch (org.springframework.dao.DataAccessException e) {
+			// patient_ra_extra 未建表
 		}
 		d.setWaistline(blankToNull(str(basic.get("waistline"))));
 		d.setHeartRate(blankToNull(str(basic.get("xl"))));

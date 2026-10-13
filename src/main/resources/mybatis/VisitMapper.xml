@@ -90,6 +90,44 @@
 		<if test="originals.containsKey('bblsj')">AND (BINARY bblsj &lt;=&gt; BINARY #{originals.bblsj,jdbcType=LONGVARCHAR})</if>
 	</update>
 
+	<!-- ===== 新增随访 ===== -->
+
+	<!-- 本医生名下该患者的 RA 医患关系（研究类型、是否脱落），没有为空 -->
+	<select id="listMyRaRelations" resultType="Map" parameterType="Map">
+		SELECT r.id, r.research_type AS researchType, IFNULL(r.miss, 0) AS miss
+		FROM patient_relation_doctor r
+		WHERE r.doctor_id = #{doctorId} AND r.patient_id = #{patientId}
+		  AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY r.id
+	</select>
+
+	<!-- 病史病情自动带入用：性别、确诊 / 发病日期（与患者详情同一取法） -->
+	<select id="getPatientForVisit" resultType="Map" parameterType="Map">
+		SELECT p.gender,
+		       DATE_FORMAT(COALESCE(p.confirm_date, p.confirmDate), '%Y-%m-%d') AS confirmDate,
+		       DATE_FORMAT(COALESCE(p.happen_date, p.happenDate), '%Y-%m-%d') AS happenDate
+		FROM patient_basic_info p WHERE p.id = #{patientId}
+	</select>
+
+	<!-- 该患者的 RA 随访，时间最早的在前（同时间按 ID）；首诊时间、上一次随访、上次 DAS28 用 -->
+	<select id="listPatientVisits" resultType="Map" parameterType="Map">
+		SELECT f.id AS visitId, DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate, f.bsbq, f.bqpg
+		FROM patient_follow_up_history f
+		WHERE f.patient_basic_info_id = #{patientId}
+		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY COALESCE(f.follow_up_date, f.followUpDate) IS NULL, COALESCE(f.follow_up_date, f.followUpDate), f.id
+	</select>
+
+	<!-- 按老系统的写法插入：follow_up_date 写日期、followUpDate 留空、status = 1、last_follow_up_id = 上一次随访 -->
+	<insert id="insertVisit" parameterType="Map" useGeneratedKeys="true" keyProperty="id">
+		INSERT INTO patient_follow_up_history
+		  (patient_basic_info_id, doctor_id, follow_up_date, followUpDate, status, research_type, last_follow_up_id,
+		   bsbq, fzjc, bqpg, zyzd, zlfa, blsj, bblsj)
+		VALUES
+		  (#{patientId}, #{doctorId}, #{visitDate}, NULL, 1, #{researchType}, #{lastVisitId},
+		   #{bsbq}, #{fzjc}, #{bqpg}, #{zyzd}, #{zlfa}, #{blsj}, NULL)
+	</insert>
+
 	<select id="getUserName" resultType="String" parameterType="Map">
 		SELECT name FROM `user` WHERE id = #{doctorId}
 	</select>

@@ -1,5 +1,6 @@
 package com.wenwen.mapper;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -30,6 +31,18 @@ public interface VisitMapper {
 
 	/** 编辑随访：更新有变化的模块字段和随访日期，入参 visitId、有变化的模块/visitDate；originals含替换及本次DAS源原文，日期另带两套实际原值；返回0表示并发冲突或已删除 */
 	int updateVisit(Map<String, Object> map);
+
+	/** 新增随访：本医生名下该患者的 RA 医患关系（researchType、miss），入参 doctorId / patientId */
+	List<Map<String, Object>> listMyRaRelations(Map<String, Object> map);
+
+	/** 新增随访：患者性别、确诊 / 发病日期，入参 patientId */
+	Map<String, Object> getPatientForVisit(Map<String, Object> map);
+
+	/** 新增随访：该患者的 RA 随访（visitId、visitDate、bsbq、bqpg），时间最早的在前，入参 patientId */
+	List<Map<String, Object>> listPatientVisits(Map<String, Object> map);
+
+	/** 新增随访：插入一条随访，入参 patientId / doctorId / visitDate / researchType / lastVisitId / 各模块 JSON；生成的 ID 写回 id */
+	int insertVisit(Map<String, Object> map);
 
 	/** 医生姓名（user.name），入参 doctorId */
 	String getUserName(Map<String, Object> map);

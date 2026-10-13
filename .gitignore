@@ -32,3 +32,4 @@ build/
 
 .svn/
 .DS_Store
+/upload/

@@ -25,7 +25,7 @@
 		       COALESCE(p.smoke_count_by_day, p.smokeCountByDay) AS smokeCountByDay,
 		       COALESCE(p.smoke_stop, p.smokeStop) AS smokeStop,
 		       p.gms AS allergyHistory, p.jzs AS familyHistory, p.jws AS pastHistory, p.follow_cycle AS followCycle,
-		       p.study_no AS studyNo
+		       p.study_no AS studyNo, COALESCE(p.acr_eular_score, p.acrEularScore) AS acrEularScore
 		FROM patient_basic_info p WHERE p.id = #{patientId}
 	</select>
 
@@ -63,6 +63,24 @@
 		UPDATE patient_relation_doctor SET doctor_id = #{doctorId}, update_date = NOW() WHERE id = #{relationId}
 	</update>
 
+	<select id="listMyRaRelations" resultType="Map">
+		SELECT r.id, IFNULL(r.miss, 0) AS miss,
+		       CONCAT_WS('；', NULLIF(TRIM(r.reason), ''), NULLIF(TRIM(r.other_miss_reason), ''), NULLIF(TRIM(r.note), '')) AS missReason
+		FROM patient_relation_doctor r
+		WHERE r.doctor_id = #{doctorId} AND r.patient_id = #{patientId}
+		  AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		ORDER BY r.id
+	</select>
+
+	<!-- 恢复随访只把 miss 改回 0，原来的脱落原因保留不动（老系统数据） -->
+	<update id="setMiss" parameterType="Map">
+		UPDATE patient_relation_doctor SET miss = #{miss},
+		<if test="miss == 1">reason = #{reason}, other_miss_reason = #{otherReason},</if>
+		update_date = NOW()
+		WHERE doctor_id = #{doctorId} AND patient_id = #{patientId}
+		  AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</update>
+
 	<insert id="insertAcrEular" parameterType="Map">
 		INSERT INTO patient_acr_eular (patient_id, joint_score, serology_score, duration_score, acute_score, total_score, doctor_id)
 		VALUES (#{patientId}, #{jointScore}, #{serologyScore}, #{durationScore}, #{acuteScore}, #{totalScore}, #{doctorId})
@@ -72,6 +90,49 @@
 		INSERT IGNORE INTO patient_comorbidity (patient_id, disease_code, since_year, source, linked_patient_id)
 		VALUES (#{patientId}, #{code}, #{sinceYear}, #{source}, #{linkedPatientId})
 	</insert>
+
+	<insert id="upsertRaExtra" parameterType="Map">
+		INSERT INTO patient_ra_extra (patient_id, diagnosis_informed, consent_signed, update_doctor_id)
+		VALUES (#{patientId}, #{diagnosisInformed}, #{consentSigned}, #{doctorId})
+		ON DUPLICATE KEY UPDATE
+		  diagnosis_informed = COALESCE(VALUES(diagnosis_informed), diagnosis_informed),
+		  consent_signed = COALESCE(VALUES(consent_signed), consent_signed),
+		  update_doctor_id = VALUES(update_doctor_id)
+	</insert>
+
+	<!-- 编辑档案 -->
+	<select id="getLatestAcr" resultType="Map">
+		SELECT joint_score AS jointScore, serology_score AS serologyScore, duration_score AS durationScore,
+		       acute_score AS acuteScore, total_score AS totalScore
+		FROM patient_acr_eular WHERE patient_id = #{patientId} ORDER BY id DESC LIMIT 1
+	</select>
+
+	<select id="getRaExtra" resultType="Map">
+		SELECT diagnosis_informed AS diagnosisInformed, consent_signed AS consentSigned
+		FROM patient_ra_extra WHERE patient_id = #{patientId}
+	</select>
+
+	<select id="listComorbidity" resultType="Map">
+		SELECT disease_code AS code, since_year AS sinceYear, source
+		FROM patient_comorbidity WHERE patient_id = #{patientId} ORDER BY id
+	</select>
+
+	<update id="updateComorbidityYear">
+		UPDATE patient_comorbidity SET since_year = #{sinceYear} WHERE patient_id = #{patientId} AND disease_code = #{code}
+	</update>
+
+	<!-- 只删医生勾选的（manual）；患者在其他病种库自动记入的（auto）不删 -->
+	<delete id="deleteManualComorbidity">
+		DELETE FROM patient_comorbidity WHERE patient_id = #{patientId} AND disease_code = #{code} AND source = 'manual'
+	</delete>
+
+	<!-- 确诊日期 / 发病时间改了时，同步本医生名下该患者 RA 医患关系上的同名字段 -->
+	<update id="updateRelationDates">
+		UPDATE patient_relation_doctor SET
+		<foreach collection="fields" index="col" item="val" separator=",">${col} = #{val}</foreach>, update_date = NOW()
+		WHERE doctor_id = #{doctorId} AND patient_id = #{patientId}
+		  AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</update>
 
 	<select id="getUserName" resultType="String">
 		SELECT name FROM `user` WHERE id = #{doctorId}

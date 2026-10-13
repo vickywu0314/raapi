@@ -50,6 +50,19 @@ JSON响应使用下面这个外层结构，业务数据在 `data` 里；文件�
 
 ---
 
+## 〇、登录（服务端会话）
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/ra/auth/login` | 入参 `username`、`password`、`remember`（true = 会话 30 天，否则 12 小时无操作失效）。成功后建立会话（Cookie `JSESSIONID`），返回 `{username, doctorId, name, role}`；`name` 取 `user.name`。失败 `code=401`「用户名或密码错误」 |
+| `POST /api/ra/auth/me` | 当前登录用户；没登录 / 会话过期 `success=false, code=401`。前端每个页面打开时调一次，401 回登录页 |
+| `POST /api/ra/auth/logout` | 结束会话 |
+
+账号（测试期）：`application.properties` 的 `ra.auth.accounts`，格式「用户名:密码:医生ID」，多个用逗号分隔；现配 `yanwenjing:ra2026:82394`（言文静）。正式账号体系确定后替换 `AuthService.check()`。
+会话在后端内存里，后端重启后需重新登录。AI 队列分析（第七节）按会话里的医生鉴权，**不信任请求里传的 doctorId**；其他接口暂时仍按入参 `doctorId`（见 TODO）。
+
+---
+
 ## 一、项目总览页
 
 ### 1.1 项目总览数据
@@ -177,7 +190,7 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | `page` | int | 否 | 页码，从 1 开始，默认 1 | `1` |
 | `size` | int | 否 | 每页条数，默认 20，最大 200；页面下拉 8 / 16 / 32 | `8` |
 
-排序：最近非空随访完整时间倒序，无日期排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
+排序：建档时间（create_date，空则 createDate）倒序，最后新建的在最上面；无建档时间的老数据排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
 
 listPatients/listPatientIds/getPatientDetail 各在入口仅采样一次注入 Clock 并转 Asia/Shanghai asOf，SQL 到期筛选、详情 nextDueDays、疑似失访和既有临床计算均消费该次日期，不使用数据库/JVM 当前日期。
 
@@ -328,6 +341,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `latestDas28` / `das28Activity` / `das28ActivityLabel` | DAS28-CRP / 疾病活动度 | 同患者列表的存值接纳、两位 HALF_UP canonical 与 CRP 分层；不改 ESR |
 | `height` / `weight` / `bmi` | 身高 / 体重 / BMI | `height`、`weight`；BMI = 体重 ÷ 身高(m)²，1 位小数 |
 | `acrEularScore` / `acrEularLabel` | ACR/EULAR 2010 分类标准总分 / 结论 | `acr_eular_score`（空则 `acrEularScore`）；≥6 分「符合 RA 分类」，<6 分「暂不符合 RA 分类」，未评估为 `null`。老系统没存各部分选项（`acr_eular_info` 全空） |
+| `diagnosisInformed` / `consentSigned` | 诊断结果告知 / 患者知情同意书 | 新表 `patient_ra_extra`：1 已告知 / 已签订，0 未告知 / 未签订，`null` 未填写（表未建时也为 `null`） |
 | `waistline` / `heartRate` | 腰围（cm）/ 心率（次/分） | `waistline`、`xl` |
 | `systolic` / `diastolic` | 血压：收缩压 / 舒张压（mmHg） | `xy_h`、`xy_l`；`xy` 是老系统另存的一份收缩压（与 `xy_h` 相同），`xy_h` 为空时用 `xy`。原样显示，不纠正（老数据有收缩压 < 舒张压、疑似填反的） |
 | `smoking` | 吸烟史 | `smoke=0` →「不吸烟」；其它 →「吸烟 N 年 · 每日 N 支」 |
@@ -367,7 +381,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | 字段 | 中文含义 |
 |---|---|
 | `time` | 操作时间 `yyyy-MM-dd HH:mm` |
-| `action` | 动作：新建档案 / 修改档案 / 新增随访 / 编辑随访 / 删除随访 / 标记脱落 / 质控处理（决定标签颜色） |
+| `action` | 动作：新建档案 / 修改档案 / 新增随访 / 编辑随访 / 删除随访 / 标记脱落 / 恢复随访 / 质控处理（决定标签颜色） |
 | `visitId` | 涉及的随访 ID，档案类操作为 `null` |
 | `detail` | 修改内容；多项用「；」分隔，字段修改写成「字段：旧值 → 新值」，页面把旧值标红删除线、新值标绿 |
 | `operator` | 操作人，如「陈医生（研究者）」 |
@@ -380,6 +394,27 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 ```
 
 `diff` 只比较列出的字段、只记录有变化的；`record` 把变化拼成页面显示的 `detail`，同时把结构化明细存成 JSON（`changes` 列），以后可按字段统计和回溯。
+
+### 3.4 标记脱落
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/withdraw` |
+| 入参 | `doctorId`、`patientId`；`reason` 脱落原因（必填）：失访 / 撤回知情同意 / 不良事件 / 死亡 / 其他；`remark` 补充说明（选「其他」时必填，≤200 字） |
+| 写库 | 老表 `patient_relation_doctor`：只改**本医生名下该患者的 RA 关系**的 `miss=1`、`reason`（选项）、`other_miss_reason`（说明）、`update_date`；其他医生 / 其他病种的关系不动 |
+| 返回码 | 400 原因没选 / 404 不在名下 / 409 已是脱落状态 |
+| 留痕 | 修改记录「标记脱落」：随访状态 随访中 → 已脱落；脱落原因 |
+| 页面 | 患者详情「标记脱落」→ 弹窗选原因；成功后状态变「已脱落」，按钮变「恢复随访」 |
+
+### 3.5 恢复随访
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/reactivate` |
+| 入参 | `doctorId`、`patientId`；`remark` 说明（选填，≤200 字） |
+| 写库 | 同上关系行 `miss=0`、`update_date`；**原脱落原因保留不清**（老数据、可追溯） |
+| 返回码 | 404 不在名下 / 409 不是脱落状态 |
+| 留痕 | 修改记录「恢复随访」：随访状态 已脱落 → 随访中；附原脱落原因、说明 |
 
 ---
 
@@ -513,6 +548,33 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 出参 `data`：`changedCount` 修改项数、`changes[]` 修改内容。失败：`400` 格式错误（如数字、日期）、`403` 无权限、`409` 数据已被修改。
 
+### 4.5 新增随访表单
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/visitCreateForm` |
+| 入参 | `doctorId`、`patientId`（须在本医生名下、未脱落；脱落返回 409，先「恢复随访」） |
+| 出参 | 结构同 4.3 编辑随访表单（模块 → 分组 → 字段 / 清单），另有 `visitNo` 第几次随访（1 = 基线）、`visitDate` 默认今天、`optionSets` 联动选项（主症 / 次症随证型，方剂随证型） |
+| 自动带入 | 病史病情：发病时间、确诊时间取患者档案（与基本信息同一取法）；随访时间 = 随访日期；首诊时间 = 最早一次随访里填的首诊时间，没有则取最早一次随访日期（基线访视取今天）；男性患者「月经」默认选「男性」。医生都可以改 |
+
+字段（4.3 / 4.5 共用）新增属性：`options` 选项（「存库值\|显示文字」时页面显示后者，存库用老数据写法）、`showIf`「字段:值」满足才显示（隐藏的字段不提交）、`optionsFrom` / `optionSet` 选项随上级字段变化、`notBaseline` 只在第 2 次及以后的随访显示。
+`type`：text / textarea / date / number / list 多选（有 `options` 为勾选，否则文本框「、」分隔）/ radio 单选（存文字）/ radioList 单选（老数据存数组，如 `["阴性"]`）/ haq / computed / readonly。字段清单见 `docs/新增随访字段清单.md`。
+
+### 4.6 保存新增随访
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/visit/createVisit`（JSON） |
+| 入参 | `doctorId`、`patientId`、`visitDate`（必填，不能晚于今天）、`modules`：随访表字段名 → `{fields, wx, tables}`（同 4.4） |
+| 写库 | 老表 `patient_follow_up_history` 插一行，按老系统写法：`follow_up_date` = 随访日期、`followUpDate` = NULL、`status` = 1、`research_type` = 本医生该患者的 RA 关系、`last_follow_up_id` = 该患者时间最晚的一次随访、`doctor_id` = 当前医生；**没填的字段不写 key、没填的模块存 NULL**，填了的模块加 `finish: true`；`bblsj` 不写 |
+| 计算项 | 肿胀 / 压痛关节数、DAS28-CRP / ESR、HAQ 按编辑随访同一算法算；`result.lastCrpScore` / `lastEsrScore` 取上一次随访的结果 |
+| 同步 | 按编辑 / 删除随访同一规则重算患者表、医患关系表的随访次数和首次 / 最近随访日期 |
+| 长度 | 模块 JSON 超过老表字段长度（bsbq 等 2000、bqpg 4000）返回 400 |
+| 出参 | `visitId`、`patientId`、`filledCount` 填写了几个模块 |
+| 留痕 | 修改记录「新增随访」：访视类型、日期、填写模块数 |
+
+---
+
 ## 五、数据导出（患者列表「数据导出」按钮）
 
 规则（业务确认 2026-10-06）：**近半年内**（当前月份往前 6 个月的 1 号至今，如 10 月为 4 月 1 日至今；`application.properties` 的 `ra.export.free-months`）的随访数据可直接下载；**更早的**需填写原因提交申请，申请发送到指定邮箱（`ra.export.apply-mail-to`，发邮件功能待实现，先记录到 `export_application` 表）。范围规则在后端校验。
@@ -593,9 +655,10 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `followCycle` | 否 | `follow_cycle` | 3 / 6 / 12 / 24，默认 12 |
 | `acrEular` | 否 | 总分写 `acr_eular_score`；各部分插入新表 `patient_acr_eular` | 4 部分须全选或全不选；总分后端重算（joint 0/1/2/3/5、serology 0/2/3、duration 0/1、acute 0/1） |
 | `comorbidities[]` | 否 | 新表 `patient_comorbidity`（source=manual） | code：FM / AS / SS / RA-ILD / RA-MS |
+| `diagnosisInformed` / `consentSigned` | 否 | 新表 `patient_ra_extra`（`diagnosis_informed` / `consent_signed`） | 诊断结果告知 / 患者知情同意书签订：1 是 / 0 否；老表没有这两项 |
 
 另外：`study_no` 自动生成（RA-今天-当天序号，冲突重试）、`create_date` = 当前时间、`follow_up_count` = 0；
-医患关系 `patient_relation_doctor`：`doctor_id`、`patient_id`、`research_type` = 配置 `ra.patient.research-type`、`confirm_date`、`happen_date`、`create_date` = 当前时间，`follow_count` / `miss` / `revisit` / `last_verify_status` = 0。
+医患关系 `patient_relation_doctor`：`doctor_id`、`patient_id`、`research_type` = 配置 `ra.patient.research-type`（= 0 类风湿关节炎研究平台）、`confirm_date`、`happen_date`、`create_date` = 当前时间，`follow_count` / `miss` / `revisit` / `last_verify_status` = 0。
 
 身份证号已存在时（同 6.1 规则）：
 
@@ -607,6 +670,182 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `OTHER_DISEASE` | 不新建患者行：只更新医生填了且与原值不同的字段（不清空原有信息），没有研究编号的补上；新增 RA 医患关系；原病种（已确认的：6 = AS）记入 `patient_comorbidity`（source=auto）；修改记录写改了哪些字段 |
 
 出参 `data`：`patientId`、`studyNo`、`action`（`created` / `linked` / `transferred`）。研究类型未配置时返回 400「新建患者的研究类型未配置」。
+
+## 十、数据质控（data-quality.html）
+
+按当前数据实时检查**当前医生名下的 RA 患者**（含已脱落），问题不落库，数据改好后自动消失。只查数据本身的缺失和矛盾；化验值偏高 / 偏低反映的是病情，不算数据质量问题（2026-10-12 确认）。处理记录存新表 `qc_issue_resolution`（`sql/20261012_qc_issue_resolution.sql`）；表未建时清单照常返回（`resolutionReady=false`），只是不能标记。
+
+| 接口 | 入参 | 说明 |
+|---|---|---|
+| `POST /api/ra/quality/issues` | `doctorId` | 问题清单 + 统计 |
+| `POST /api/ra/quality/resolve` | `doctorId, patientId, issueKey, note?` | 标记已处理（写修改记录「质控处理」）；问题已不存在返回 404 |
+
+**规则**
+
+| 类型 | 规则 | `key` | 定位 |
+|---|---|---|---|
+| 缺失 | 与患者列表「待补全」同一规则：缺 DAS28 评分 / 缺基线检验 / 缺用药史 / 缺合并疾病记录 | `missing:M_DAS28` 等 | 基线访视对应模块；没有访视 → 新增随访；合并疾病 → 编辑档案 |
+| 逻辑冲突 | 随访日期晚于今天 / 早于发病时间 | `conflict:visit-future:随访ID` / `conflict:visit-before-onset:随访ID` | 该次随访 · 病史病情 |
+| 逻辑冲突 | 确诊日期早于发病时间 | `conflict:confirm-before-onset` | 编辑档案 |
+| 逻辑冲突 | 同一天多条随访 | `conflict:same-day:日期` | 患者详情 |
+
+**统计**
+
+| 字段 | 含义 |
+|---|---|
+| `cleanRate` | 无待处理问题的患者占比 %（1 位小数）=（名下患者 − 有待处理问题的患者）÷ 名下患者 |
+| `openCount` | 待处理问题条数 |
+| `affectedPatients` | 有待处理问题的患者人数 |
+| `researchReady` | 满足研究级质量要求：有随访、未脱落、没有待处理问题；数据看板「有效研究样本数」同一口径 |
+
+`issues[]`：`key, patientId, name, sex, birthYear, studyNo, visitCount, type, text, target{page: visit/edit/create/patient, visitId, section, where}, state（待处理 / 已处理）, handledBy, handledAt, note`。
+
+---
+
+## 九、数据看板（dashboard.html）
+
+`POST /api/ra/dashboard/summary`，入参 `doctorId`。**只统计该医生名下的 RA 患者**。口径复用：随访状态 / DAS28-CRP 活动度 / 资料完整性 / 合并症 = 患者列表（`PatientService.listAllPatients`）；逾期 / 到期 / 按期随访率 / 疑似失访 = 随访管理（第八节）。
+
+| 字段 | 含义 | 取的方式 |
+|---|---|---|
+| `scale.total` | 总患者数 | 名下 RA 患者（含已脱落） |
+| `scale.active` | 活跃患者 | 未脱落，且最近一次随访在 183 天内 |
+| `scale.newThisMonth` | 本月新增 | 建档日期（`create_date`，空则 `createDate`）在本月 |
+| `scale.withdrawn` / `scale.lost` | 已脱落 / 疑似失访 | 本医生 RA 关系 `miss=1` / 随访管理的 `lost` |
+| `followup.overdue` | 已逾期 | 随访管理 `overdue` |
+| `followup.due7` / `due30` | 7 / 30 日内待随访 | 已做基线、预计日期在今天到 7 / 30 天内 |
+| `followup.pendingFirst` | 待首次随访 | 随访管理 `pending_first` |
+| `followup.onTimeRate` | 按期随访率 % | （已做基线的计划数 − 逾期）÷ 已做基线的计划数 |
+| `attention.notTarget` / `highActivity` | 未达标 / 高疾病活动 | 最近一次 DAS28-CRP 为中、高 / 高（>4.1） |
+| `attention.highCrp` | 炎症指标升高 | 最近一次填了 CRP 的随访，CRP > 10 mg/L |
+| `attention.fm` | 合并 FM | 常见相关疾病有 FM |
+| `activity.dist` / `targetRate` | DAS28-CRP 分布 / 达标率 % | 最近一次评分；达标 = 缓解 + 低 |
+| `quality.completeRate` / `byItem` | 资料完整率 % / 各缺失项人数 | 患者列表「待补全」同一规则 |
+| `research.validSample` | 有效研究样本 | 有随访、未脱落、没有待处理的质控问题（= 数据质控「满足研究级质量要求」） |
+| `research.totalVisits` / `visited30` / `visited90` | 累计访视 / 近 30、90 天有随访的人数 | |
+| `risks[]` | 风险名单（各最多返回 50 人） | `rebound` 最近一次 DAS28-CRP 比上一次升高 ≥0.6；`high` 最近一次 >4.1；`overdue` 逾期超 90 天 |
+| `recentHighCrp[]` | 最近炎症指标偏高（5 人） | 最近一次 CRP > 20 mg/L，按随访日期倒序 |
+| `recentVisits[]` | 最近完成随访（5 条） | `label`：基线访视 / 第 N 次随访 |
+
+页面上的「智能研究队列」暂不做（已隐藏）。
+
+---
+
+## 八、随访管理页（followups.html）
+
+### 8.1 随访计划
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/followup/plans` |
+| 入参 | `doctorId` |
+| 范围 | 该医生名下、未脱落（本医生 RA 关系没有 `miss=1`）的 RA 患者；只读 |
+| 排序 | 预计日期从早到晚（逾期最久的在最前），预计日期未知的排最后 |
+| 分页 | 不分页，检索（姓名 / ID号 / 研究编号）、按状态 / 周期筛选、分页都在页面完成 |
+
+出参 `data` 为数组：
+
+| 字段 | 中文含义 | 取的方式 |
+|---|---|---|
+| `patientId` / `studyNo` / `name` / `sex` / `birthYear` | 患者 | `patient_basic_info`；出生年份按身份证号 |
+| `visitCount` | 随访记录条数（含基线访视） | RA 随访记录条数；只建档、没录随访为 0 |
+| `nth` / `first` | 下次是第几次随访 / 下次是否基线访视 | 第一条记录是基线访视、不算随访：`nth` = `visitCount`（0 = 下次是基线）；`first` = `visitCount = 0` |
+| `followCycle` | 随访周期（月） | `follow_cycle` |
+| `lastVisitDate` | 最近随访日期 | `COALESCE(follow_up_date, followUpDate)` 最大值 |
+| `dueDate` | 预计日期 | 最近随访 + 随访周期；没有随访取建档日期 |
+| `days` | 距今天数（上海时区），负数 = 已逾期 | |
+| `status` / `statusLabel` | 与患者列表同一规则：`pending_first` 待首次随访（还没有随访）/ `overdue` 随访逾期 / `soon` 近期需随访（14 天内）/ `active` 随访中 / `lost` 疑似失访 | 疑似失访：最近一次随访（没有随访取建档日期）距今超过 `ra.followup.lost-months` 个月（默认 24），优先于其他状态 |
+
+页面统计：计划中随访、已逾期、14 天内到期、按期随访率（=(已做基线的计划数−逾期数)/已做基线的计划数，待首次随访不计入）都**不含疑似失访**；疑似失访单独一张卡片，点开筛出名单。列表默认不显示疑似失访，状态筛选选「疑似失访」才显示。
+
+页面：点患者进入患者详情（`patient-visits.html?id=…&from=followups`），详情页「返回」用浏览器后退回到随访管理（保留检索条件和页码）。
+
+---
+
+### 6.3 编辑档案 · 表单当前值
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/editForm` |
+| 入参 | `doctorId`、`patientId`（患者须在本医生名下，否则 404） |
+| 出参 | `patientId`、`studyNo`（不可改）、`acrEularScore`（总分，老数据可能只有总分）、`basic`（字段同 6.2 的 basic；`acrEular` 为最近一次各部分评估，与患者表总分一致时才带出；`comorbidities` 带 `source`：manual 医生勾选 / auto 其他病种库自动记入，页面不能取消） |
+
+### 6.4 编辑档案 · 保存
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/patient/updatePatient`（JSON） |
+| 入参 | `doctorId`、`patientId`、`basic`（同 6.2）、`changed`：医生实际改过的字段名数组（basic 里的字段名，如 `mobile`、`weight`、`acrEular`、`comorbidities`） |
+| 规则 | **只更新 `changed` 里列出、且与库里原值不同的字段**；没改的字段不校验、不写（老数据里不规范的值原样保留）。吸烟 4 项（smoke / smokeYears / smokeCountByDay / smokeStop）作为一组一起改。收缩压同步写 `xy`（老系统读）。身份证号改成其他患者已用的 → 409 |
+| 写库 | 老表 `patient_basic_info` 只写改了的列；确诊日期 / 发病时间改了时同步本医生 RA 医患关系上的同名字段；ACR/EULAR 改了：总分写 `acr_eular_score`、各部分插 `patient_acr_eular` 一行，清除评估则 `acr_eular_score` 置空；诊断结果告知 / 知情同意书写 `patient_ra_extra`；常见相关疾病：新勾的插入、取消的删除（只删 manual）、起病年份更新 |
+| 出参 | `data` = 实际修改项数，0 = 没有变化（不写修改记录） |
+| 留痕 | 修改记录「修改档案」：字段 旧值 → 新值 |
+| 页面 | `patient-edit.html` 与新增患者共用表单和脚本（`patient-create.js`，body `data-mode="edit"`）；保存后返回来源页（浏览器后退） |
+
+---
+
+## 十一、OCR 识别病历录入（百度医疗 OCR）
+
+入口：患者列表「OCR识别录入」、新增患者页（识别后新建患者，建档后接着录基线访视）；患者详情、访视详情、新增随访页（识别后填入本次随访）。前端弹窗 `js/shared/ocr-import.js`。
+
+**识别结果只用于填表，不直接入库**：草稿存浏览器 sessionStorage（`ra-ocr-draft`），打开 `patient-create.html?ocr=1` / `visit-create.html?id=…&ocr=1` 预填，蓝框标出填上的项，医生核对后点保存，走原来的 `createPatient` / `createVisit`（老表写法不变）。
+
+流程：上传图片存服务器 → 返回预览 URL → 识别时后端读这张图转 base64 调百度（百度访问不到内网 URL，所以不把 URL 传给百度）→ 解析成草稿。
+
+配置（`application.properties`，**密钥只放服务器，不进 git**）：
+
+| 配置 | 含义 |
+|---|---|
+| `ra.ocr.baidu.api-key` / `ra.ocr.baidu.secret-key` | 百度智能云 OCR 应用的 API Key / Secret Key；不配时识别返回 400「OCR 还没配置」 |
+| `ra.ocr.baidu.apis` | 依次调用的识别接口，默认 `medical_report_detection,accurate_basic`（医疗检验报告单识别 + 通用文字识别高精度）；某个接口失败只在 warnings 提示，全部失败才报错 |
+| `ra.ocr.baidu.base-url` | 默认 `https://aip.baidubce.com`（测试可指向本地模拟服务） |
+| `ra.upload.dir` | 上传图片保存目录，默认 `upload`（相对启动目录），图片存 `{dir}/ocr/yyyyMMdd/随机名.ext` |
+
+服务器要能访问 `aip.baidubce.com`（443）。access_token 缓存到过期前 1 天，失效（110/111）自动重取一次。
+
+### 11.1 上传病历图片
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/upload`（multipart，字段 `file`） |
+| 规则 | 只收 jpg / jpeg / png / bmp，≤15MB，须能解析为图片 |
+| 出参 | `fileId`（`yyyyMMdd/32位随机名.ext`）、`url`（预览地址 `/api/ra/files/ocr/{fileId}`）、`size` |
+
+### 11.2 图片预览
+
+`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。
+
+### 11.3 识别
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/recognize` |
+| 入参 | `fileId`（11.1 返回） |
+| 处理 | 图片超过 3MB 或长边超过 3000 像素时先压缩（JPEG 0.85）再发百度 |
+| 出参 | 见下表 |
+
+| 字段 | 含义 |
+|---|---|
+| `basic` | 新建患者预填：`name`、`gender`（1 男 / 2 女）、`age`（只显示）、`cardNo`、`mobile`、`nation`、`marry`（0 未婚 / 1 已婚 / 2 离异 / 3 丧偶）、`height`、`weight`、`happenDate`、`confirmDate`；识别不出的不返回 |
+| `visitDate` | 报告 / 采样 / 就诊日期（yyyy-MM-dd），作为随访日期 |
+| `fzjc` | 辅助检查预填：系统字段 → 值（数值取开头的数字，含 `<`、`>`；ANA、抗SS-A/SS-B、抗Ro-52 取「阳性 / 阴性」） |
+| `items[]` | 报告上的每个检验项目：`name`、`abbr`、`result`、`unit`（报告原文）；`alias`（叫法键：名称+缩写去空格括号连字符转大写）；`field` / `fieldLabel` / `fieldUnit`（对应的系统字段，对不上为 null）；`matchedBy`（`learned` 按医生以前的对应 / `builtin` 内置同义词）；`value`（填入值）；`unitWarning`（报告单位与系统单位不同，提醒换算，如肌酐 mg/dL ↔ μmol/L） |
+| `fieldOptions[]` | 可对应的系统字段（辅助检查里的化验项）：`field`、`label`（分组 · 名称）、`unit`、`type`；页面下拉框用 |
+| `lines[]` | 识别出的原文（逐行），供核对 |
+| `warnings[]` | 提示：没识别出姓名 / 身份证号（无法查重）、部分接口失败等 |
+| `fileId` / `url` | 原图 |
+
+**检验项目名称对应（各家医院叫法不同）**：① 内置同义词（中文名、英文缩写，如「超敏C-反应蛋白 / hs-CRP」→ 超敏CRP）；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（优先于内置同义词）。
+
+### 11.4 保存叫法对照
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/saveAliases`（JSON） |
+| 入参 | `doctorId`、`mappings`：`[{alias, field, name}]`（alias 为 11.3 items 的 `alias`，field 须是 `fieldOptions` 里的字段，否则忽略；name 为报告上的名称，留作样例） |
+| 写库 | 新表 `ocr_lab_alias`（`sql/20261012_ocr_lab_alias.sql`），alias 唯一，重复则更新 field；全院共用 |
+
+---
 
 ## 七、AI 队列完整分析与有期结果分页（P03_RESULT）
 
