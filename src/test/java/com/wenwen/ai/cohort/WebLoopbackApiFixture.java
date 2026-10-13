@@ -71,7 +71,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     boolean currentAnalysisScenario(){return "p07-current".equals(scenario);}
     boolean retainedContextScenario(){return compositionScenario()||currentAnalysisScenario();}
     boolean currentExportScenario(){return "p06-current".equals(scenario)||"p07-current".equals(scenario);}
-    boolean typedScenario(){return "issue1-detail".equals(scenario)||currentExportScenario()||"p00-trusted".equals(scenario)||"p01-overview".equals(scenario)||"p03-sources".equals(scenario)||"p05-chat".equals(scenario);}
+    static boolean typedScenario(String scenario){return Arrays.asList("issue1-detail","p06-current","p07-current","p00-trusted","p01-overview","p03-sources","p05-chat").contains(scenario);}
+    boolean typedScenario(){return typedScenario(scenario);}
     boolean compositionScenario(){return compositionScenario(scenario);}
     static boolean applicationScenario(String scenario){return Arrays.asList("p06-application-replay","p06-application-retry","p06-application-unknown").contains(scenario);}
     boolean applicationScenario(){return applicationScenario(scenario);}
@@ -248,6 +249,8 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
+        // 认证 bootstrap 仅属于真实 typed-cookie 场景；不开放生产 login/logout。
+        if(typedScenario(scenario)&&"/api/ra/auth/me".equals(path))return true;
         if("issue1-detail".equals(scenario))return Arrays.asList("/api/ra/patient/patientDetail","/api/ra/visit/visitDetail","/api/ra/visit/visitEditForm","/api/ra/visit/visitCreateForm","/api/ra/ai/cohort","/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p07-current".equals(scenario))return CURRENT_PATHS.contains(path)||Arrays.asList("/api/ra/test/session","/api/ra/test/logout").contains(path);
         if("p06-current".equals(scenario))return Arrays.asList("/api/ra/ai/cohort","/api/ra/ai/cohortPatients","/api/ra/ai/compare","/api/ra/ai/compareResult","/api/ra/cohort/save","/api/ra/cohort/list","/api/ra/cohort/open","/api/ra/cohort/rename","/api/ra/cohort/delete","/api/ra/export/xlsx","/api/ra/export/applyAnalysis","/api/ra/export/retryNotification","/api/ra/test/session","/api/ra/test/logout").contains(path);
@@ -524,6 +527,12 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         @Bean public AiChatAuditMapper chatMapper(SqlSessionTemplate t){return t.getMapper(AiChatAuditMapper.class);}
         @Bean @org.springframework.context.annotation.Primary public ChatHttpFixture.ChatObservedDataSource chatObserved(DataSource source){return new ChatHttpFixture.ChatObservedDataSource(source);}
     }
+    /** 真正的生产 me/current 装配；profile 查询仍走同一 observed DataSource。 */
+    @Configuration
+    @Import({com.wenwen.controller.ra.AuthController.class,com.wenwen.auth.AuthService.class})
+    public static class AuthInfrastructure {
+        @Bean public org.springframework.jdbc.core.JdbcTemplate authJdbc(DataSource source){return new org.springframework.jdbc.core.JdbcTemplate(source);}
+    }
     Class<?> contextConfiguration() {
         if("issue1-detail".equals(scenario))return LegacyPatientInfrastructure.class;
         if("p07-current".equals(scenario))return CurrentAnalysisInfrastructure.class;
@@ -578,6 +587,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
         }
         if(compositionScenario()||currentExportScenario())application.addBeanFactoryPostProcessor(factory -> factory.registerSingleton("clock",scenarioClock));
         application.register(contextConfiguration());
+        if(typedScenario())application.register(AuthInfrastructure.class);
         tomcat=new Tomcat();tomcat.setBaseDir(base.getAbsolutePath());
         tomcat.getConnector().setProperty("address","127.0.0.1");tomcat.getConnector().setPort(retainedContextScenario()?compositionPort:0);
         Context context=tomcat.addContext("",base.getAbsolutePath());
@@ -587,10 +597,19 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             protected synchronized void service(HttpServletRequest request,HttpServletResponse response) throws ServletException,IOException {
                 synchronized(WebLoopbackApiFixture.this) {
                 if(!allowsHttpPath(scenario,request.getRequestURI())) {response.sendError(404);return;}
+                if("/api/ra/auth/me".equals(request.getRequestURI())){
+                    if(request.getQueryString()!=null){response.sendError(404);return;}
+                    if(!"POST".equals(request.getMethod())){response.sendError(405);return;}
+                }
                 if(typedScenario()&&request.getRequestURI().startsWith("/api/ra/test/")){
                     if(!"POST".equals(request.getMethod())){response.sendError(405);return;}
-                    if(request.getRequestURI().equals("/api/ra/test/session"))request.getSession(true).setAttribute(AuthenticatedDoctorSession.ATTRIBUTE,new AuthenticatedDoctorSession(new TrustedDoctor(101)));
-                    else {HttpSession session=request.getSession(false);if(session!=null)session.invalidate();}
+                    if(request.getRequestURI().equals("/api/ra/test/session")){
+                        HttpSession old=request.getSession(false);if(old!=null)old.invalidate();
+                        HttpSession session=request.getSession(true);
+                        session.setAttribute(com.wenwen.auth.AuthService.SESSION_DOCTOR,Long.valueOf(101));
+                        session.setAttribute(com.wenwen.auth.AuthService.SESSION_USER,"synthetic");
+                        session.setAttribute(AuthenticatedDoctorSession.ATTRIBUTE,new AuthenticatedDoctorSession(new TrustedDoctor(101)));
+                    } else application.getBean(com.wenwen.auth.AuthService.class).logout(request);
                     response.setStatus(204);return;
                 }
                 int selectsBefore=observed.selects,analysisInsertsBefore=observed.inserts;
