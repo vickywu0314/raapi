@@ -58,7 +58,7 @@ public final class ChatGateway implements AutoCloseable {
 
     private final class OwnedTask extends FutureTask<NetworkOutcome> {
         final Flight flight;
-        OwnedTask(Flight flight){super(()->execute(flight));this.flight=flight;}
+        OwnedTask(Flight flight,java.util.concurrent.Callable<NetworkOutcome> work){super(work);this.flight=flight;}
     }
     private static final class Cancelled extends IOException {Cancelled(){super("chat interrupted");}}
 
@@ -93,7 +93,7 @@ public final class ChatGateway implements AutoCloseable {
                 if(closed){flight.retire("CLOSED");return Result.failure("AI_BUSY",null);}
                 if(Thread.currentThread().isInterrupted())return interrupted(flight,null);
                 if(flight.networkExpired()||flight.terminal.get()!=null)return timeout(flight,null);
-                active.add(flight);OwnedTask task=new OwnedTask(flight);future=task;
+                active.add(flight);OwnedTask task=new OwnedTask(flight,()->execute(flight));future=task;
                 try{executor.execute(task);flight.accepted=true;}
                 catch(RejectedExecutionException busy){active.remove(flight);flight.retire("CLOSED");return Result.failure("AI_BUSY",null);}
             }
