@@ -36,10 +36,10 @@ public class OcrController {
 
 	@ApiOperation(value = "上传病历图片", notes = "multipart 字段 file；jpg / png / bmp，≤15MB。返回 fileId 和预览 url", httpMethod = "POST")
 	@PostMapping("/api/ra/ocr/upload")
-	public DataResult<Map<String, Object>> upload(@RequestParam("file") MultipartFile file) {
+	public DataResult<Map<String, Object>> upload(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
 		DataResult<Map<String, Object>> r = new DataResult<Map<String, Object>>();
 		try {
-			ok(r, ocrService.upload(file));
+			ok(r, ocrService.upload(file, AuthService.currentDoctorId(request)));
 		} catch (Exception e) {
 			fail(r, e, "上传失败");
 		}
@@ -74,15 +74,32 @@ public class OcrController {
 		return r;
 	}
 
-	/** 病历图片预览：需要登录 */
+	@ApiOperation(value = "某次随访的 OCR 原图", notes = "用 OCR 识别结果保存的随访，返回当时上传的病历图片 [{fileId, url, uploadTime, recognizeTime}]；患者须在本医生名下", httpMethod = "POST")
+	@PostMapping("/api/ra/ocr/visitImages")
+	public DataResult<List<Map<String, Object>>> visitImages(@RequestParam("doctorId") Long doctorId, @RequestParam("patientId") Long patientId,
+			@RequestParam("visitId") Long visitId) {
+		DataResult<List<Map<String, Object>>> r = new DataResult<List<Map<String, Object>>>();
+		try {
+			ok(r, ocrService.visitImages(doctorId, patientId, visitId));
+		} catch (Exception e) {
+			fail(r, e, "查询 OCR 原图失败");
+		}
+		return r;
+	}
+
+	/** 病历图片预览：需要登录，且是本人上传的或已关联到本人名下的患者 */
 	@GetMapping("/api/ra/files/ocr/{day}/{name:.+}")
 	public ResponseEntity<byte[]> file(@PathVariable String day, @PathVariable String name, HttpServletRequest request) throws Exception {
-		if (AuthService.currentDoctorId(request) == null) {
+		Long doctorId = AuthService.currentDoctorId(request);
+		if (doctorId == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		Path p;
 		try {
 			p = ocrService.existing(day + "/" + name);
+			if (!ocrService.canView(day + "/" + name, doctorId)) {
+				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+			}
 		} catch (RuntimeException e) {
 			return ResponseEntity.notFound().build();
 		}

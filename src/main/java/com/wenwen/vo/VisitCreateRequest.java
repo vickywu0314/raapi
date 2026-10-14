@@ -8,6 +8,8 @@ import io.swagger.annotations.ApiModelProperty;
 @ApiModel(value = "新增随访请求（JSON）")
 public class VisitCreateRequest {
 
+	@ApiModelProperty("用 OCR 识别结果填表时的图片编号（/api/ra/ocr/upload 返回的 fileId），保存后把图片关联到这里；可不传")
+	private String ocrFileId;
 	@ApiModelProperty("当前医生ID（必填）")
 	private Long doctorId;
 	@ApiModelProperty("患者ID（必填）")
@@ -40,5 +42,11 @@ public class VisitCreateRequest {
 	}
 	public void setModules(Map<String, VisitModuleUpdate> modules) {
 		this.modules = modules;
+	}
+	public String getOcrFileId() {
+		return ocrFileId;
+	}
+	public void setOcrFileId(String ocrFileId) {
+		this.ocrFileId = ocrFileId;
 	}
 }

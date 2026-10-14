@@ -30,6 +30,9 @@ import io.swagger.annotations.ApiParam;
 public class VisitController {
 
 	@Autowired
+	private com.wenwen.ocr.OcrService ocrService;
+
+	@Autowired
 	private VisitService visitService;
 
 	@ApiOperation(value = "访视详情", notes = "访视详情页（visit-detail.html）：7 个病历模块；患者基本信息另调 /api/ra/patient/patientDetail", response = DataResult.class, httpMethod = "POST")
@@ -127,7 +130,9 @@ public class VisitController {
 	public DataResult<VisitCreateResultVo> createVisit(@RequestBody VisitCreateRequest req) {
 		DataResult<VisitCreateResultVo> result = new DataResult<VisitCreateResultVo>();
 		try {
-			result.setData(visitService.createVisit(req));
+			VisitCreateResultVo r = visitService.createVisit(req);
+			ocrService.link(req.getOcrFileId(), req.getDoctorId(), r.getPatientId(), r.getVisitId());
+			result.setData(r);
 			result.setCode("200");
 			result.setMessage("已保存本次随访");
 			result.setSuccess(true);
