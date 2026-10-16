@@ -84,6 +84,11 @@
 - [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
 - [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
+- [ ] **前端 nginx：同源反向代理 `/api/` 到后端，并放开上传大小**
+  - 页面和接口必须同一个域名 / 端口（登录靠 session Cookie）：`location /api/ { proxy_pass http://127.0.0.1:8065; }`，不要改写 Cookie 的 path
+  - `client_max_body_size 20m;`：nginx 默认只允许 1MB，手机拍的病历照片（2～5MB）OCR 上传会 413 失败；后端已允许 15MB
+  - `proxy_read_timeout 60s;`：OCR 识别、AI 分析可能要十几秒
+  - 前端只发布页面文件（*.html、css/、js/、img/、guides/），不要发布 node_modules/、tests/、mock/、scripts/、docs/、_release/、Claude outputs/
 - [ ] **配置上传图片目录 `ra.upload.dir`（OCR 病历原图存这里，丢了访视详情里的原图就打不开）**
   - 服务器配置写绝对路径，如 `ra.upload.dir=/data/raapi/upload`；默认值 `upload` 是相对后端启动目录的，换启动目录 / 重新部署时图片会"找不到"
   - 目录要提前建好，后端运行账号有读写权限；不要放在会被部署覆盖或清空的目录（如 jar 所在的发布目录、/tmp）
