@@ -48,6 +48,9 @@ public class PatientController {
 	@Autowired
 	private PatientWriteService patientWriteService;
 
+	@Autowired
+	private com.wenwen.ocr.OcrService ocrService;
+
 	@ApiOperation(value = "患者列表", notes = "患者列表页：列表、模糊查询、筛选、分页、页头汇总；只返回该医生名下患者", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/patientsList")
 	public DataResult<PatientsListVo> patientsList(
@@ -170,6 +173,7 @@ public class PatientController {
 		DataResult<PatientCreateResultVo> result = new DataResult<PatientCreateResultVo>();
 		try {
 			PatientCreateResultVo r = patientWriteService.createPatient(req);
+			ocrService.link(req.getOcrFileId(), req.getDoctorId(), r.getPatientId(), null);
 			ok(result, r);
 			result.setMessage("transferred".equals(r.getAction()) ? "已转到您名下" : "建档成功");
 		} catch (Exception e) {

@@ -23,7 +23,7 @@ public final class OcrResultParser {
 			{ "cmcfydb", "超敏C反应蛋白", "超敏c反应蛋白", "HSCRP", "HS-CRP", "高敏C反应蛋白" },
 			{ "cfydb", "C反应蛋白", "c反应蛋白", "CRP" },
 			{ "xc", "血沉", "红细胞沉降率", "ESR" },
-			{ "bxb", "白细胞计数", "白细胞", "WBC" },
+			{ "bxb", "白细胞计数", "白细胞", "WBC", "LEU" },
 			{ "xhdb", "血红蛋白", "HGB", "HB" },
 			{ "xxb", "血小板计数", "血小板", "PLT" },
 			{ "rbc", "红细胞计数", "红细胞", "RBC" },
@@ -59,6 +59,12 @@ public final class OcrResultParser {
 	/** 定性结果（阳性 / 阴性）的字段：存「阳性」「阴性」 */
 	private static final List<String> QUALITATIVE = java.util.Arrays.asList("ana", "ssa", "ssb", "ro52");
 
+	/** 名称末尾方括号 / 圆括号里的英文缩写，如「★白细胞计数[WBC]」「淋巴细胞百分率[LYMPH%]」 */
+	private static final Pattern BRACKET_ABBR = Pattern.compile("[\\[［【(（]\\s*([A-Za-z][A-Za-z0-9#%\\-.]*)\\s*[\\]］】)）]\\s*$");
+	/** 派生指标的字样：名称含这些的不按名称对应（平均红细胞体积、红细胞压积、网织红细胞、淋巴细胞百分率…） */
+	private static final String[] DERIVED = { "平均", "压积", "分布", "宽度", "百分", "比率", "比例", "网织", "未成熟", "有核" };
+	/** 血常规计数字段：尿常规、便常规、积液里的同名项目不算 */
+	private static final List<String> BLOOD_COUNT = java.util.Arrays.asList("bxb", "xhdb", "xxb", "rbc");
 	/** 比较名称时忽略的字符：空格、括号、连字符 */
 	private static final Pattern STRIP = Pattern.compile("[\\s（）()\\-－—·]");
 	private static final Pattern NUM = Pattern.compile("^[<>≤≥＜＞]?=?\\s*-?\\d+(\\.\\d+)?");
@@ -232,16 +238,43 @@ public final class OcrResultParser {
 		return m.find() ? m.group().replaceAll("\\s", "") : null;
 	}
 
-	/** 名称 / 缩写 → 字段；对不上返回 null */
+	/**
+	 * 名称 / 缩写 → 字段；对不上返回 null。
+	 * 1. 有缩写（单独一列，或名称末尾方括号里的，如「★白细胞计数[WBC]」）且是已知缩写：按缩写定；
+	 * 2. 否则按名称：名称里含同义词，且不是派生指标（平均、压积、分布宽度、百分率、网织…，如 MCV、HCT、RET 不能算成红细胞）。
+	 */
 	static String labKey(String name, String abbr) {
-		String n = norm(name), a = norm(abbr);
+		String a = norm(abbr);
+		String core = name;
+		if (name != null) {
+			Matcher m = BRACKET_ABBR.matcher(name.trim());
+			if (m.find()) {
+				if (a == null || a.isEmpty()) a = norm(m.group(1));
+				core = name.trim().substring(0, m.start());
+			}
+			core = core.replaceFirst("^[\\s\\d.、★☆*※#]+", "");
+		}
+		if (a != null && !a.isEmpty()) {
+			for (String[] row : LAB) {
+				for (int i = 1; i < row.length; i++) {
+					String p = norm(row[i]);
+					if (p.matches("[A-Z0-9Γ\\-]+") && p.equals(a)) return row[0];
+				}
+			}
+		}
+		String n = norm(core);
+		if (n == null || n.isEmpty()) return null;
+		for (String w : DERIVED) {
+			if (n.contains(w)) return null;
+		}
 		for (String[] row : LAB) {
+			if (BLOOD_COUNT.contains(row[0]) && (n.contains("尿") || n.contains("粪") || n.contains("便") || n.contains("介素") || n.contains("胸水") || n.contains("腹水"))) continue;
 			for (int i = 1; i < row.length; i++) {
 				String p = norm(row[i]);
 				boolean isAbbr = p.matches("[A-Z0-9Γ\\-]+");
 				if (isAbbr) {
-					if (p.equals(a) || (n != null && Pattern.compile("(?<![A-Z])" + Pattern.quote(p) + "(?![A-Z])").matcher(n).find())) return row[0];
-				} else if (n != null && n.contains(p)) {
+					if (Pattern.compile("(?<![A-Z])" + Pattern.quote(p) + "(?![A-Z0-9#%])").matcher(n).find()) return row[0];
+				} else if (n.contains(p)) {
 					return row[0];
 				}
 			}

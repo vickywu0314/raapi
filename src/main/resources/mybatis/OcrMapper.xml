@@ -8,4 +8,31 @@
 		INSERT INTO ocr_lab_alias (alias, field, sample_name, doctor_id) VALUES (#{alias}, #{field}, #{sampleName}, #{doctorId})
 		ON DUPLICATE KEY UPDATE field = VALUES(field), sample_name = VALUES(sample_name), doctor_id = VALUES(doctor_id)
 	</insert>
+
+	<!-- ocr_record：病历图片记录 -->
+	<insert id="insertRecord">
+		INSERT INTO ocr_record (file_id, doctor_id, upload_time) VALUES (#{fileId}, #{doctorId}, NOW())
+	</insert>
+	<update id="updateResult">
+		UPDATE ocr_record SET result = #{result}, recognize_time = NOW() WHERE file_id = #{fileId}
+	</update>
+	<!-- 只关联本医生上传的图片；随访为空（只建档）时不覆盖已有的随访 -->
+	<update id="linkRecord">
+		UPDATE ocr_record SET patient_id = #{patientId}, visit_id = IFNULL(#{visitId}, visit_id), link_time = NOW()
+		WHERE file_id = #{fileId} AND doctor_id = #{doctorId}
+	</update>
+	<select id="findRecord" resultType="Map">
+		SELECT file_id AS fileId, doctor_id AS doctorId, patient_id AS patientId, visit_id AS visitId FROM ocr_record WHERE file_id = #{fileId}
+	</select>
+	<select id="ownsPatient" resultType="int">
+		SELECT COUNT(*) FROM patient_relation_doctor WHERE patient_id = #{patientId} AND doctor_id = #{doctorId}
+	</select>
+	<!-- 某次随访用过的 OCR 原图（患者须在本医生名下） -->
+	<select id="listVisitRecords" resultType="Map">
+		SELECT r.file_id AS fileId, DATE_FORMAT(r.upload_time, '%Y-%m-%d %H:%i') AS uploadTime, DATE_FORMAT(r.recognize_time, '%Y-%m-%d %H:%i') AS recognizeTime
+		FROM ocr_record r
+		WHERE r.visit_id = #{visitId} AND r.patient_id = #{patientId}
+		  AND EXISTS (SELECT 1 FROM patient_relation_doctor d WHERE d.patient_id = r.patient_id AND d.doctor_id = #{doctorId})
+		ORDER BY r.id
+	</select>
 </mapper>

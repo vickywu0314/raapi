@@ -57,13 +57,15 @@ public class OcrService {
 	@Value("${ra.ocr.baidu.apis:medical_report_detection,accurate_basic}")
 	private String apis;
 
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OcrService.class);
+
 	@Autowired
 	private BaiduOcrClient baidu;
 	@Autowired
 	private OcrMapper mapper;
 
-	/** 保存上传的图片，返回 fileId（日期/文件名） */
-	public Map<String, Object> upload(MultipartFile file) throws IOException {
+	/** 保存上传的图片，返回 fileId（日期/文件名）；同时在 ocr_record 记一条（表没建时只存文件） */
+	public Map<String, Object> upload(MultipartFile file, Long doctorId) throws IOException {
 		if (file == null || file.isEmpty()) {
 			throw new IllegalArgumentException("请选择图片");
 		}
@@ -83,6 +85,11 @@ public class OcrService {
 		Path path = path(fileId);
 		Files.createDirectories(path.getParent());
 		Files.write(path, bytes);
+		try {
+			mapper.insertRecord(fileId, doctorId);
+		} catch (DataAccessException e) {
+			log.warn("ocr_record 写入失败（表没建？请执行 sql/20261014_ocr_record.sql）：{}", e.getMessage());
+		}
 		Map<String, Object> out = new LinkedHashMap<String, Object>();
 		out.put("fileId", fileId);
 		out.put("url", "/api/ra/files/ocr/" + fileId);
@@ -117,6 +124,7 @@ public class OcrService {
 		for (String f : failures) warnings.add("部分识别没有成功：" + f);
 		draft.put("fileId", fileId);
 		draft.put("url", "/api/ra/files/ocr/" + fileId);
+		saveResult(fileId, draft);
 		return draft;
 	}
 
@@ -135,6 +143,61 @@ public class OcrService {
 			} catch (DataAccessException e) {
 				throw new BizException("500", "叫法对照表还没建，请先执行 sql/20261012_ocr_lab_alias.sql");
 			}
+		}
+	}
+
+	/** 识别结果存进 ocr_record（不存下拉选项） */
+	private void saveResult(String fileId, Map<String, Object> draft) {
+		try {
+			Map<String, Object> keep = new LinkedHashMap<String, Object>(draft);
+			keep.remove("fieldOptions");
+			mapper.updateResult(fileId, JSONObject.toJSONString(keep));
+		} catch (DataAccessException e) {
+			log.warn("ocr_record 保存识别结果失败：{}", e.getMessage());
+		}
+	}
+
+	/**
+	 * 用识别结果新建患者 / 保存随访后，把图片关联到患者、随访（只关联本医生上传的图片）。
+	 * 不抛异常：关联失败不影响已经保存的患者 / 随访，只记日志。
+	 */
+	public void link(String fileId, Long doctorId, Long patientId, Long visitId) {
+		if (fileId == null || fileId.isEmpty() || doctorId == null || patientId == null || !FILE_ID.matcher(fileId).matches()) {
+			return;
+		}
+		try {
+			mapper.linkRecord(fileId, doctorId, patientId, visitId);
+		} catch (RuntimeException e) {
+			log.warn("OCR 图片关联患者 / 随访失败 fileId={}：{}", fileId, e.getMessage());
+		}
+	}
+
+	/** 某次随访用过的 OCR 原图（患者须在本医生名下；表没建时返回空） */
+	public List<Map<String, Object>> visitImages(Long doctorId, Long patientId, Long visitId) {
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		if (doctorId == null || patientId == null || visitId == null) return out;
+		try {
+			for (Map<String, Object> r : mapper.listVisitRecords(doctorId, patientId, visitId)) {
+				r.put("url", "/api/ra/files/ocr/" + r.get("fileId"));
+				out.add(r);
+			}
+		} catch (DataAccessException e) {
+			log.warn("查询 ocr_record 失败：{}", e.getMessage());
+		}
+		return out;
+	}
+
+	/** 能否查看这张图片：本人上传的，或已关联到本人名下的患者；没有记录（表没建 / 老图片）时只要求登录 */
+	public boolean canView(String fileId, Long doctorId) {
+		if (doctorId == null) return false;
+		try {
+			Map<String, Object> r = mapper.findRecord(fileId);
+			if (r == null) return true;
+			if (r.get("doctorId") != null && doctorId.equals(((Number) r.get("doctorId")).longValue())) return true;
+			Object pid = r.get("patientId");
+			return pid != null && mapper.ownsPatient(((Number) pid).longValue(), doctorId) > 0;
+		} catch (DataAccessException e) {
+			return true;
 		}
 	}
 

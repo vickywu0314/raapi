@@ -815,10 +815,11 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 地址 | `POST /api/ra/ocr/upload`（multipart，字段 `file`） |
 | 规则 | 只收 jpg / jpeg / png / bmp，≤15MB，须能解析为图片 |
 | 出参 | `fileId`（`yyyyMMdd/32位随机名.ext`）、`url`（预览地址 `/api/ra/files/ocr/{fileId}`）、`size` |
+| 写库 | 新表 `ocr_record` 插一条（图片编号、上传医生 = 登录会话里的医生）；表没建时只存文件、不报错 |
 
 ### 11.2 图片预览
 
-`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。
+`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。只能看本人上传的、或已关联到本人名下患者的图片，否则 403（`ocr_record` 里没有记录的老图片只要求登录）。
 
 ### 11.3 识别
 
@@ -840,9 +841,29 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `warnings[]` | 提示：没识别出姓名 / 身份证号（无法查重）、部分接口失败等 |
 | `fileId` / `url` | 原图 |
 
-**检验项目名称对应（各家医院叫法不同）**：① 内置同义词（中文名、英文缩写，如「超敏C-反应蛋白 / hs-CRP」→ 超敏CRP）；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（优先于内置同义词）。
+**检验项目名称对应（各家医院叫法不同）**：① 内置同义词：有英文缩写（单独一列，或名称末尾方括号里的，如「★白细胞计数[WBC]」）且是已知缩写的按缩写定，否则按中文名；名称含「平均、压积、分布、宽度、百分、比率、比例、网织、未成熟、有核」的派生指标不按名称对应（如 MCV、HCT、RET 不会算成红细胞），尿 / 便 / 积液里的同名项目不算血常规；系统表单没有的项目（如淋巴细胞计数、各类百分率）显示「系统表单里没有这一项」，不填入；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（优先于内置同义词）。
 
-### 11.4 保存叫法对照
+识别完成后，识别结果（不含 `fieldOptions`）存进 `ocr_record.result`。
+
+### 11.4 原图关联到患者 / 随访
+
+用识别结果填表后保存时，前端在原来的保存请求里多传 `ocrFileId`（11.1 的 fileId）：
+
+- `POST /api/ra/patient/createPatient`（JSON）：`ocrFileId` 可选 → 建档成功后 `ocr_record.patient_id` = 新患者
+- `POST /api/ra/visit/createVisit`（JSON）：`ocrFileId` 可选 → 保存成功后 `ocr_record.patient_id`、`visit_id` = 本次随访
+
+只关联本医生上传的图片；关联失败只记日志，不影响已保存的患者 / 随访。不写老表（不改随访 JSON 里的 `xcgImgs` 检验报告图片）。
+
+### 11.5 某次随访的 OCR 原图
+
+| 项 | 值 |
+|---|---|
+| 地址 | `POST /api/ra/ocr/visitImages` |
+| 入参 | `doctorId`、`patientId`、`visitId` |
+| 出参 | `[{fileId, url, uploadTime, recognizeTime}]`；患者不在本医生名下、没有 OCR 图片或表没建时为空数组 |
+| 页面 | 访视详情「OCR 识别原图」（修改记录上方，没有就不显示），点开看原图 |
+
+### 11.6 保存叫法对照
 
 | 项 | 值 |
 |---|---|
