@@ -1,3 +1,4 @@
+-- 【MySQL 8 专用，当前目标库 MySQL 5.7 请改用 20261018_backfill_study_no_mysql57.sql，不要执行本文件】
 -- 给老患者补研究编号（需 MySQL 8.0+，用到 ROW_NUMBER）。
 -- 规则：RA-建档日期yyyyMMdd-当天序号（5位，按 id 顺序从 00001 起），如 RA-20250407-00001。
 -- 建档日期取 create_date，为空取 createDate，都为空取执行当天。
