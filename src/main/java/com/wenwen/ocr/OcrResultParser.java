@@ -197,7 +197,8 @@ public final class OcrResultParser {
 
 	private static void addItem(Map<String, String> fzjc, List<Map<String, Object>> items, String name, String abbr, String result, String unit, Map<String, String> aliases) {
 		String learned = aliases.get(alias(name, abbr));
-		String key = learned != null ? learned : labKey(name, abbr);
+		boolean conflict = mappingConflict(name, abbr);
+		String key = conflict || "blocked".equals(matchParts(name, abbr)[2]) ? null : learned != null ? learned : labKey(name, abbr);
 		String value = null;
 		if (key != null && result != null) {
 			if (QUALITATIVE.contains(key)) {
@@ -215,6 +216,8 @@ public final class OcrResultParser {
 		it.put("alias", alias(name, abbr));
 		it.put("field", key);
 		it.put("matchedBy", key == null ? null : learned != null ? "learned" : "builtin");
+		it.put("needsConfirmation", conflict);
+		if (conflict) it.put("mappingWarning", "项目名称与缩写冲突，请对照原图手动确认对应字段");
 		it.put("value", value != null ? value : result == null ? null : result.trim());
 		items.add(it);
 		if (value != null && !fzjc.containsKey(key)) {
@@ -244,8 +247,16 @@ public final class OcrResultParser {
 	 * 2. 否则按名称：名称里含同义词，且不是派生指标（平均、压积、分布宽度、百分率、网织…，如 MCV、HCT、RET 不能算成红细胞）。
 	 */
 	static String labKey(String name, String abbr) {
-		String a = norm(abbr);
-		String core = name;
+		String[] parts = matchParts(name, abbr);
+		if ("blocked".equals(parts[2]) || conflict(parts)) return null;
+		return parts[1] != null ? parts[1] : parts[0];
+	}
+
+	private static boolean mappingConflict(String name, String abbr) { return conflict(matchParts(name, abbr)); }
+	private static boolean conflict(String[] p) { return p[0] != null && p[1] != null && !p[0].equals(p[1]); }
+
+	private static String[] matchParts(String name, String abbr) {
+		String a = norm(abbr), core = name;
 		if (name != null) {
 			Matcher m = BRACKET_ABBR.matcher(name.trim());
 			if (m.find()) {
@@ -254,32 +265,21 @@ public final class OcrResultParser {
 			}
 			core = core.replaceFirst("^[\\s\\d.、★☆*※#]+", "");
 		}
-		if (a != null && !a.isEmpty()) {
-			for (String[] row : LAB) {
-				for (int i = 1; i < row.length; i++) {
-					String p = norm(row[i]);
-					if (p.matches("[A-Z0-9Γ\\-]+") && p.equals(a)) return row[0];
-				}
-			}
-		}
-		String n = norm(core);
-		if (n == null || n.isEmpty()) return null;
-		for (String w : DERIVED) {
-			if (n.contains(w)) return null;
-		}
+		String n = norm(core), byName = null, byAbbr = null;
+		if (n != null) for (String w : DERIVED) if (n.contains(w)) return new String[] { null, null, "blocked" };
 		for (String[] row : LAB) {
-			if (BLOOD_COUNT.contains(row[0]) && (n.contains("尿") || n.contains("粪") || n.contains("便") || n.contains("介素") || n.contains("胸水") || n.contains("腹水"))) continue;
 			for (int i = 1; i < row.length; i++) {
 				String p = norm(row[i]);
 				boolean isAbbr = p.matches("[A-Z0-9Γ\\-]+");
-				if (isAbbr) {
-					if (Pattern.compile("(?<![A-Z])" + Pattern.quote(p) + "(?![A-Z0-9#%])").matcher(n).find()) return row[0];
-				} else if (n.contains(p)) {
-					return row[0];
+				if (byAbbr == null && isAbbr && p.equals(a)) byAbbr = row[0];
+				if (byName == null && n != null && !n.isEmpty()) {
+					if (isAbbr ? Pattern.compile("(?<![A-Z])" + Pattern.quote(p) + "(?![A-Z0-9#%])").matcher(n).find() : n.contains(p)) byName = row[0];
 				}
 			}
 		}
-		return null;
+		boolean otherSample = n != null && (n.contains("尿") || n.contains("粪") || n.contains("便") || n.contains("介素") || n.contains("胸水") || n.contains("腹水"));
+		if (otherSample && (BLOOD_COUNT.contains(byName) || BLOOD_COUNT.contains(byAbbr))) return new String[] { null, null, "blocked" };
+		return new String[] { byName, byAbbr, null };
 	}
 
 	/** 一行文字里项目名称结束的位置（原文下标）；名称里的空格、括号、连字符不影响 */

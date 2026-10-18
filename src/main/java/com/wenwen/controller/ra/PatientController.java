@@ -169,11 +169,14 @@ public class PatientController {
 
 	@ApiOperation(value = "新建患者", notes = "请求体为 JSON（PatientCreateRequest）。写 patient_basic_info + patient_relation_doctor，ACR/EULAR 各部分存 patient_acr_eular，写修改记录；身份证号已存在时按 checkCardNo 的规则处理，409 = 已存在（RA 库其他医生名下时传 transfer=true 转到自己名下）", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/createPatient")
-	public DataResult<PatientCreateResultVo> createPatient(@RequestBody PatientCreateRequest req) {
+	public DataResult<PatientCreateResultVo> createPatient(@RequestBody PatientCreateRequest req, javax.servlet.http.HttpServletRequest request) {
 		DataResult<PatientCreateResultVo> result = new DataResult<PatientCreateResultVo>();
 		try {
+			req.setDoctorId(com.wenwen.ocr.OcrService.requireDoctor(com.wenwen.auth.AuthService.currentDoctorId(request)));
+			java.util.List<String> files = com.wenwen.ocr.OcrService.fileIds(req.getOcrFileId(), req.getOcrFileIds());
+			ocrService.preflightCreate(files, req.getDoctorId(), null);
 			PatientCreateResultVo r = patientWriteService.createPatient(req);
-			ocrService.link(req.getOcrFileId(), req.getDoctorId(), r.getPatientId(), null);
+			r.setOcrLink(ocrService.linkImages(files, req.getDoctorId(), r.getPatientId(), null));
 			ok(result, r);
 			result.setMessage("transferred".equals(r.getAction()) ? "已转到您名下" : "建档成功");
 		} catch (Exception e) {

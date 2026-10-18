@@ -57,15 +57,14 @@ public class OcrService {
 	@Value("${ra.ocr.baidu.apis:medical_report_detection,accurate_basic}")
 	private String apis;
 
-	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OcrService.class);
-
 	@Autowired
 	private BaiduOcrClient baidu;
 	@Autowired
 	private OcrMapper mapper;
 
-	/** 保存上传的图片，返回 fileId（日期/文件名）；同时在 ocr_record 记一条（表没建时只存文件） */
+	/** 保存上传的图片，返回 fileId（日期/文件名）；同时保存有归属的ocr_record；记录失败不返回孤立文件 */
 	public Map<String, Object> upload(MultipartFile file, Long doctorId) throws IOException {
+		requireDoctor(doctorId);
 		if (file == null || file.isEmpty()) {
 			throw new IllegalArgumentException("请选择图片");
 		}
@@ -86,9 +85,10 @@ public class OcrService {
 		Files.createDirectories(path.getParent());
 		Files.write(path, bytes);
 		try {
-			mapper.insertRecord(fileId, doctorId);
-		} catch (DataAccessException e) {
-			log.warn("ocr_record 写入失败（表没建？请执行 sql/20261014_ocr_record.sql）：{}", e.getMessage());
+			if (mapper.insertRecord(fileId, doctorId) != 1) throw new BizException("503", "图片记录未保存，请稍后重新上传");
+		} catch (RuntimeException e) {
+			Files.deleteIfExists(path);
+			throw new BizException("503", "图片记录未保存，请稍后重新上传");
 		}
 		Map<String, Object> out = new LinkedHashMap<String, Object>();
 		out.put("fileId", fileId);
@@ -98,7 +98,10 @@ public class OcrService {
 	}
 
 	/** 识别：依次调配置的百度接口，合并解析 */
-	public Map<String, Object> recognize(String fileId) throws IOException {
+	public Map<String, Object> recognize(String fileId, Long doctorId) throws IOException {
+		requireDoctor(doctorId);
+		if (!validFileId(fileId)) throw new IllegalArgumentException("图片编号不正确");
+		if (!canView(fileId, doctorId)) throw new BizException("403", "没有这张图片的访问权限");
 		byte[] image = forSending(Files.readAllBytes(existing(fileId)));
 		JSONObject medical = null, text = null;
 		List<String> failures = new ArrayList<String>();
@@ -130,6 +133,7 @@ public class OcrService {
 
 	/** 医生把某个叫法对应到系统字段（field 为空 = 不对应，不保存） */
 	public void saveAliases(List<Map<String, Object>> mappings, Long doctorId) {
+		requireDoctor(doctorId);
 		Map<String, String> fields = labFields();
 		for (Map<String, Object> m : mappings == null ? new ArrayList<Map<String, Object>>() : mappings) {
 			String alias = m.get("alias") == null ? null : String.valueOf(m.get("alias")).trim();
@@ -151,55 +155,117 @@ public class OcrService {
 		try {
 			Map<String, Object> keep = new LinkedHashMap<String, Object>(draft);
 			keep.remove("fieldOptions");
-			mapper.updateResult(fileId, JSONObject.toJSONString(keep));
+			if (mapper.updateResult(fileId, JSONObject.toJSONString(keep)) != 1) throw new BizException("503", "识别结果未保存，请稍后重试");
 		} catch (DataAccessException e) {
-			log.warn("ocr_record 保存识别结果失败：{}", e.getMessage());
+			throw new BizException("503", "识别结果未保存，请稍后重试");
 		}
 	}
 
-	/**
-	 * 用识别结果新建患者 / 保存随访后，把图片关联到患者、随访（只关联本医生上传的图片）。
-	 * 不抛异常：关联失败不影响已经保存的患者 / 随访，只记日志。
-	 */
+	/** 单次关联是数据库有条件更新；只允许未绑定→同患者→同访视。 */
 	public void link(String fileId, Long doctorId, Long patientId, Long visitId) {
-		if (fileId == null || fileId.isEmpty() || doctorId == null || patientId == null || !FILE_ID.matcher(fileId).matches()) {
-			return;
-		}
-		try {
-			mapper.linkRecord(fileId, doctorId, patientId, visitId);
-		} catch (RuntimeException e) {
-			log.warn("OCR 图片关联患者 / 随访失败 fileId={}：{}", fileId, e.getMessage());
+		requireTarget(doctorId, patientId, visitId);
+		checkRecord(fileId, doctorId, patientId, visitId, false);
+		int rows = mapper.linkRecord(fileId, doctorId, patientId, visitId);
+		if (rows != 1) {
+			// MySQL可将无变化的幂等UPDATE计为0，必须读取真实状态，不能把任意0行当成功。
+			requireTarget(doctorId, patientId, visitId);
+			Map<String, Object> current = checkRecord(fileId, doctorId, patientId, visitId, false);
+			if (rows != 0 || !patientId.equals(id(current.get("patientId"))) || (visitId != null && !visitId.equals(id(current.get("visitId")))))
+				throw new BizException("409", "原图关联未完成或已被使用，请核对已保存记录");
 		}
 	}
 
-	/** 某次随访用过的 OCR 原图（患者须在本医生名下；表没建时返回空） */
-	public List<Map<String, Object>> visitImages(Long doctorId, Long patientId, Long visitId) {
-		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
-		if (doctorId == null || patientId == null || visitId == null) return out;
-		try {
-			for (Map<String, Object> r : mapper.listVisitRecords(doctorId, patientId, visitId)) {
-				r.put("url", "/api/ra/files/ocr/" + r.get("fileId"));
-				out.add(r);
+	/** 合并兼容单图参数并限制每次请求的文件集合，不静默丢弃非法ID。 */
+	public static List<String> fileIds(String fileId, List<String> fileIds) {
+		java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<String>();
+		if (fileIds != null) {
+			if (fileIds.size() > 20) throw new BizException("400", "每次最多关联20张原图");
+			ids.addAll(fileIds);
+		}
+		if (fileId != null && !fileId.isEmpty()) ids.add(fileId);
+		if (ids.size() > 20) throw new BizException("400", "每次最多关联20张原图");
+		for (String f : ids) if (f == null || !FILE_ID.matcher(f).matches()) throw new BizException("400", "图片编号不正确");
+		return new ArrayList<String>(ids);
+	}
+
+	/** 创建前拒绝已知权限/绑定冲突；新访视ID尚未生成，不得接受已有visit绑定。 */
+	public void preflightCreate(List<String> files, Long doctorId, Long patientId) {
+		requireDoctor(doctorId);
+		if (files.isEmpty()) return;
+		if (patientId != null) requireTarget(doctorId, patientId, null);
+		for (String file : files) checkRecord(file, doctorId, patientId, null, true);
+	}
+
+	/** 补关联先拒绝全局身份/目标错误；单图冲突由关联循环逐一保留，不阻断其它原图。 */
+	public void preflightLink(List<String> files, Long doctorId, Long patientId, Long visitId) {
+		if (files.isEmpty()) throw new BizException("400", "请选择需要关联的原图");
+		requireTarget(doctorId, patientId, visitId);
+	}
+
+	/** 仅在病历已保存后调用。失败显式留在pending集合，重试不写临床表。 */
+	public com.wenwen.vo.OcrLinkResultVo linkImages(List<String> files, Long doctorId, Long patientId, Long visitId) {
+		com.wenwen.vo.OcrLinkResultVo out = new com.wenwen.vo.OcrLinkResultVo();
+		for (String file : files) {
+			try { link(file, doctorId, patientId, visitId); out.getLinkedFileIds().add(file); }
+			catch (RuntimeException e) {
+				boolean retryable = !(e instanceof BizException) || "500".equals(((BizException)e).getCode()) || "503".equals(((BizException)e).getCode());
+				out.addPending(file, retryable);
 			}
-		} catch (DataAccessException e) {
-			log.warn("查询 ocr_record 失败：{}", e.getMessage());
+		}
+		out.finish(); return out;
+	}
+
+	private Map<String, Object> checkRecord(String fileId, Long doctorId, Long patientId, Long visitId, boolean creating) {
+		if (fileId == null || !FILE_ID.matcher(fileId).matches()) throw new BizException("400", "图片编号不正确");
+		Map<String, Object> r = mapper.findRecord(fileId);
+		if (r == null || !doctorId.equals(id(r.get("doctorId")))) throw new BizException("403", "原图不存在或不是本人上传");
+		Long oldPatient = id(r.get("patientId")), oldVisit = id(r.get("visitId"));
+		if (oldPatient != null && !oldPatient.equals(patientId)) throw new BizException("409", "原图已关联其他患者，不能重复建档或改绑");
+		if (oldVisit != null && (oldPatient == null || mapper.visitBelongsToPatient(oldVisit, oldPatient) == 0)) throw new BizException("409", "原图已有患者和随访关联不一致，请核对原记录");
+		if (oldVisit != null && (creating || (visitId != null && !oldVisit.equals(visitId)))) throw new BizException("409", "原图已用于其他随访，不能改绑");
+		return r;
+	}
+
+	private static Long id(Object value) { return value == null ? null : ((Number)value).longValue(); }
+
+	/** 患者和访视必须属于服务端会话医生；数据库故障不伪装为空列表。 */
+	public List<Map<String, Object>> visitImages(Long doctorId, Long patientId, Long visitId) {
+		requireTarget(doctorId, patientId, visitId);
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		for (Map<String, Object> row : mapper.listVisitRecords(doctorId, patientId, visitId)) {
+			Map<String, Object> r = new LinkedHashMap<String, Object>(row);
+			r.put("url", "/api/ra/files/ocr/" + r.get("fileId")); out.add(r);
 		}
 		return out;
 	}
 
-	/** 能否查看这张图片：本人上传的，或已关联到本人名下的患者；没有记录（表没建 / 老图片）时只要求登录 */
+	public static Long requireDoctor(Long doctorId) {
+		if (doctorId == null || doctorId <= 0) throw new BizException("401", "请先登录");
+		return doctorId;
+	}
+
+	private void requireTarget(Long doctorId, Long patientId, Long visitId) {
+		requireDoctor(doctorId);
+		if (patientId == null || patientId <= 0 || (visitId != null && visitId <= 0)) throw new BizException("400", "患者或随访编号不正确");
+		if (mapper.ownsPatient(patientId, doctorId) == 0) throw new BizException("403", "没有该患者的访问权限");
+		if (visitId != null && mapper.visitBelongsToPatient(visitId, patientId) == 0) throw new BizException("403", "随访不属于该患者");
+	}
+
+	/** 能否查看这张图片：本人上传的，或已关联到本人名下的患者；缺记录或数据库故障时拒绝 */
 	public boolean canView(String fileId, Long doctorId) {
-		if (doctorId == null) return false;
+		if (doctorId == null || doctorId <= 0 || !validFileId(fileId)) return false;
 		try {
 			Map<String, Object> r = mapper.findRecord(fileId);
-			if (r == null) return true;
+			if (r == null) return false;
 			if (r.get("doctorId") != null && doctorId.equals(((Number) r.get("doctorId")).longValue())) return true;
 			Object pid = r.get("patientId");
 			return pid != null && mapper.ownsPatient(((Number) pid).longValue(), doctorId) > 0;
 		} catch (DataAccessException e) {
-			return true;
+			return false;
 		}
 	}
+
+	public static boolean validFileId(String fileId) { return fileId != null && FILE_ID.matcher(fileId).matches(); }
 
 	/** 已保存的图片（供页面预览） */
 	public Path existing(String fileId) {

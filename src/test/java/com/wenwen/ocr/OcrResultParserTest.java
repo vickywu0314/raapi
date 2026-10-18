@@ -40,4 +40,22 @@ class OcrResultParserTest {
 		assertEquals("urea", OcrResultParser.labKey("尿素", null));
 		assertEquals("d_ent", OcrResultParser.labKey("D - 二聚体", null));
 	}
+
+	@Test
+	void conflictingCrpNameAndAbbreviationNeedsConfirmationEvenWithLearnedAlias() {
+		assertNull(OcrResultParser.labKey("超敏C反应蛋白", "CRP"));
+		assertNull(OcrResultParser.labKey("高敏C反应蛋白[CRP]", null));
+		com.alibaba.fastjson.JSONObject medical = com.alibaba.fastjson.JSONObject.parseObject("{\"words_result\":{\"Item\":[[{\"word_name\":\"项目名称\",\"word\":\"超敏C反应蛋白\"},{\"word_name\":\"英文缩写\",\"word\":\"CRP\"},{\"word_name\":\"结果\",\"word\":\"8.5\"}]]}}");
+		java.util.Map<String,String> learned = new java.util.HashMap<>();
+		learned.put(OcrResultParser.alias("超敏C反应蛋白", "CRP"), "cfydb");
+		java.util.Map<String,Object> parsed=OcrResultParser.parse(medical,null,learned);
+		org.junit.jupiter.api.Assertions.assertTrue(((java.util.Map<?,?>)parsed.get("fzjc")).isEmpty());
+		java.util.Map<?,?> item=(java.util.Map<?,?>)((java.util.List<?>)parsed.get("items")).get(0);
+		assertNull(item.get("field")); assertEquals(Boolean.TRUE,item.get("needsConfirmation"));
+		org.junit.jupiter.api.Assertions.assertTrue(String.valueOf(item.get("mappingWarning")).contains("冲突"));
+	}
+	@Test void derivedNameCannotBeForcedIntoBloodCountByAbbreviation() {
+		assertNull(OcrResultParser.labKey("平均红细胞体积", "RBC"));
+		assertNull(OcrResultParser.labKey("尿白细胞", "WBC"));
+	}
 }

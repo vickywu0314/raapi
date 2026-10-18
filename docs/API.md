@@ -793,7 +793,9 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 入口：患者列表「OCR识别录入」、新增患者页（识别后新建患者，建档后接着录基线访视）；患者详情、访视详情、新增随访页（识别后填入本次随访）。前端弹窗 `js/shared/ocr-import.js`。
 
-**识别结果只用于填表，不直接入库**：草稿存浏览器 sessionStorage（`ra-ocr-draft`），打开 `patient-create.html?ocr=1` / `visit-create.html?id=…&ocr=1` 预填，蓝框标出填上的项，医生核对后点保存，走原来的 `createPatient` / `createVisit`（老表写法不变）。
+**识别结果只用于填表，不直接入库**：草稿存浏览器 sessionStorage（`ra-ocr-draft`），绑定当前医生；换号清除，未绑定的旧草稿不自动采用。连续导入只填空项并保留已有值/医生手改值及全部采用原图，打开 `patient-create.html?ocr=1` / `visit-create.html?id=…&ocr=1` 预填，蓝框标出填上的项，医生核对后点保存，走原来的 `createPatient` / `createVisit`（老表写法不变）。
+
+本节所有接口必须有服务端登录会话；上传、识别、叫法保存、原图查询和补关联都从会话取医生身份，客户端 `doctorId` 不提供授权。`createPatient` / `createVisit`（包括不带 OCR 的请求）也从会话覆盖请求体医生ID；这两处旧的仅传 `doctorId` 调用须先登录，AI typed principal 路径未改变。新建患者结果 `patientId` 与随访结果ID均序列化为十进制字符串，避免浏览器大整数舍入。
 
 流程：上传图片存服务器 → 返回预览 URL → 识别时后端读这张图转 base64 调百度（百度访问不到内网 URL，所以不把 URL 传给百度）→ 解析成草稿。
 
@@ -815,18 +817,18 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 地址 | `POST /api/ra/ocr/upload`（multipart，字段 `file`） |
 | 规则 | 只收 jpg / jpeg / png / bmp，≤15MB，须能解析为图片 |
 | 出参 | `fileId`（`yyyyMMdd/32位随机名.ext`）、`url`（预览地址 `/api/ra/files/ocr/{fileId}`）、`size` |
-| 写库 | 新表 `ocr_record` 插一条（图片编号、上传医生 = 登录会话里的医生）；表没建时只存文件、不报错 |
+| 写库 | 新表 `ocr_record` 插一条（图片编号、上传医生 = 登录会话里的医生）；记录写入失败或零行时上传失败并移除本次文件，不返回可使用的孤立图片 |
 
 ### 11.2 图片预览
 
-`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。只能看本人上传的、或已关联到本人名下患者的图片，否则 403（`ocr_record` 里没有记录的老图片只要求登录）。
+`GET /api/ra/files/ocr/{yyyyMMdd}/{文件名}`：需登录（会话里有医生），否则 401；文件名格式不对或不存在 404。只能看本人上传的、或已关联到本人名下患者的图片，否则 403；缺少记录或数据库查询故障时拒绝，不给旧图片免鉴权回退。
 
 ### 11.3 识别
 
 | 项 | 值 |
 |---|---|
 | 地址 | `POST /api/ra/ocr/recognize` |
-| 入参 | `fileId`（11.1 返回） |
+| 入参 | `fileId`（11.1 返回）；读取图片和调用 OCR 前先验证会话及图片权限 |
 | 处理 | 图片超过 3MB 或长边超过 3000 像素时先压缩（JPEG 0.85）再发百度 |
 | 出参 | 见下表 |
 
@@ -835,40 +837,53 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `basic` | 新建患者预填：`name`、`gender`（1 男 / 2 女）、`age`（只显示）、`cardNo`、`mobile`、`nation`、`marry`（0 未婚 / 1 已婚 / 2 离异 / 3 丧偶）、`height`、`weight`、`happenDate`、`confirmDate`；识别不出的不返回 |
 | `visitDate` | 报告 / 采样 / 就诊日期（yyyy-MM-dd），作为随访日期 |
 | `fzjc` | 辅助检查预填：系统字段 → 值（数值取开头的数字，含 `<`、`>`；ANA、抗SS-A/SS-B、抗Ro-52 取「阳性 / 阴性」） |
-| `items[]` | 报告上的每个检验项目：`name`、`abbr`、`result`、`unit`（报告原文）；`alias`（叫法键：名称+缩写去空格括号连字符转大写）；`field` / `fieldLabel` / `fieldUnit`（对应的系统字段，对不上为 null）；`matchedBy`（`learned` 按医生以前的对应 / `builtin` 内置同义词）；`value`（填入值）；`unitWarning`（报告单位与系统单位不同，提醒换算，如肌酐 mg/dL ↔ μmol/L） |
+| `items[]` | 报告上的每个检验项目：`name`、`abbr`、`result`、`unit`（报告原文）；`alias`（叫法键：名称+缩写去空格括号连字符转大写）；`field` / `fieldLabel` / `fieldUnit`（对应的系统字段，对不上为 null）；`matchedBy`（`learned` 按医生以前的对应 / `builtin` 内置同义词）；`value`（填入值）；`unitWarning`（报告单位与系统单位不同，提醒换算，如肌酐 mg/dL ↔ μmol/L）；`needsConfirmation` / `mappingWarning`（名称、缩写冲突时字段为空，提示医生明确选择） |
 | `fieldOptions[]` | 可对应的系统字段（辅助检查里的化验项）：`field`、`label`（分组 · 名称）、`unit`、`type`；页面下拉框用 |
 | `lines[]` | 识别出的原文（逐行），供核对 |
 | `warnings[]` | 提示：没识别出姓名 / 身份证号（无法查重）、部分接口失败等 |
 | `fileId` / `url` | 原图 |
 
-**检验项目名称对应（各家医院叫法不同）**：① 内置同义词：有英文缩写（单独一列，或名称末尾方括号里的，如「★白细胞计数[WBC]」）且是已知缩写的按缩写定，否则按中文名；名称含「平均、压积、分布、宽度、百分、比率、比例、网织、未成熟、有核」的派生指标不按名称对应（如 MCV、HCT、RET 不会算成红细胞），尿 / 便 / 积液里的同名项目不算血常规；系统表单没有的项目（如淋巴细胞计数、各类百分率）显示「系统表单里没有这一项」，不填入；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（优先于内置同义词）。
+**检验项目名称对应（各家医院叫法不同）**：① 内置同义词：同时检查特异中文名称和英文缩写（含名称末尾括号）；两者指向不同字段时 `field=null`、`needsConfirmation=true`，不写 `fzjc`，即便全院叫法表已有映射也不能绕过；医生须在本次弹窗手动选择后才可填入。例如「超敏C反应蛋白 / CRP」待确认，不静默填普通CRP；名称含「平均、压积、分布、宽度、百分、比率、比例、网织、未成熟、有核」的派生指标不能因缩写或已学映射绕过排除（如 MCV、HCT、RET 不会算成红细胞），尿 / 便 / 积液里的同名项目不算血常规；系统表单没有的项目（如淋巴细胞计数、各类百分率）显示「系统表单里没有这一项」，不填入；② 页面每一项都有下拉框，医生核对或改选系统字段，单位不一致有提示，两项对到同一字段时只填第一项；③ 医生手动改过的对应，点填入时调 11.4 记下来，下次同样的叫法自动对上（无名称/缩写冲突且未触发派生/样本排除时优先于内置同义词）。
 
-识别完成后，识别结果（不含 `fieldOptions`）存进 `ocr_record.result`。
+识别完成后，识别结果（不含 `fieldOptions`）存进 `ocr_record.result`；写入异常/零行明确失败，不静默成功。
 
 ### 11.4 原图关联到患者 / 随访
 
-用识别结果填表后保存时，前端在原来的保存请求里多传 `ocrFileId`（11.1 的 fileId）：
+用识别结果填表后保存时，新增可选 `ocrFileIds` 数组，旧 `ocrFileId` 单值兼容。两者取并集去重，每次最多20张，每个ID均须是上传接口返回的合法图片编号；超限/非法值拒绝，不静默截断。
 
-- `POST /api/ra/patient/createPatient`（JSON）：`ocrFileId` 可选 → 建档成功后 `ocr_record.patient_id` = 新患者
-- `POST /api/ra/visit/createVisit`（JSON）：`ocrFileId` 可选 → 保存成功后 `ocr_record.patient_id`、`visit_id` = 本次随访
+- `POST /api/ra/patient/createPatient`：创建前要求全部原图为本人上传且未绑定患者；成功后关联新患者。
+- `POST /api/ra/visit/createVisit`：创建前要求全部原图为本人上传、未绑定或已绑定同患者，且尚未绑定任何访视；保存后关联本次随访。
+- 每次实际关联再次校验医患关系及访视真实患者归属，并用带旧归属约束的条件 UPDATE，防止检查后的并发改绑。允许未关联→同患者建档→该患者首个采用的访视；同患者/同访视幂等，禁止跨患者和跨访视切换。受影响行数为0时须重读确认相同目标，不能直接当成功。
 
-只关联本医生上传的图片；关联失败只记日志，不影响已保存的患者 / 随访。不写老表（不改随访 JSON 里的 `xcgImgs` 检验报告图片）。
+这两处创建接口的 `success=true` 代表临床记录已保存，仍返回真实患者/访视ID；新增 `data.ocrLink`：
+
+| 字段 | 含义 |
+|---|---|
+| `status` | `NOT_REQUESTED` 无原图 / `LINKED` 已全部关联 / `PENDING` 有原图未关联 |
+| `linkedFileIds` / `pendingFileIds` | 两组互斥，并集严格等于本次去重请求集合 |
+| `retryableFileIds` | `pendingFileIds` 的子集，仅列可重试的原图；权限/绑定冲突仍在 pending 中可见，不可用重试覆盖 |
+| `retryable` | 兼容旧调用方；表示 `retryableFileIds` 非空，即至少一张待关联原图可重试 |
+| `message` | 原图部分失败的可见提示；不把临床保存成功改报为整个创建失败 |
+
+`POST /api/ra/ocr/linkImages`（JSON `{patientId, visitId?, ocrFileIds?, ocrFileId?}`）仅补关联，返回同一 `ocrLink` 结构，不创建患者/访视；必须使用已收到的真实保存ID，入口先拒绝无会话、全局患者权限及访视目标错误，再逐图校验与CAS；一张原图的永久冲突不阻断其他原图恢复，该图仍返回 pending 且不进入 retryableFileIds。创建前的全批预检不变，已知原图权限或归属冲突仍在创建临床记录前拒绝。临床表/原随访JSON不因此改写。
+
+前端收到 `PENDING` 后保留所有来源和真实ID，显示“病历已保存，原图尚未全部关联”，创建按钮锁定，按原图序号/链接显示已关联、可重试或需人工核对，重试只向 `linkImages` 发送 `retryableFileIds`。子集响应合并回全部来源，未请求的永久冲突仍保留 pending 和警告，只有全部 pending 清空才完成。补关联响应丢失时仍按同ID/同文件幂等恢复。创建请求的响应丢失、超时或ID无效时显示“保存结果未知，请核对记录，勿重复提交”，锁定再次创建并保留草稿；没有可信ID时不猜ID、不自动补关联。状态绑定医生，页面离开或换号后迟到响应不能恢复旧页面。同一医生通过 bfcache 返回患者建档页时，用已保存真实ID重建补关联控件；曾换号撤销的表单即使换回原医生也不复活，未知保存结果仍锁定。患者建档完成且需录基线时，多图来源随草稿传给同患者访视；返回建档页不会再创建第二位患者。
 
 ### 11.5 某次随访的 OCR 原图
 
 | 项 | 值 |
 |---|---|
 | 地址 | `POST /api/ra/ocr/visitImages` |
-| 入参 | `doctorId`、`patientId`、`visitId` |
-| 出参 | `[{fileId, url, uploadTime, recognizeTime}]`；患者不在本医生名下、没有 OCR 图片或表没建时为空数组 |
-| 页面 | 访视详情「OCR 识别原图」（修改记录上方，没有就不显示），点开看原图 |
+| 入参 | `patientId`、`visitId`；旧 `doctorId` 可传但忽略，使用服务端会话 |
+| 出参 | `[{fileId, url, uploadTime, recognizeTime}]`；无图片时为空数组；无会话/患者不属当前医生/访视不属该患者分别拒绝，数据库故障明确失败 |
+| 页面 | 访视详情「OCR 识别原图」（修改记录上方，没有就不显示），点开看原图；查询失败显示错误与重试，不能伪装成没有原图 |
 
 ### 11.6 保存叫法对照
 
 | 项 | 值 |
 |---|---|
 | 地址 | `POST /api/ra/ocr/saveAliases`（JSON） |
-| 入参 | `doctorId`、`mappings`：`[{alias, field, name}]`（alias 为 11.3 items 的 `alias`，field 须是 `fieldOptions` 里的字段，否则忽略；name 为报告上的名称，留作样例） |
+| 入参 | `mappings`：`[{alias, field, name}]`（alias 为 11.3 items 的 `alias`，field 须是 `fieldOptions` 里的字段，否则忽略；name 为报告上的名称，留作样例）；旧 `doctorId` 忽略，写入者取服务端会话 |
 | 写库 | 新表 `ocr_lab_alias`（`sql/20261012_ocr_lab_alias.sql`），alias 唯一，重复则更新 field；全院共用 |
 
 ---

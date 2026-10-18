@@ -25,5 +25,7 @@ public interface OcrMapper {
 
 	int ownsPatient(@Param("patientId") Long patientId, @Param("doctorId") Long doctorId);
 
+	int visitBelongsToPatient(@Param("visitId") Long visitId, @Param("patientId") Long patientId);
+
 	List<Map<String, Object>> listVisitRecords(@Param("doctorId") Long doctorId, @Param("patientId") Long patientId, @Param("visitId") Long visitId);
 }

@@ -127,11 +127,14 @@ public class VisitController {
 
 	@ApiOperation(value = "保存新增随访", notes = "请求体为 JSON（VisitCreateRequest）。按老系统格式插入 patient_follow_up_history（没填的字段不写、没填的模块存 NULL），病情评估计算项自动算，重算随访次数 / 日期，写修改记录「新增随访」", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/createVisit")
-	public DataResult<VisitCreateResultVo> createVisit(@RequestBody VisitCreateRequest req) {
+	public DataResult<VisitCreateResultVo> createVisit(@RequestBody VisitCreateRequest req, javax.servlet.http.HttpServletRequest request) {
 		DataResult<VisitCreateResultVo> result = new DataResult<VisitCreateResultVo>();
 		try {
+			req.setDoctorId(com.wenwen.ocr.OcrService.requireDoctor(com.wenwen.auth.AuthService.currentDoctorId(request)));
+			java.util.List<String> files = com.wenwen.ocr.OcrService.fileIds(req.getOcrFileId(), req.getOcrFileIds());
+			ocrService.preflightCreate(files, req.getDoctorId(), req.getPatientId());
 			VisitCreateResultVo r = visitService.createVisit(req);
-			ocrService.link(req.getOcrFileId(), req.getDoctorId(), r.getPatientId(), r.getVisitId());
+			r.setOcrLink(ocrService.linkImages(files, req.getDoctorId(), r.getPatientId(), r.getVisitId()));
 			result.setData(r);
 			result.setCode("200");
 			result.setMessage("已保存本次随访");

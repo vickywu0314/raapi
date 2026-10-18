@@ -20,19 +20,29 @@
 	<update id="linkRecord">
 		UPDATE ocr_record SET patient_id = #{patientId}, visit_id = IFNULL(#{visitId}, visit_id), link_time = NOW()
 		WHERE file_id = #{fileId} AND doctor_id = #{doctorId}
+		  AND (patient_id IS NULL OR patient_id = #{patientId})
+		  AND (#{visitId} IS NULL OR visit_id IS NULL OR visit_id = #{visitId})
+		  AND (visit_id IS NULL OR EXISTS (SELECT 1 FROM patient_follow_up_history prior_visit WHERE prior_visit.id = ocr_record.visit_id AND prior_visit.patient_basic_info_id = #{patientId}))
+		  AND EXISTS (SELECT 1 FROM patient_relation_doctor d WHERE d.patient_id = #{patientId} AND d.doctor_id = #{doctorId}
+		    AND d.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
+		  AND (#{visitId} IS NULL OR EXISTS (SELECT 1 FROM patient_follow_up_history v WHERE v.id = #{visitId} AND v.patient_basic_info_id = #{patientId}
+		    AND v.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)))
 	</update>
 	<select id="findRecord" resultType="Map">
 		SELECT file_id AS fileId, doctor_id AS doctorId, patient_id AS patientId, visit_id AS visitId FROM ocr_record WHERE file_id = #{fileId}
 	</select>
 	<select id="ownsPatient" resultType="int">
-		SELECT COUNT(*) FROM patient_relation_doctor WHERE patient_id = #{patientId} AND doctor_id = #{doctorId}
+		SELECT COUNT(*) FROM patient_relation_doctor WHERE patient_id = #{patientId} AND doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	</select>
+	<select id="visitBelongsToPatient" resultType="int">
+		SELECT COUNT(*) FROM patient_follow_up_history WHERE id = #{visitId} AND patient_basic_info_id = #{patientId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 	</select>
 	<!-- 某次随访用过的 OCR 原图（患者须在本医生名下） -->
 	<select id="listVisitRecords" resultType="Map">
 		SELECT r.file_id AS fileId, DATE_FORMAT(r.upload_time, '%Y-%m-%d %H:%i') AS uploadTime, DATE_FORMAT(r.recognize_time, '%Y-%m-%d %H:%i') AS recognizeTime
 		FROM ocr_record r
 		WHERE r.visit_id = #{visitId} AND r.patient_id = #{patientId}
-		  AND EXISTS (SELECT 1 FROM patient_relation_doctor d WHERE d.patient_id = r.patient_id AND d.doctor_id = #{doctorId})
+		  AND EXISTS (SELECT 1 FROM patient_relation_doctor d WHERE d.patient_id = r.patient_id AND d.doctor_id = #{doctorId} AND d.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 		ORDER BY r.id
 	</select>
 </mapper>

@@ -8,6 +8,9 @@ import io.swagger.annotations.ApiModelProperty;
 
 @ApiModel(value = "新增随访结果")
 public class VisitCreateResultVo {
+	private OcrLinkResultVo ocrLink;
+	public OcrLinkResultVo getOcrLink() { return ocrLink; }
+	public void setOcrLink(OcrLinkResultVo value) { ocrLink = value; }
 
 	@ApiModelProperty("新随访ID")
 	private Long visitId;
