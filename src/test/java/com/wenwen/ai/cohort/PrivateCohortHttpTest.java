@@ -218,7 +218,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
     }
     @Test void renameChangesOnlyPresentMetadataWithVersionCas() throws Exception {
         String id=privateSuccess("save",SAVE.replace("\"filters\":","\"note\":\"keep\",\"filters\":")).path("cohortId").asText();
-        String before=scalar("SELECT CONCAT(HEX(filters_utf8),'|',filters_sha256,'|',filters_version) FROM ra_private_cohort_definition WHERE id='"+id+"'");
+        java.util.List<String> before=filterState(id);
         JsonNode r=privateSuccess("rename",command(id,1,2,"\"name\":\"New\""));
         assertEquals(2,r.path("version").asLong());
         assertEquals("keep",privateSuccess("list","{}").path("items").get(0).path("note").asText());
@@ -234,7 +234,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         privateError("rename",command(id,4,5,"\"filters\":{}"),400,"INVALID_REQUEST");
         assertEquals("4",scalar("SELECT version FROM ra_private_cohort_definition WHERE id='"+id+"'"));
         assertEquals("4",scalar("SELECT COUNT(*) FROM ra_private_cohort_command"));
-        assertEquals(before,scalar("SELECT CONCAT(HEX(filters_utf8),'|',filters_sha256,'|',filters_version) FROM ra_private_cohort_definition WHERE id='"+id+"'"));
+        assertEquals(before,filterState(id));
     }
     String command(String id,long version,int request,String changes){
         return "{\"cohortId\":\""+id+"\",\"version\":"+version+",\"requestId\":\"00000000-0000-0000-0000-"+String.format("%012d",request)+"\""+(changes.isEmpty()?"":","+changes)+"}";
@@ -922,6 +922,12 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
                 }
             }
         }return sha(b.toString().getBytes(StandardCharsets.UTF_8));
+    }
+    java.util.List<String> filterState(String id) throws Exception {
+        // 逐列读取避免5.7在CONCAT中混合HEX/ASCII/连接排序规则，同时逐字保留三项状态。
+        try(Connection c=raw.getConnection();java.sql.PreparedStatement s=c.prepareStatement("SELECT HEX(filters_utf8),filters_sha256,filters_version FROM ra_private_cohort_definition WHERE id=?")) {
+            s.setString(1,id);try(ResultSet r=s.executeQuery()){assertTrue(r.next());java.util.List<String> state=java.util.Arrays.asList(r.getString(1),r.getString(2),r.getString(3));assertFalse(r.next());return state;}
+        }
     }
     String scalar(String sql) throws Exception{
         try(Connection c=raw.getConnection();

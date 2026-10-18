@@ -43,6 +43,7 @@ public class PatientDas28MapperTest {
         dataSource = new DriverManagerDataSource(url, user, password);
         dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            com.wenwen.testsupport.Mysql57Contract.verify(connection);
             try (ResultSet database = statement.executeQuery("SELECT DATABASE()")) {
                 assertTrue(database.next());
                 assertEquals("ra_synthetic_test", database.getString(1));

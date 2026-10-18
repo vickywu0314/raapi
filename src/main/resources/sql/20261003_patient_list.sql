@@ -1,5 +1,5 @@
 -- 患者列表（/api/ra/patient/patientsList）依赖的表结构改动，wenwen 库执行一次。
--- 执行后再跑 20261003_backfill_study_no.sql 给老患者补研究编号。
+-- 执行后当前MySQL5.7跑 20261018_backfill_study_no_mysql57.sql 补研究编号；原20261003窗口函数版本仅保留MySQL8历史参考。
 
 -- 1. 患者表：研究编号、随访周期
 --    follow_cycle 为 NOT NULL DEFAULT 12，老患者加字段时自动为 12，无需另行补数据。

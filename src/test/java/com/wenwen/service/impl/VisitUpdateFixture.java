@@ -102,6 +102,7 @@ abstract class VisitUpdateFixture {
     @BeforeEach void setup() throws Exception {
         context=new AnnotationConfigApplicationContext(Infrastructure.class);raw=context.getBean(DriverManagerDataSource.class);observed=context.getBean(ObservedDataSource.class);sqlObserver=context.getBean(SqlObserver.class);service=context.getBean(VisitService.class);patientMapper=context.getBean(PatientMapper.class);
         try(Connection c=raw.getConnection();Statement s=c.createStatement()) {
+            com.wenwen.testsupport.Mysql57Contract.verify(c);
             try(ResultSet r=s.executeQuery("SELECT DATABASE(),VERSION()")){assertTrue(r.next());assertEquals("ra_synthetic_test",r.getString(1));System.out.println("P02a MySQL "+r.getString(2)+"; JDBC "+c.getMetaData().getDriverVersion());}
             String[] names={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","user","patient_audit_log"}; int i=0;
             try(InputStream in=getClass().getResourceAsStream("/ai-cohort/p02a/schema.sql")) {String ddl=new Scanner(in,StandardCharsets.UTF_8.name()).useDelimiter("\\A").next();for(String q:ddl.split(";"))if(!q.trim().isEmpty()){s.execute(q);ownedTables.add(names[i++]);}}

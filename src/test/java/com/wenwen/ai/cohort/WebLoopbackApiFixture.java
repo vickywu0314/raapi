@@ -212,6 +212,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
     }
     Connection preparationConnection() throws SQLException { preparationConnections++; return raw.getConnection(); }
     void verifyDatabase(Connection c) throws SQLException {
+        com.wenwen.testsupport.Mysql57Contract.verify(c);
         try(Statement s=c.createStatement();ResultSet rs=s.executeQuery("SELECT DATABASE(), @@transaction_isolation, VERSION()")) {
             if(!rs.next())throw new IllegalStateException("核库未返回行");
             requireDatabase(rs.getString(1),rs.getString(2));
@@ -474,6 +475,10 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             org.apache.ibatis.session.Configuration c=new org.apache.ibatis.session.Configuration();c.setLogImpl(org.apache.ibatis.logging.nologging.NoLoggingImpl.class);f.setConfiguration(c);return f.getObject();
         }
         @Bean public com.wenwen.mapper.PatientWriteMapper patientWrites(SqlSessionTemplate t){return t.getMapper(com.wenwen.mapper.PatientWriteMapper.class);}
+        // 本场景只开放详情读取；后来Controller新增OCR依赖也不得让夹具意外触达OCR。
+        @Bean public org.springframework.beans.factory.FactoryBean<com.wenwen.ocr.OcrService> unreadOcrBoundary(){
+            return com.wenwen.testsupport.UnreadOcrBoundary.factory();
+        }
     }
     @Configuration @EnableWebMvc
     @Import({com.wenwen.controller.ra.AiOverviewController.class,com.wenwen.ai.overview.AiOverviewService.class})

@@ -62,9 +62,9 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
         sixPatientTable();
         PatientsListVo first=legacy().listPatients(101L,null,null,"missing",1,1);
         assertEquals(6,first.getTotalPatients()); assertEquals(5,first.getIncompleteCount()); assertEquals(5,first.getTotal());
-        assertEquals(2L,first.getItems().get(0).getPatientId()); assertEquals(Collections.singletonList("缺 DAS28 评分"),first.getItems().get(0).getMissingItems());
+        assertEquals(6L,first.getItems().get(0).getPatientId()); assertEquals(Arrays.asList("缺基线检验","缺合并疾病记录","缺 DAS28 评分","缺用药史"),first.getItems().get(0).getMissingItems());
         PatientsListVo second=legacy().listPatients(101L,null,null,"missing",2,1);
-        assertEquals(5,second.getTotal()); assertEquals(3L,second.getItems().get(0).getPatientId());
+        assertEquals(5,second.getTotal()); assertEquals(5L,second.getItems().get(0).getPatientId());
         PatientsListVo complete=legacy().listPatients(101L,null,null,"complete",1,20);
         assertEquals(1,complete.getTotal()); assertEquals(1L,complete.getItems().get(0).getPatientId()); assertFalse(complete.getItems().get(0).isIncomplete());
     }
@@ -107,7 +107,7 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
         PatientsListVo keyword=legacy().listPatients(101L,"SYNTHETIC-p3",null,"missing",1,20);
         assertEquals(1,keyword.getTotal());assertEquals(3L,keyword.getItems().get(0).getPatientId());assertEquals(6,keyword.getTotalPatients());assertEquals(5,keyword.getIncompleteCount());
         assertEquals(Collections.singletonList(5L),legacy().listPatientIds(101L,null,"withdrawn","missing"));
-        assertEquals(Arrays.asList(2L,3L,4L,5L,6L),legacy().listPatientIds(101L,null,null,"missing"));
+        assertEquals(Arrays.asList(6L,5L,4L,3L,2L),legacy().listPatientIds(101L,null,null,"missing"));
         assertEquals(Collections.singletonList(1L),legacy().listPatientIds(101L,null,null,"complete"));
         PatientsListVo beyond=legacy().listPatients(101L,null,null,"missing",Integer.MAX_VALUE,1);
         assertEquals(5,beyond.getTotal());assertEquals(6,beyond.getTotalPatients());assertEquals(5,beyond.getIncompleteCount());assertTrue(beyond.getItems().isEmpty());
@@ -256,8 +256,18 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
             observed.reset();assertEquals(1,legacy().listPatients(101L,null,null,"missing",1,20).getTotal());snapshotQueries(4);
         }
     }
-    @Test void sqlKeywordEscapingCollationAndNullLastVisitOrderingArePreserved() throws Exception {
+    @Test void ordinarySearchKeywordsBeyondTrustedLimitAreNotTruncatedOrRejected() throws Exception {
+        sixPatientTable();String longKeyword=java.util.stream.IntStream.rangeClosed(33,400).collect(StringBuilder::new,StringBuilder::appendCodePoint,StringBuilder::append).toString();
+        int before=observed.borrowed;assertTrue(legacy().listPatients(101L,longKeyword,null,null,1,20).getItems().isEmpty());assertTrue(observed.borrowed>before);
+        before=observed.borrowed;assertTrue(legacy().listPatientIds(101L,longKeyword,null,null).isEmpty());assertTrue(observed.borrowed>before);
+        java.lang.reflect.Field field=PatientServiceImpl.class.getDeclaredField("LIKE_ESCAPE_CANDIDATES");field.setAccessible(true);String exhausted=java.util.Arrays.stream((int[])field.get(null)).collect(StringBuilder::new,StringBuilder::appendCodePoint,StringBuilder::append).toString();
+        observed.reset();assertThrows(IllegalArgumentException.class,()->legacy().listPatients(101L,exhausted,null,null,1,20));assertEquals(0,observed.borrowed);
+        assertThrows(IllegalArgumentException.class,()->legacy().listPatientIds(101L,exhausted,null,null));assertEquals(0,observed.borrowed);
+    }
+    @Test void sqlKeywordEscapingCollationAndNullCreateTimeOrderingArePreserved() throws Exception {
         sixPatientTable();sql("UPDATE patient_follow_up_history SET follow_up_date='2024-01-06' WHERE id=20");sql("UPDATE patient_follow_up_history SET follow_up_date=null WHERE id IN (30,60)");
+        // 当前API按建档时间排序：含同日id倒序、camel日期回退和双NULL末尾；访视日期不能改变该顺序。
+        sql("UPDATE patient_basic_info SET create_date=CASE id WHEN 1 THEN '2024-01-06' WHEN 2 THEN '2024-01-06' WHEN 4 THEN '2024-01-03' WHEN 5 THEN '2024-01-02' ELSE NULL END,createDate=CASE id WHEN 6 THEN '2024-01-01' ELSE NULL END");
         assertEquals(Arrays.asList(2L,1L,4L,5L,6L,3L),legacy().listPatientIds(101L,null,null,null));
         try(java.sql.Connection c=raw.getConnection();java.sql.PreparedStatement p=c.prepareStatement("UPDATE patient_basic_info SET name=? WHERE id=3")) {p.setString(1,"Case_%\\marker");p.executeUpdate();}
         sql("UPDATE patient_basic_info SET name='CaseABmarker' WHERE id=4");

@@ -102,6 +102,7 @@ abstract class CohortHttpFixture {
     @BeforeEach void setup() throws Exception {
         buildContext(true);
         try (Connection c = raw.getConnection(); Statement s = c.createStatement()) {
+            com.wenwen.testsupport.Mysql57Contract.verify(c);
             try (ResultSet rs = s.executeQuery("SELECT DATABASE(), @@transaction_isolation, VERSION()")) {
                 assertTrue(rs.next()); assertEquals("ra_synthetic_test", rs.getString(1));
                 assertEquals("REPEATABLE-READ", rs.getString(2));

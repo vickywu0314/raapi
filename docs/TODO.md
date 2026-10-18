@@ -43,6 +43,8 @@
 
 ## 上线前
 
+- [ ] **接收MySQL5.7.44环境与迁移**：按[兼容与迁移](MySQL5.7兼容与迁移.md)核对64MiB packet、InnoDB/Barracuda/large_prefix/DYNAMIC、严格模式/RR/TLS/账号权限；备份并在目标副本预演全部相关DDL与研究编号回填，保原8MiB容量/全列唯一性。不得物理降级8 datadir；生产数据逻辑迁移、切换/回退与生命周期风险由DBA/运维接收。本批不执行生产操作。
+
 - P05 chat上线前执行 `src/main/resources/sql/20261012_ai_chat_audit.sql` 新append审计DDL；确认生产typed身份、权威源、独立aggregate/clinical出站批准及真实原文处理边界。`ra.ai.chat.enabled` 与两类批准默认关闭，parse许可不足；合成DeepSeek/SQL/Node技术接收不批准真实患者或部署。保留固定源 `chat:cohort-states` / `chat:cohort-loopback` 与 `chat:patient-states` / `chat:patient-loopback` 浏览器补验；患者全程/本次技术实现不批准真实临床出站。
 
 - [ ] **接收当前启动准入与运行材料（历史P07c起点）**：[发布与回滚手册](AI队列发布与回滚手册.md)拥有两键关闭/重启生效、当前准确23路身份优先/503/零副作用、七份DDL共8新表逐文件hash及旧申请兼容前置、目标只读核查/逐statement预演与部分成功续作入口。目标host/账号/受控认证、MySQL/InnoDB/短RR/时区/索引、访问留存及已批准当前/回退工件hash/配置版本/真实部署渠道仍须AQC-EXT-04接收；此待办不执行目标SQL或生产发布。
@@ -65,7 +67,7 @@
 
 - [ ] **执行建表 / 改表 SQL**（按文件名日期顺序）
   - `src/main/resources/sql/20261003_patient_list.sql`：患者表加 `study_no`、`follow_cycle`；新建 `patient_comorbidity`
-  - `src/main/resources/sql/20261003_backfill_study_no.sql`：老患者补研究编号
+  - `src/main/resources/sql/20261018_backfill_study_no_mysql57.sql`：MySQL5.7老患者补研究编号，替代当前入口的8窗口函数版本；不重复执行历史版本
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
   - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）

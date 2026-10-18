@@ -53,6 +53,7 @@ class OcrMysqlIT {
         URI u=URI.create(url.substring(5));
         if(!url.startsWith("jdbc:mysql://")||!("127.0.0.1".equals(u.getHost())||"localhost".equals(u.getHost()))||u.getUserInfo()!=null||!u.getPath().matches("/ra_ocr_synthetic_[a-z0-9_]+"))throw new IllegalStateException("仅允许loopback/ra_ocr_synthetic_*独立空库");
         DriverManagerDataSource data=new DriverManagerDataSource(url,user,password);data.setDriverClassName("com.mysql.cj.jdbc.Driver");ds=data;jdbc=new JdbcTemplate(ds);
+        com.wenwen.testsupport.Mysql57Contract.verify(ds);
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()",Integer.class),"专属数据库必须为空，禁止复用患者库或旧测试库");
         ownsTables=true;
         jdbc.execute("CREATE TABLE patient_basic_info(id BIGINT PRIMARY KEY,follow_up_count INT,last_follow_up_date DATE,lastFollowUpDate DATE)");

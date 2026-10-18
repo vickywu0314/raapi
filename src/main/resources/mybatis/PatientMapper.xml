@@ -52,9 +52,9 @@
 	<sql id="filters">
 		<where>
 			<if test="keyword != null and keyword != ''">
-				AND (x.name LIKE CONCAT('%', #{keyword}, '%')
-				     OR CAST(x.patientId AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
-				     OR x.studyNo LIKE CONCAT('%', #{keyword}, '%'))
+				AND (x.name LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
+				     OR CAST(x.patientId AS CHAR) LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
+				     OR x.studyNo LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape})
 			</if>
 			<if test="followStatus != null and followStatus != ''">
 				AND x.followStatus = #{followStatus}

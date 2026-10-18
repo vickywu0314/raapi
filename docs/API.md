@@ -177,7 +177,7 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | 页面 | 患者管理 → 患者列表（`patients.html`） |
 | 地址 | `POST /api/ra/patient/patientsList` |
 | 代码 | `PatientController.patientsList` → `PatientServiceImpl.listPatients` → `PatientMapper.xml` |
-| 依赖 | 先执行 `sql/20261003_patient_list.sql`、`sql/20261003_backfill_study_no.sql` |
+| 依赖 | 先执行 `sql/20261003_patient_list.sql`、`sql/20261018_backfill_study_no_mysql57.sql`（当前5.7入口，保历史8版本） |
 
 #### 入参
 
@@ -1448,7 +1448,7 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 
 `POST /api/ra/ai/patientSearch` 接收准确对象 `{keyword:string,page:integer,size:integer}`，三项必填。keyword 必须为配对 Unicode，最多 200 codepoints，原文传输；服务 trim 后，姓名、十进制患者 ID 和研究号 contains 匹配，反斜杠、`%`、`_` 为字面字符。空白关键词可显式查询全部本人 RA。page 为 1～2147483647，size 为 1～200；拒绝字符串数字、小数、布尔、未知/重复键、无效 UTF-8/Unicode、尾随 JSON、数组/null/空体。复用 4096 bytes 严格 reader，最多读 4097 bytes；非法输入 400/INVALID_REQUEST，超限 413/LIMIT_EXCEEDED。
 
-身份→整体 AI 门→正文→SQL 顺序沿 7.10；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零正文/连接。仅复用 `PatientService.listPatients` 当前医生 RA 查询，无 request doctorId、隐式过滤、持久写、模型或缓存。RA 关系去重；最近访视非 null 优先、日期降序、患者 ID 降序。沿现 QcSnapshotReader 短 RR 读取，不声明后续全部临床富化为同一原子快照。
+身份→整体 AI 门→正文→SQL 顺序沿 7.10；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零正文/连接。仅复用 `PatientService.listPatients` 当前医生 RA 查询，无 request doctorId、隐式过滤、持久写、模型或缓存。RA 关系去重；与§2.1共用建档时间（create_date空则createDate）倒序、无建档末尾、同时间患者ID倒序；访视变化不改变此顺序。沿现 QcSnapshotReader 短 RR 读取，不声明后续全部临床富化为同一原子快照。
 
 成功 `DataResult.data` 恰为 `{items:[{patientId:string,name:string|null,studyNo:string|null}],total:int,page:int,size:int}`，patientId 是规范正十进制 Long 字符串，三字段准确，不输出身份证、手机、临床 DTO 或医生字段。例如搜索 `9007199254740993` 的合成结果：`{items:[{patientId:"9007199254740993",name:"synthetic-patient-odd",studyNo:"RA-ODD"}],total:1,page:1,size:20}`。越界页仍 HTTP200/空 items 并保真实 total 与请求 page/size；无结果不同于匿名和 SQL 故障。源故障 503/SERVICE_UNAVAILABLE/data=null，所有请求带 X-Trace-Id。
 

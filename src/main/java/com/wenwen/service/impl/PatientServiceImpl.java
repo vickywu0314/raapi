@@ -188,7 +188,10 @@ public class PatientServiceImpl implements PatientService {
 		}
 		Map<String, Object> map = new HashMap<String, Object>();
 		map.put("doctorId", doctorId);
-		map.put("keyword", escapeLike(emptyToNull(keyword == null ? null : keyword.trim())));
+		String literalKeyword=emptyToNull(keyword == null ? null : keyword.trim());
+        String keywordEscape=likeEscape(literalKeyword);
+        map.put("keyword", escapeLike(literalKeyword,keywordEscape));
+        map.put("keywordEscape",keywordEscape);
 		map.put("followStatus", followStatus);
 		map.put("completeness", completeness);
         map.put("asOf",asOf.toString());
@@ -546,10 +549,23 @@ public class PatientServiceImpl implements PatientService {
 		return s == null || s.isEmpty() ? null : s;
 	}
 
-	/** LIKE 模糊查询时把 \ % _ 当普通字符 */
-	private static String escapeLike(String s) {
-		return s == null ? null : s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-	}
+    // 固定安全白名单：ASCII可打印字符（排除LIKE通配符）和BMP私用区；不选控制符/代理/补充平面。
+    private static final int[] LIKE_ESCAPE_CANDIDATES=java.util.stream.IntStream.concat(
+        java.util.stream.IntStream.rangeClosed(33,126),java.util.stream.IntStream.rangeClosed(0xE000,0xF8FF))
+        .filter(value->value!='%'&&value!='_').toArray();
+    /** 选择原文中不存在的单字符，避免5.7 unicode_ci下转义符自身重复的不匹配。 */
+    private static String likeEscape(String keyword) {
+        if(keyword==null)return "!";
+        java.util.Set<Integer> present=new java.util.HashSet<>();keyword.codePoints().forEach(present::add);
+        for(int candidate:LIKE_ESCAPE_CANDIDATES) {
+            if(!present.contains(candidate))return new String(Character.toChars(candidate));
+        }
+        throw new IllegalArgumentException("搜索词包含全部可用转义字符");
+    }
+    /** 仅转义两个LIKE通配符；转义字符不在原文内，因此不需要自身翻倍。 */
+    private static String escapeLike(String s,String escape) {
+        return s==null?null:s.replace("%",escape+"%").replace("_",escape+"_");
+    }
 
 	private static int toInt(Object value) {
 		return value == null ? 0 : ((Number) value).intValue();

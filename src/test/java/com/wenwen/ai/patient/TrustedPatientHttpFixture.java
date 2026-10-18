@@ -31,10 +31,10 @@ public abstract class TrustedPatientHttpFixture {
         @Bean public DriverManagerDataSource rawSource() {
             String url=System.getenv("RA_TEST_MYSQL_URL"), user=System.getenv("RA_TEST_MYSQL_USER"), password=System.getenv("RA_TEST_MYSQL_PASSWORD");
             if(url==null||user==null||password==null)throw new IllegalStateException("Explicit synthetic database required");
-            URI uri=URI.create(url.substring(5));
-            if(!"127.0.0.1".equals(uri.getHost())||uri.getPort()!=43306||!"/ra_synthetic_test".equals(uri.getPath()))throw new IllegalStateException("Only guarded loopback synthetic database allowed");
+            com.wenwen.testsupport.Mysql57Contract.requireSyntheticUrl(url);
             DriverManagerDataSource ds=new DriverManagerDataSource(url,user,password); ds.setDriverClassName("com.mysql.cj.jdbc.Driver");return ds;
         }
+        @Bean public org.springframework.beans.factory.FactoryBean<com.wenwen.ocr.OcrService> unreadOcrBoundary(){return com.wenwen.testsupport.UnreadOcrBoundary.factory();}
         @Bean @Primary public ObservedSource dataSource(DriverManagerDataSource raw){return new ObservedSource(raw);}
     }
     @Configuration public static class PatientInfrastructure {
@@ -72,6 +72,7 @@ public abstract class TrustedPatientHttpFixture {
         try{context.register(Class.forName("com.wenwen.controller.ra.TrustedPatientController"));}catch(ClassNotFoundException absent){}
         try{context.register(Class.forName("com.wenwen.service.impl.TrustedPatientServiceImpl"));}catch(ClassNotFoundException absent){}
         context.refresh();raw=context.getBean(DriverManagerDataSource.class);observed=context.getBean(ObservedSource.class);body=new BodyCounter();http=MockMvcBuilders.webAppContextSetup(context).addFilters(body).build();
+        com.wenwen.testsupport.Mysql57Contract.verify(raw);
         try(Connection c=raw.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT DATABASE()")){org.junit.jupiter.api.Assertions.assertTrue(r.next());org.junit.jupiter.api.Assertions.assertEquals("ra_synthetic_test",r.getString(1));}
     }
     protected void seed()throws Exception{String[] tables={"patient_basic_info","patient_relation_doctor","patient_follow_up_history","patient_comorbidity","`user`","patient_audit_log","patient_ra_extra"};int i=0;for(String ddl:resource("schema.sql").split(";"))if(!ddl.trim().isEmpty()){sql(ddl);ownedTables.add(tables[i++]);}for(String row:resource("seed.sql").split(";"))if(!row.trim().isEmpty())sql(row);}

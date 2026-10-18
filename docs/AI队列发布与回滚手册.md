@@ -16,7 +16,7 @@ Scope: 当前23条新增HTTP入口的启动准入、七份新DDL核查、原状�
 - 固定当前代码commit/tree、对应实现与独立评审/Gate证据。以下P07c冻结身份仅是历史片参考，当前组合固定源和限定技术/真实接收状态由[ai-analysis-real-data唯一登记](../../docs/plans/ai-analysis-real-data/review-register.md#p07-gate)拥有；不得把旧冻结工件当当前部署工件。本片冻结前基线commit为 `aa52476b0b62f9138501978965ae94a918932608`、tree为 `d0e78482815c8d8817a59805ce0fd1e201172ebe`；冻结提交为 `ad4eda63b9104e889a2fe429347f8562c3c85c60`、tree为 `56a67934670f97b6b3cb330be6ba38e6560c1749`，均不是完成实现/部署证据。P07c冻结输入为 [P07c Prompt](../../docs/plans/ai-cohort/tasks/P07c.md)，前序技术证据由 [P07b登记](../../docs/plans/ai-cohort/review-register.md#task-投影) 和 [P06技术Gate](../../docs/plans/ai-cohort/review-register.md#p06-gate) 拥有。
 - 构建/运行使用Java 8；仓库 [pom.xml](../pom.xml) 的Spring Boot parent为 `2.2.0.RELEASE`、Java目标为 `1.8`。不以本地编译成功推断目标JVM、依赖或部署工件已核实。
 - 经批准的当前工件与回退工件的文件名、来源、SHA256、代码commit/tree；各自配置版本/内容hash、兼容schema和秘密注入方式。工件hash与Git tree不是同一个值，必须分别记录。
-- 目标MySQL版本、库身份、所有相关表InnoDB、实际JDBC连接的短REPEATABLE_READ事务与时区配置；生成列/utf8mb4/二进制索引及索引长度兼容。开发隔离MySQL8.4证据不能代替目标兼容性。
+- 目标基线MySQL5.7.44、库身份、所有相关表InnoDB、实际JDBC连接的短REPEATABLE_READ事务与时区配置；按[兼容与迁移](MySQL5.7兼容与迁移.md)接收64MiB packet、Barracuda/large_prefix/DYNAMIC及严格模式，保完整索引与8MiB容量。开发隔离5.7实证和旧8.4历史均不能代替目标预演；禁止直接降级8 datadir，逻辑迁移/切换/回退须独立接收。
 - 真实Principal映射、患者/访视/字典适配、访问权限、留存政策、医学/统计及字段/日期外发批准，按各自原触发接收，不用启动配置替代批准。
 
 **操作待交付（AQC-EXT-04）**：目标host/库/账号、受控认证文件、工件存放与启动方式、流量切换/进程关闭渠道、当前及回退工件hash和配置版本、目标SQL预演/部署/回退证据均须原owner交付。本手册不猜测systemd/Docker命令，不启动 `RaApplication`，不访问生产凭据或目标数据库。

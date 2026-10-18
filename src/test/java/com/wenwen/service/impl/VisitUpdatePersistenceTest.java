@@ -30,6 +30,14 @@ class VisitUpdatePersistenceTest extends VisitUpdateFixture {
         assertEquals(1,sqlObserver.visitUpdates);assertEquals(1,sqlObserver.readBarriers);assertEquals(1,writerCommits);assertEquals(0,sqlObserver.auditAttempts);
         assertEquals(writer,row().get("bqpg"));assertEquals(LAB,row().get("fzjc"));assertEquals(0,auditCount());
     }
+    @Test void trailingSpaceWriterIsConflictEvenUnderPadSpaceCollation() throws Exception {
+        assertEquals("1",textQuery("SELECT _utf8mb4'x' COLLATE utf8mb4_unicode_ci = _utf8mb4'x ' COLLATE utf8mb4_unicode_ci"));
+        VisitUpdateRequest r=request("fzjc","cfydb","");String writer=BQPG+" ";
+        sqlObserver.afterVisitRead=()->writerModule("bqpg",writer);
+        assertEquals("409",assertThrows(BizException.class,()->service.updateVisit(r)).getCode());released();
+        assertEquals(1,sqlObserver.visitUpdates);assertEquals(1,writerCommits);assertEquals(0,sqlObserver.auditAttempts);
+        assertEquals(writer,row().get("bqpg"));assertEquals(LAB,row().get("fzjc"));assertEquals(0,auditCount());
+    }
     @Test void ghEditGuardsUnwrittenLabDependency() throws Exception {
         VisitUpdateRequest r=request("bqpg","ztScoreByPatient","60");String writer="{\"cfydb\":99,\"xc\":100,\"writer\":true}";
         sqlObserver.afterVisitRead=()->writerModule("fzjc",writer);
@@ -88,7 +96,7 @@ class VisitUpdatePersistenceTest extends VisitUpdateFixture {
         assertEquals(before.get("bsbq"),after.get("bsbq"));assertEquals(0,auditCount());
     }
     @Test void realAuditConstraintFailureRollsBackAlreadyExecutedUpdateAndDates() throws Exception {
-        sql("ALTER TABLE patient_audit_log ADD CONSTRAINT p02a_fail_audit CHECK (action <> '编辑随访')");
+        sql("CREATE TRIGGER p02a_fail_audit BEFORE INSERT ON patient_audit_log FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='p02a_fail_audit'");
         Map<String,Object> before=row();String counter=textQuery("SELECT DATE_FORMAT(last_follow_up_date,'%Y-%m-%d %H:%i:%s.%f') FROM patient_basic_info WHERE id=1");
         VisitUpdateRequest r=request("fzjc","cfydb","");r.setVisitDate("2026-10-02");
         RuntimeException failure=assertThrows(RuntimeException.class,()->service.updateVisit(r));released();
