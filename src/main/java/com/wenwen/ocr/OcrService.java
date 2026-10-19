@@ -138,7 +138,7 @@ public class OcrService {
 		for (Map<String, Object> m : mappings == null ? new ArrayList<Map<String, Object>>() : mappings) {
 			String alias = m.get("alias") == null ? null : String.valueOf(m.get("alias")).trim();
 			String field = m.get("field") == null ? null : String.valueOf(m.get("field")).trim();
-			if (alias == null || alias.isEmpty() || alias.length() > 200 || field == null || !fields.containsKey(field)) {
+			if (alias == null || alias.isEmpty() || alias.length() > 191 || field == null || !fields.containsKey(field)) {
 				continue;
 			}
 			String sample = m.get("name") == null ? null : String.valueOf(m.get("name"));

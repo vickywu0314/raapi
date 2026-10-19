@@ -94,7 +94,7 @@ class Mysql57CompatibilityTest {
     }
     @Test void fullUtf8mb4AliasUniquenessUsesDynamicRowsWithoutPrefixTruncation()throws Exception{
         script("/sql/20261012_ocr_lab_alias.sql");tables.add("ocr_lab_alias");
-        String prefix=String.join("",Collections.nCopies(199,"\uD83D\uDE00"));
+        String prefix=String.join("",Collections.nCopies(190,"\uD83D\uDE00")); // alias varchar(191)：MySQL 5.6 默认配置下唯一索引不超过 767 字节
         try(PreparedStatement insert=connection.prepareStatement("INSERT INTO ocr_lab_alias(alias,field) VALUES (?,?)")){
             for(String last:Arrays.asList("A","B")){insert.setString(1,prefix+last);insert.setString(2,"cfydb");assertEquals(1,insert.executeUpdate());}
             insert.setString(1,prefix+"A");assertThrows(SQLException.class,insert::executeUpdate);
