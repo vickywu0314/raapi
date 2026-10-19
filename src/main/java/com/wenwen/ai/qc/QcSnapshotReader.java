@@ -3,6 +3,7 @@ package com.wenwen.ai.qc;
 import com.wenwen.mapper.*;
 import com.wenwen.ai.clinical.VisitMatcher;
 import com.wenwen.ai.source.ClinicalScalarReader;
+import com.wenwen.util.Das28Util;
 import java.time.LocalDate;
 import java.util.*;
 import org.springframework.stereotype.Component;
@@ -35,10 +36,18 @@ public final class QcSnapshotReader {
         Raw raw=snapshot.execute(status -> {
             List<Long> ids=projects.qcPatientIds(scope);
             List<Map<String,Object>> issues=projects.remainingQcIssues(scope);
-            List<Map<String,Object>> scores=ids.isEmpty()?Collections.emptyList():patients.listDas28(ids);
+            List<Map<String,Object>> scores=ids.isEmpty()?Collections.emptyList():patients.listQcDas28(scope);
             return new Raw(ids,issues,scores,Collections.emptyList());
         });
-        return compute(raw);
+        Set<Long> valid=new HashSet<>();
+        for(Map<String,Object> row:raw.scores) {
+            long patientId=((Number)row.get("patientId")).longValue();
+            if(valid.contains(patientId)) continue;
+            // 必须完整读完当前JSON，才可接纳其canonical值；仅在文档之间跳过已满足的患者。
+            String score=ClinicalScalarReader.read(text(row.get("bqpg")),new HashSet<>()).get("/result/crpScore");
+            if(Das28Util.canonicalCrp(score)!=null) valid.add(patientId);
+        }
+        return finish(raw,Collections.emptyList(),MissingDataPolicy.evaluateValidDas28(raw.ids,valid,raw.issues));
     }
     private QcSnapshot compute(Raw raw) {
         List<VisitMatcher.Visit> visits=new ArrayList<>();
@@ -48,6 +57,9 @@ public final class QcSnapshotReader {
                 date==null?null:LocalDate.parse(date),ClinicalScalarReader.read(text(row.get("bqpg")),new LinkedHashSet<>()).get("/result/crpScore")));
         }
         Map<Long,MissingDataStatus> qc=MissingDataPolicy.evaluate(raw.ids,visits,raw.issues);
+        return finish(raw,visits,qc);
+    }
+    private QcSnapshot finish(Raw raw,List<VisitMatcher.Visit> visits,Map<Long,MissingDataStatus> qc) {
         int issueCount=0;Set<Long> issuePatients=new HashSet<>();
         for(Map.Entry<Long,MissingDataStatus> entry:qc.entrySet()) if(!entry.getValue().getMissingCodes().isEmpty()) {
             issueCount+=entry.getValue().getMissingCodes().size();issuePatients.add(entry.getKey());

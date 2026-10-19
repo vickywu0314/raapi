@@ -63,10 +63,6 @@ public class QualityServiceImpl implements QualityService {
 	@Override
 	public Map<String, Object> issues(Long doctorId, PatientService.AllPatients all) {
 		LocalDate today = LocalDate.now(SHANGHAI);
-		Map<Long, PatientItemVo> byId = new LinkedHashMap<Long, PatientItemVo>();
-		for (PatientItemVo p : all.items) {
-			byId.put(p.getPatientId(), p);
-		}
 		Map<Long, Map<String, Object>> facts = new HashMap<Long, Map<String, Object>>();
 		for (Map<String, Object> f : mapper.listPatientFacts(doctorId)) {
 			facts.put(((Number) f.get("patientId")).longValue(), f);
@@ -131,13 +127,6 @@ public class QualityServiceImpl implements QualityService {
 			}
 			for (Map.Entry<String, Integer> e : perDay.entrySet()) {
 				if (e.getValue() > 1) {
-					Object firstId = null;
-					for (Map<String, Object> v : vs) {
-						if (e.getKey().equals(v.get("visitDate"))) {
-							firstId = v.get("visitId");
-							break;
-						}
-					}
 					issues.add(issue(p, "conflict:same-day:" + e.getKey(), "逻辑冲突", e.getKey() + " 同一天有 " + e.getValue() + " 条随访，疑似重复录入",
 							target("patient", null, null, "患者详情 · 随访时间线")));
 				}

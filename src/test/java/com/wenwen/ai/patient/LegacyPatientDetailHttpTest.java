@@ -57,7 +57,9 @@ class LegacyPatientDetailHttpTest extends TrustedPatientHttpFixture {
         for(String route:routes){
             org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder q=post("/api/ra/visit/"+route).param("doctorId","101");
             if(route.equals("visitCreateForm"))q.param("patientId","9007199254740993");else q.param("visitId","9007199254741003");
-            org.springframework.test.web.servlet.MvcResult r=http.perform(q).andReturn();
+            org.springframework.mock.web.MockHttpSession loggedIn=session(101);
+            loggedIn.setAttribute(com.wenwen.auth.AuthService.SESSION_DOCTOR,101L);
+            org.springframework.test.web.servlet.MvcResult r=http.perform(q.session(loggedIn)).andReturn();
             assertEquals(200,r.getResponse().getStatus());
             com.fasterxml.jackson.databind.JsonNode d=json.readTree(r.getResponse().getContentAsByteArray()).path("data");
             assertEquals("9007199254740993",d.path("patientId").textValue());

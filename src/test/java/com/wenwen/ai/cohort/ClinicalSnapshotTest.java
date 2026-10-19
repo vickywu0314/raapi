@@ -43,7 +43,7 @@ class ClinicalSnapshotTest extends ClinicalHttpFixture {
             assertEquals(503,result.getResponse().getStatus());
             JsonNode envelope=json.readTree(result.getResponse().getContentAsByteArray());
             assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertTrue(envelope.path("data").isNull());
-            assertTrue(observed.mysqlFailures>0); assertEquals(table.startsWith("SELECT")?1:4,observed.selects);
+            assertTrue(observed.mysqlFailures>0); assertEquals(table.startsWith("SELECT")?1:3,observed.selects);
             assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
             assertEquals(1,new HashSet<>(observed.queryConnections).size());
             assertEquals(Collections.nCopies(observed.selects,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
@@ -51,9 +51,9 @@ class ClinicalSnapshotTest extends ClinicalHttpFixture {
         }
     }
     void released() {
-        assertEquals(5,observed.selects); assertEquals(2,observed.borrowed); assertEquals(2,observed.returned); assertEquals(0,observed.active.get());
+        assertEquals(4,observed.selects); assertEquals(2,observed.borrowed); assertEquals(2,observed.returned); assertEquals(0,observed.active.get());
         assertEquals(1,new HashSet<>(observed.queryConnections).size());
-        assertEquals(Collections.nCopies(5,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
-        assertEquals(Collections.nCopies(5,false),observed.autoCommits);
+        assertEquals(Collections.nCopies(4,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
+        assertEquals(Collections.nCopies(4,false),observed.autoCommits);
     }
 }

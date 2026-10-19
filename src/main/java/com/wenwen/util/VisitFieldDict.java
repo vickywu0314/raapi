@@ -1,5 +1,6 @@
 package com.wenwen.util;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -37,6 +38,10 @@ public final class VisitFieldDict {
 		public String optionSet;
 		/** 只在第 2 次及以后的随访显示（如「与上次相比治疗方案是否调整」） */
 		public boolean notBaseline;
+		/** 数值检验语义；控件及旧 JSON 仍用 text，允许报告中的比较符。 */
+		public boolean laboratory;
+		/** 业务已明确的输入定义域；不能用检验参考区间代替。 */
+		public BigDecimal min, max;
 
 		Field(String key, String label, String unit, String type) {
 			this.key = key;
@@ -57,6 +62,11 @@ public final class VisitFieldDict {
 
 		Field when(String cond) {
 			showIf = cond;
+			return this;
+		}
+		Field range(int minimum, int maximum) {
+			min = BigDecimal.valueOf(minimum);
+			max = BigDecimal.valueOf(maximum);
 			return this;
 		}
 
@@ -150,7 +160,9 @@ public final class VisitFieldDict {
 	}
 
 	private static Field lab(String key, String label, String unit) {
-		return new Field(key, label, unit, "text");
+		Field field = new Field(key, label, unit, "text");
+		field.laboratory = true;
+		return field;
 	}
 
 	private static void set(String name, String parent, String... options) {
@@ -326,9 +338,9 @@ public final class VisitFieldDict {
 				f("ytgj", "压痛关节", "", "list").opts(joints),
 				f("ytgjHand", "压痛关节 · 手部（编号）", "", "list")));
 		m.groups.add(new Group("VAS 评分（0~100）",
-				f("tjScore", "患者疼痛 VAS", "分", "number"),
-				f("ztScoreByPatient", "疾病总体状况 VAS（患者）", "分", "number"),
-				f("ztScoreByDoctor", "疾病总体状况 VAS（医生）", "分", "number")));
+				f("tjScore", "患者疼痛 VAS", "分", "number").range(0, 100),
+				f("ztScoreByPatient", "疾病总体状况 VAS（患者）", "分", "number").range(0, 100),
+				f("ztScoreByDoctor", "疾病总体状况 VAS（医生）", "分", "number").range(0, 100)));
 		m.groups.add(new Group("脏器受累",
 				f("zqsl", "脏器受累", "", "radio").opts("是", "否"),
 				f("zqslItems", "受累脏器", "", "list").opts("肺、胸膜病变", "心脏病变", "肾脏病变", "神经病变", "类风湿血管炎", "其他系统").when("zqsl:是"),

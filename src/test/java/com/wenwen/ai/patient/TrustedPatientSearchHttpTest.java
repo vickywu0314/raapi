@@ -34,7 +34,18 @@ class TrustedPatientSearchHttpTest extends TrustedPatientHttpFixture {
         for(String keyword:new String[]{"8001","8002","synthetic-other-doctor","synthetic-non-ra"}){JsonNode d=data(keyword,1,20);ids(d);assertEquals(0,d.path("total").intValue());}
         sql("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=9007199254740993");ids(data("9007199254740993",1,20));
         sql("UPDATE patient_basic_info SET study_no=NULL WHERE id=9223372036854775807");JsonNode item=data("9223372036854775807",1,20).path("items").get(0);assertEquals("synthetic\\literal!",item.path("name").textValue());assertTrue(item.path("studyNo").isNull());assertEquals(3,item.size());
-        sql("RENAME TABLE patient_follow_up_history TO synthetic_search_offline");try{org.springframework.test.web.servlet.MvcResult r=search("",1,20);assertEquals(503,r.getResponse().getStatus());JsonNode e=json.readTree(r.getResponse().getContentAsByteArray());assertEquals("SERVICE_UNAVAILABLE",e.path("code").textValue());assertTrue(e.path("data").isNull());assertFalse(e.toString().contains("synthetic_search"));}finally{sql("RENAME TABLE synthetic_search_offline TO patient_follow_up_history");}
+        sql("RENAME TABLE patient_basic_info TO synthetic_search_offline");try{org.springframework.test.web.servlet.MvcResult r=search("",1,20);assertEquals(503,r.getResponse().getStatus());JsonNode e=json.readTree(r.getResponse().getContentAsByteArray());assertEquals("SERVICE_UNAVAILABLE",e.path("code").textValue());assertTrue(e.path("data").isNull());assertFalse(e.toString().contains("synthetic_search"));}finally{sql("RENAME TABLE synthetic_search_offline TO patient_basic_info");}
+    }
+    @Test void searchReadsOnlyTwoNarrowSelectsWithoutClinicalTables()throws Exception{
+        seed();observed.selects=0;observed.borrowed=0;
+        JsonNode result=data("",1,1);ids(result,"9223372036854775807");assertEquals(3,result.path("total").intValue());
+        assertEquals(2,observed.selects);assertEquals(1,observed.borrowed);
+        sql("RENAME TABLE patient_follow_up_history TO synthetic_search_visits_offline, patient_comorbidity TO synthetic_search_comorbidity_offline");
+        try{
+            observed.selects=0;ids(data("",2,1),"9007199254740993");assertEquals(2,observed.selects);
+            observed.selects=0;JsonNode beyond=data("",2147483647,200);ids(beyond);assertEquals(3,beyond.path("total").intValue());assertEquals(1,observed.selects);
+            observed.selects=0;JsonNode empty=data("no-matching-patient",1,20);ids(empty);assertEquals(0,empty.path("total").intValue());assertEquals(1,observed.selects);
+        }finally{sql("RENAME TABLE synthetic_search_visits_offline TO patient_follow_up_history, synthetic_search_comorbidity_offline TO patient_comorbidity");}
     }
     private void error(byte[] body,int status,String code)throws Exception{org.springframework.test.web.servlet.MvcResult r=http.perform(post("/api/ra/ai/patientSearch").session(session(101)).contentType("application/json").content(body)).andReturn();assertEquals(status,r.getResponse().getStatus());assertEquals(code,json.readTree(r.getResponse().getContentAsByteArray()).path("code").textValue());assertNotNull(r.getResponse().getHeader("X-Trace-Id"));assertEquals(0,observed.borrowed);}
     @Test void strictBoundedSearchInputRejectsBeforeSql()throws Exception{

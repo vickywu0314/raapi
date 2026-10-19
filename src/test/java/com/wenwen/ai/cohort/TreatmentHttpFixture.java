@@ -39,6 +39,6 @@ abstract class TreatmentHttpFixture extends CohortHttpFixture {
     void released() { assertReleased(2); }
     void sourceReleased() { assertReleased(1); }
     private void assertReleased(int owners) {
-        assertEquals(5,observed.selects); assertEquals(owners,observed.borrowed); assertEquals(owners,observed.returned); assertEquals(0,observed.active.get());
+        assertEquals(4,observed.selects); assertEquals(owners,observed.borrowed); assertEquals(owners,observed.returned); assertEquals(0,observed.active.get());
     }
 }

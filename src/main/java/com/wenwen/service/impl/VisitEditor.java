@@ -63,6 +63,7 @@ class VisitEditor {
 					continue; // 只允许改字典里的可编辑字段
 				}
 				Object cur = VisitJson.path(obj, f.key);
+				VisitValidationPolicy.validateValue(f, e.getValue(), cur, m.title + "·" + f.label);
 				Object val = convert(e.getValue(), f.type, cur, m.title + "·" + f.label);
 				if (put(obj, f.key, cur, val, m.title + "·" + f.label)) {
 					changed.add(f.key);
@@ -138,6 +139,7 @@ class VisitEditor {
 					continue;
 				}
 				Object cur = row.get(c.key);
+				VisitValidationPolicy.validateValue(c, r.get(c.key), cur, label + "·" + c.label);
 				Object val = convert(r.get(c.key), c.type, cur, label + "·" + c.label);
 				String curText = VisitJson.text(cur), valText = VisitJson.text(val);
 				if (eq(curText, valText) || (cur == null && valText == null)) {

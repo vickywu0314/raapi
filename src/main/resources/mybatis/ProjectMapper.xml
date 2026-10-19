@@ -88,6 +88,26 @@
 		<include refid="missingIssues"/> UNION ALL <include refid="logicIssues"/>
 	</select>
 
+	<!-- 保留原统计条件；合并患者扫描与数据库往返，NOW在同一语句内固定。 -->
+	<select id="countProjectMetrics" resultType="Map" parameterType="Map">
+		SELECT COUNT(*) AS activeCount,
+		       IFNULL(SUM(CASE WHEN COALESCE(p.create_date, p.createDate) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+		                       THEN 1 ELSE 0 END), 0) AS dueCount,
+		       IFNULL(SUM(CASE WHEN COALESCE(p.create_date, p.createDate) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+		                       AND EXISTS (SELECT 1 FROM patient_follow_up_history f
+		                           WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="raResearchTypes"/>)
+		                             AND COALESCE(f.follow_up_date, f.followUpDate) &gt;= DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+		                             AND COALESCE(f.follow_up_date, f.followUpDate) &lt;= NOW())
+		                       THEN 1 ELSE 0 END), 0) AS doneCount,
+		       IFNULL(SUM(CASE WHEN COALESCE(
+		                       (SELECT MAX(COALESCE(f.follow_up_date, f.followUpDate)) FROM patient_follow_up_history f
+		                        WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="raResearchTypes"/>)),
+		                       COALESCE(p.create_date, p.createDate)) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
+		                       THEN 1 ELSE 0 END), 0) AS pendingCount,
+		       (SELECT COUNT(*) FROM patient_follow_up_history f WHERE <include refid="usableRecordsCond"/>) AS usableCount
+		FROM patient_basic_info p WHERE <include refid="activePatientCond"/>
+	</select>
+
 	<!-- 跟踪患者分子：目前仍有效（未脱落）的患者 -->
 	<select id="countActivePatients" resultType="int">
 		SELECT COUNT(*) FROM patient_basic_info p WHERE <include refid="activePatientCond"/>
@@ -123,13 +143,15 @@
 	</select>
 
 	<!-- 研究级可用记录：随访日期、病情评估、辅助检查、治疗方案均不缺失的随访记录条数 -->
-	<select id="countUsableRecords" resultType="int">
-		SELECT COUNT(*) FROM patient_follow_up_history f
-		WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+	<sql id="usableRecordsCond">
+		f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		  AND COALESCE(f.follow_up_date, f.followUpDate) IS NOT NULL
 		  AND IFNULL(TRIM(f.bqpg), '') NOT IN ('', '{}', '[]', 'null')
 		  AND IFNULL(TRIM(f.fzjc), '') NOT IN ('', '{}', '[]', 'null')
 		  AND IFNULL(TRIM(f.zlfa), '') NOT IN ('', '{}', '[]', 'null')
+	</sql>
+	<select id="countUsableRecords" resultType="int">
+		SELECT COUNT(*) FROM patient_follow_up_history f WHERE <include refid="usableRecordsCond"/>
 	</select>
 
 </mapper>

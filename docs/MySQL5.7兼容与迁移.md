@@ -1,6 +1,6 @@
 # MySQL 5.7 兼容与迁移
 
-Date: 2026-10-18
+Date: 2026-10-19
 Status: Current
 Owner: 后端维护者；目标库与数据迁移由 DBA/运维接收
 Scope: 当前 RA 的 MySQL 5.7.44 开发/集成测试基线及现行迁移入口；不授权或证明生产数据降级、部署与浏览器验收
@@ -22,7 +22,7 @@ MySQL5.7已于2023-10-25进入 Oracle Sustaining Support，见[官方生命周�
 | 随访编辑fixture | `utf8mb4_0900_ai_ci`不可用 | 换`utf8mb4_unicode_ci`；原字节/NULL安全CAS及大小写/空格差异判据保留 |
 | 审计拒写故障注入 | 5.7接受但忽略`CHECK` | 使用真实`BEFORE INSERT` trigger `SIGNAL`，仍验证已执行UPDATE、审计失败及全部回滚 |
 | OCR alias唯一键 | utf8mb4 `VARCHAR(200)`完整800字节索引超过旧767字节前提 | DDL显式`ROW_FORMAT=DYNAMIC`，要求Barracuda/large_prefix；保完整唯一性，不改191前缀 |
-| 保留载荷 | 5.7默认packet4MiB，现业务默认cap8MiB | 服务器/测试明确`max_allowed_packet=64M`，不缩容量；实际Mapper覆盖8MiB写入/重读 |
+| 保留载荷/查询会话 | 5.7默认packet4MiB，比较聚合独立默认cap8MiB；规范条件可能超过TEXT 64KiB | 服务器/测试明确`max_allowed_packet=64M`，Comparison Mapper保8MiB往返；分析只存MEDIUMTEXT规范query（应用≤128KiB），不再保留全结果blob |
 | 患者搜索LIKE | 5.7中原隐式反斜杠转义对纯反斜杠关键词未匹配 | 绑定原文中不存在的单字符`ESCAPE`并转义`%/_`，避免转义符自身翻倍，保反斜杠与原LIKE/collation语义；实际HTTP回归特殊字符及200码点边界 |
 | 私有定义状态测试观察器 | 5.7的CONCAT不能直接混合HEX/ASCII/连接排序规则 | 改为三列独立读取，保完整载荷HEX、hash和version逐值不变断言 |
 | 测试runtime/native owner | 固定8.4包、`mysqlx=OFF`及无版本断言 | 固定官方5.7.44包与SHA256，删除8专用参数；所有独立JDBC fixture及Node owner在建表前拒绝错误版本 |
@@ -84,6 +84,6 @@ SQL NULL与JSON_VALID=0的模块跳过；NaN、Infinity、-Infinity、1e309不�
 
 ## 6. 验证与仍未接收项
 
-真实5.7基线证实旧0900建表失败，修collation后旧CHECK故障注入未拒写。新兼容用例验证窗口/CTE/JSON_TABLE不可用、日期/id/NULL/已有编号、冲突无部分写入及重跑、200字符四字节alias完整唯一性、生产Mapper8MiB回读；原随访编辑、OCR和普通后端测试保原断言。Python覆盖10001项长数组、转义键、类型/≤40选项和坏JSON，另实跑5.7只读CLI链。
+真实5.7基线证实旧0900建表失败，修collation后旧CHECK故障注入未拒写。新兼容用例验证窗口/CTE/JSON_TABLE不可用、日期/id/NULL/已有编号、冲突无部分写入及重跑、200字符四字节alias完整唯一性、当前比较Mapper8MiB回读及分析查询会话5000大long IDs/>64KiB MEDIUMTEXT往返（2026-10-19替代旧analysis blob Mapper路径）；原随访编辑、OCR和普通后端测试保原断言。Python覆盖10001项长数组、转义键、类型/≤40选项和坏JSON，另实跑5.7只读CLI链。
 
 准确fresh报告数量与源码由本批实现交接/独立review接收，不把编译或exit0算测试成功。历史MySQL8证据仍只证明当时版本；当前合成SQL不代替目标数据库预演、真实身份/数据迁移、浏览器、医学或部署接收。

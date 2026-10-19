@@ -100,11 +100,12 @@ public class VisitController {
 	@ApiOperation(value = "新增随访表单", notes = "新增随访页（visit-create.html）：按字段字典返回空表单（结构同编辑随访表单）和自动带入的值：病史病情的发病 / 确诊时间取患者档案，随访时间 = 今天，首诊时间取最早一次随访；visitNo = 第几次随访", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/visitCreateForm")
 	public DataResult<VisitEditFormVo> visitCreateForm(
-			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
-			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId) {
+			@RequestParam(value = "doctorId", required = false) @ApiParam(value = "兼容参数，身份以服务端会话为准") Long doctorId,
+			@RequestParam(value = "patientId", required = true) @ApiParam(value = "患者ID", required = true) Long patientId,
+			javax.servlet.http.HttpServletRequest request) {
 		DataResult<VisitEditFormVo> result = new DataResult<VisitEditFormVo>();
 		try {
-			result.setData(visitService.getCreateForm(doctorId, patientId));
+			result.setData(visitService.getCreateForm(com.wenwen.ocr.OcrService.requireDoctor(com.wenwen.auth.AuthService.currentDoctorId(request)), patientId));
 			result.setCode("200");
 			result.setMessage("成功");
 			result.setSuccess(true);
@@ -159,11 +160,12 @@ public class VisitController {
 	@ApiOperation(value = "编辑随访表单", notes = "编辑随访页（visit-edit.html）：按字段字典返回当前值；基本信息不在此接口（只读，用 patientDetail）", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/visitEditForm")
 	public DataResult<VisitEditFormVo> visitEditForm(
-			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId,
-			@RequestParam(value = "visitId", required = true) @ApiParam(value = "随访ID", required = true) Long visitId) {
+			@RequestParam(value = "doctorId", required = false) @ApiParam(value = "兼容参数，身份以服务端会话为准") Long doctorId,
+			@RequestParam(value = "visitId", required = true) @ApiParam(value = "随访ID", required = true) Long visitId,
+			javax.servlet.http.HttpServletRequest request) {
 		DataResult<VisitEditFormVo> result = new DataResult<VisitEditFormVo>();
 		try {
-			result.setData(visitService.getEditForm(doctorId, visitId));
+			result.setData(visitService.getEditForm(com.wenwen.ocr.OcrService.requireDoctor(com.wenwen.auth.AuthService.currentDoctorId(request)), visitId));
 			result.setCode("200");
 			result.setMessage("成功");
 			result.setSuccess(true);
@@ -186,9 +188,10 @@ public class VisitController {
 
 	@ApiOperation(value = "保存编辑随访", notes = "请求体为 JSON（VisitUpdateRequest）。只写有变化的字段，保持老系统 JSON 结构；病情评估计算项自动重算；写修改记录", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/updateVisit")
-	public DataResult<VisitUpdateResultVo> updateVisit(@RequestBody VisitUpdateRequest req) {
+	public DataResult<VisitUpdateResultVo> updateVisit(@RequestBody VisitUpdateRequest req, javax.servlet.http.HttpServletRequest request) {
 		DataResult<VisitUpdateResultVo> result = new DataResult<VisitUpdateResultVo>();
 		try {
+			req.setDoctorId(com.wenwen.ocr.OcrService.requireDoctor(com.wenwen.auth.AuthService.currentDoctorId(request)));
 			VisitUpdateResultVo r = visitService.updateVisit(req);
 			result.setData(r);
 			result.setCode("200");

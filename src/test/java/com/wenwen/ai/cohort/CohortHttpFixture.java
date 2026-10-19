@@ -121,6 +121,9 @@ abstract class CohortHttpFixture {
                 String ddl = new Scanner(in, StandardCharsets.UTF_8.name()).useDelimiter("\\A").next();
                 s.execute(ddl.trim()); ownedTables.add("ra_ai_analysis_run");
             }
+            try(InputStream in=getClass().getResourceAsStream("/sql/20261019_ai_analysis_query_session.sql")) {
+                s.execute(new Scanner(in,StandardCharsets.UTF_8.name()).useDelimiter("\\A").next().trim());ownedTables.add("ra_ai_analysis_query_session");
+            }
             for (int i = 1; i <= 7; i++) s.execute("INSERT INTO patient_basic_info (id,name) VALUES (" + i + ",'synthetic-same-name')");
             s.execute("INSERT INTO patient_relation_doctor (doctor_id,patient_id,research_type,miss) VALUES (101,1,0,0),(101,1,1,0),(202,1,5,0),(101,2,6,0),(202,2,2,0),(101,3,3,1),(202,4,4,0),(101,5,7,0),(101,6,2,0),(101,7,4,0),(101,8,0,0)");
         }

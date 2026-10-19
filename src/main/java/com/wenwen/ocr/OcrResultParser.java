@@ -67,7 +67,7 @@ public final class OcrResultParser {
 	private static final List<String> BLOOD_COUNT = java.util.Arrays.asList("bxb", "xhdb", "xxb", "rbc");
 	/** 比较名称时忽略的字符：空格、括号、连字符 */
 	private static final Pattern STRIP = Pattern.compile("[\\s（）()\\-－—·]");
-	private static final Pattern NUM = Pattern.compile("^[<>≤≥＜＞]?=?\\s*-?\\d+(\\.\\d+)?");
+	private static final Pattern NUM = Pattern.compile("^(?:<=|>=|<|>|≤|≥|＜|＞|=)?\\s*[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$");
 	private static final Pattern DATE = Pattern.compile("(\\d{4})\\s*[-年./]\\s*(\\d{1,2})\\s*[-月./]\\s*(\\d{1,2})");
 	private static final Pattern CARD = Pattern.compile("(?<!\\d)(\\d{17}[\\dXx])(?!\\d)");
 	private static final Pattern MOBILE = Pattern.compile("(?<!\\d)(1[3-9]\\d{9})(?!\\d)");
@@ -200,14 +200,7 @@ public final class OcrResultParser {
 		boolean conflict = mappingConflict(name, abbr);
 		String key = conflict || "blocked".equals(matchParts(name, abbr)[2]) ? null : learned != null ? learned : labKey(name, abbr);
 		String value = null;
-		if (key != null && result != null) {
-			if (QUALITATIVE.contains(key)) {
-				value = result.contains("阳") || result.trim().startsWith("+") ? "阳性" : result.contains("阴") || result.trim().startsWith("-") ? "阴性" : null;
-			} else {
-				Matcher m = NUM.matcher(result.trim());
-				value = m.find() ? m.group().replaceAll("\\s", "") : null;
-			}
-		}
+		if (key != null && result != null) value = value(key, result);
 		Map<String, Object> it = new LinkedHashMap<String, Object>();
 		it.put("name", name != null ? name : abbr);
 		it.put("abbr", abbr);
@@ -216,9 +209,11 @@ public final class OcrResultParser {
 		it.put("alias", alias(name, abbr));
 		it.put("field", key);
 		it.put("matchedBy", key == null ? null : learned != null ? "learned" : "builtin");
-		it.put("needsConfirmation", conflict);
+		boolean invalidResult = key != null && result != null && value == null;
+		it.put("needsConfirmation", conflict || invalidResult);
 		if (conflict) it.put("mappingWarning", "项目名称与缩写冲突，请对照原图手动确认对应字段");
-		it.put("value", value != null ? value : result == null ? null : result.trim());
+		if (invalidResult) it.put("mappingWarning", "识别结果不是完整可用值，请对照原图后手动填写；未自动截取数字");
+		it.put("value", value);
 		items.add(it);
 		if (value != null && !fzjc.containsKey(key)) {
 			fzjc.put(key, value);
@@ -231,14 +226,22 @@ public final class OcrResultParser {
 		return (n == null ? "" : n) + (a == null || a.isEmpty() ? "" : "|" + a);
 	}
 
-	/** 质控 / 填表时字段的取值：数值字段取开头的数字（含 <、>），定性字段取阳性 / 阴性 */
+	/** 只有完整有限数值或明确的定性结果才能自动填表；保比较符，不丢弃尾随文字。 */
 	public static String value(String field, String raw) {
 		if (field == null || raw == null) return null;
 		if (QUALITATIVE.contains(field)) {
-			return raw.contains("阳") || raw.trim().startsWith("+") ? "阳性" : raw.contains("阴") || raw.trim().startsWith("-") ? "阴性" : null;
+			String text = raw.trim();
+			return text.matches("阳性|\\+{1,4}") ? "阳性" : text.matches("阴性|[-—]") ? "阴性" : "未做".equals(text) ? "未做" : null;
 		}
-		Matcher m = NUM.matcher(raw.trim());
-		return m.find() ? m.group().replaceAll("\\s", "") : null;
+		String text = raw.trim();
+		if ("lfsyz".equals(field) || "kccpkt".equals(field)) text = text.replaceFirst("(?:IU/mL|U/mL)$", "").trim();
+		Matcher m = NUM.matcher(text);
+		if (!m.matches()) return null;
+		String value = m.group().replaceAll("\\s", "");
+		try {
+			String number = value.replaceFirst("^(?:<=|>=|<|>|≤|≥|＜|＞|=)", "");
+			return Double.isFinite(new java.math.BigDecimal(number).doubleValue()) ? (text.equals(raw.trim()) ? value : raw.trim()) : null;
+		} catch (NumberFormatException error) { return null; }
 	}
 
 	/**

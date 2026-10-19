@@ -34,7 +34,7 @@ class SimilarEntryHttpTest extends SimilarEntryHttpFixture {
         assertEquals(3,full.path("lines").path("groups").size());
         assertEquals(22,full.path("lines").path("unknownLineN").asInt());for(JsonNode line:full.path("lines").path("groups"))assertEquals(0,line.path("count").asInt());
         assertEquals("INSUFFICIENT_SAMPLE",full.path("fm").path("status").asText());assertEquals(22,full.path("fm").path("unknownN").asInt());assertEquals(0,full.path("fm").path("rows").size());
-        String id=full.path("analysisId").asText();assertEquals(22,json.readTree(stored(id)).path("rows").size());
+        String id=full.path("analysisId").asText();assertEquals(entry.path("filters"),json.readTree(stored(id)));
         observed.reset();JsonNode last=page(id,full.path("patients").path("nextCursor").asText());assertEquals(sequence(111,122),ids(last));
         assertEquals(12,last.path("patients").path("returnedCount").asInt());assertTrue(last.path("patients").path("nextCursor").isNull());assertFalse(last.path("patients").path("hasMore").asBoolean());
         java.util.List<String> union=new java.util.ArrayList<>(ids(full));union.addAll(ids(last));assertEquals(sequence(101,122),union);assertEquals(22,new java.util.HashSet<>(union).size());
@@ -158,10 +158,10 @@ class SimilarEntryHttpTest extends SimilarEntryHttpFixture {
         com.fasterxml.jackson.databind.node.ObjectNode conflict=(com.fasterxml.jackson.databind.node.ObjectNode)entry.path("filters").deepCopy();
         observed.reset();error(json.writeValueAsString(com.wenwen.vo.AiCohortVo.object("source","SIMILAR","indexPatientId","101","filters",conflict)),400,"INVALID_FILTER");assertEquals(0,observed.borrowed);assertEquals(0,observed.selects);
     }
-    @Test void oldPageKeepsNumbersAcrossVisitsButRejectsUniverseRevocation() throws Exception {
+    @Test void oldQueryPagesRecomputeVisitsAndRejectUniverseRevocation() throws Exception {
         similarPopulation();JsonNode entry=resolve(101);String body=json.writeValueAsString(com.wenwen.vo.AiCohortVo.object("filters",entry.path("filters")));JsonNode first=success(body);String id=first.path("analysisId").asText(),cursor=first.path("patients").path("nextCursor").asText();
         JsonNode old=page(id,cursor);assertEquals(3,patientById(old,111).path("das28At").asDouble());
-        visit(1111,111,0,"{\"result\":{\"crpScore\":9}}","2026-10-07",null,null);JsonNode retained=page(id,cursor);assertEquals(ids(old),ids(retained));assertEquals(3,patientById(retained,111).path("das28At").asDouble());
+        visit(1111,111,0,"{\"result\":{\"crpScore\":9}}","2026-10-07",null,null);JsonNode retained=page(id,cursor);java.util.List<String> liveIds=sequence(110,122);liveIds.remove("111");assertEquals(liveIds,ids(retained));assertFalse(ids(retained).contains("111"));
         JsonNode fresh=success(body);assertNotEquals(id,fresh.path("analysisId").asText());assertEquals("111",ids(fresh).get(0));assertEquals(9,patientById(fresh,111).path("das28At").asDouble());assertEquals(22,fresh.path("n").asInt());
         sql("DELETE FROM patient_follow_up_history WHERE id=1111");JsonNode deleted=success(body);assertEquals(3,patientById(page(deleted.path("analysisId").asText(),deleted.path("patients").path("nextCursor").asText()),111).path("das28At").asDouble());assertEquals(3,patientById(page(id,cursor),111).path("das28At").asDouble());
         sql("DELETE FROM patient_relation_doctor WHERE doctor_id=101 AND patient_id=127");observed.reset();pageError(id,cursor,409,"SCOPE_CHANGED");assertEquals(0,observed.active.get());assertEquals(observed.borrowed,observed.returned);assertEquals(0,observed.displayReads);
@@ -177,13 +177,13 @@ class SimilarEntryHttpTest extends SimilarEntryHttpFixture {
             } catch(java.sql.SQLException e) { throw new AssertionError("合成writer屏障失败",e); }
         };
         JsonNode current=resolve(101);assertEquals("F",current.path("filters").path("sex").asText());assertEquals("35-45",current.path("filters").path("age").asText());assertTrue(current.path("filters").path("sero").isNull(),"当前视图必须读取唯一旧RF10；混入新RF35会误加阳性");assertEquals(0,current.path("missingBasis").size());
-        assertEquals(1,commits.get());assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(java.util.Collections.nCopies(5,false),observed.autoCommits);resolverReleased();
+        assertEquals(1,commits.get());assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.nCopies(4,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(java.util.Collections.nCopies(4,false),observed.autoCommits);resolverReleased();
         observed.reset();JsonNode next=resolve(101);assertEquals("M",next.path("filters").path("sex").asText());assertEquals("34-44",next.path("filters").path("age").asText());assertEquals("1",next.path("filters").path("sero").asText());assertEquals(0,next.path("missingBasis").size());resolverReleased();assertEquals(0,runs());
     }
     @Test void resolverRealSqlFailureIs503AndReleasesBeforeCleanupOrRecovery() throws Exception {
         similarPopulation();String before=sourceDigest();assertEquals("READY",resolve(101).path("status").asText());observed.reset();
         java.util.concurrent.atomic.AtomicInteger first=new java.util.concurrent.atomic.AtomicInteger();observed.afterFirstQuery=()->{assertEquals(1,observed.active.get());first.incrementAndGet();};observed.failSecondSql=true;
-        resolveError("{\"source\":\"SIMILAR\",\"indexPatientId\":\"101\"}",503,"SERVICE_UNAVAILABLE");assertEquals(1,first.get());assertTrue(observed.mysqlFailures>0);assertEquals("42S02",observed.lastSqlState);assertEquals(1146,observed.lastMysqlError);assertEquals(3,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());assertEquals(0,runs());assertEquals(before,sourceDigest());
+        resolveError("{\"source\":\"SIMILAR\",\"indexPatientId\":\"101\"}",503,"SERVICE_UNAVAILABLE");assertEquals(1,first.get());assertTrue(observed.mysqlFailures>0);assertEquals("42S02",observed.lastSqlState);assertEquals(1146,observed.lastMysqlError);assertEquals(2,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());assertEquals(0,runs());assertEquals(before,sourceDigest());
         observed.reset();assertEquals("READY",resolve(101).path("status").asText());resolverReleased();assertEquals(0,runs());
     }
     @Test void postSourceProgramFailureHasNoLiveOwnerOrPartialCandidate() throws Exception {

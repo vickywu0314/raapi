@@ -15,6 +15,13 @@ public interface PatientMapper {
     /** doctor范围中经SQL keyword/followStatus筛选且已排序的完整候选；QC/计数/分页在同视图服务完成。 */
     List<Map<String, Object>> listPatients(Map<String, Object> map);
 
+    /** 项目QC存在性输入；不取日期/visitId、不排序，也不展开全项目ID参数。 */
+    List<Map<String,Object>> listQcDas28(Map<String,Object> scope);
+
+    /** 可信搜索仅计数与三字段投影；同医生RA范围，SQL负责稳定排序和LIMIT。 */
+    int countSearchPatients(Map<String,Object> scope);
+    List<Map<String,Object>> searchPatients(Map<String,Object> scope);
+
 	/** 指定患者 RA 随访的存量 DAS28-CRP（patientId、visitId、visitDate、bqpg原文）；保留SQL双日期/id顺序，Service按共享Matcher的LocalDate/最大id及asOf选择 */
 	List<Map<String, Object>> listDas28(@Param("patientIds") List<Long> patientIds);
 

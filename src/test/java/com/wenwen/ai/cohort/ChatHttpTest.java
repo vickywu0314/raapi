@@ -8,13 +8,13 @@ class ChatHttpTest extends ChatHttpFixture {
         String before=digest();long runs=count("ra_ai_analysis_run");
         AiGatewayLoopbackPeer.Exchange exchange=peer.holdJson(outer("{\"status\":\"ANSWER\",\"factKeys\":[\"TARGET_RATE\"],\"reason\":null}"));
         Caller caller=new Caller(all(),false);
-        assertTrue(exchange.received.await(2,java.util.concurrent.TimeUnit.SECONDS));assertEquals(5,observed.selects);sourceExited();assertEquals(0,auditObserved.active.get());assertEquals(0,count("ra_ai_chat_audit"));exchange.allow.countDown();
+        assertTrue(exchange.received.await(2,java.util.concurrent.TimeUnit.SECONDS));assertEquals(4,observed.selects);sourceExited();assertEquals(0,auditObserved.active.get());assertEquals(0,count("ra_ai_chat_audit"));exchange.allow.countDown();
         JsonNode d=caller.data();assertEquals(200,caller.response.getResponse().getStatus());assertEquals(caller.response.getResponse().getHeader("X-Trace-Id"),d.path("meta").path("traceId").asText());networkExited();auditExited();
         assertEquals("AI",d.path("engine").asText());assertEquals("ANSWER",d.path("status").asText());
         assertEquals("ALL",d.path("scope").path("kind").asText());assertEquals(6,d.path("scope").path("n").asInt());
         JsonNode target=fact(d,"TARGET_RATE").path("data");assertTrue(target.path("value").isNumber());assertEquals(0,new BigDecimal(".4").compareTo(target.path("value").decimalValue()));
         assertEquals(2,target.path("meta").path("numerator").asInt());assertEquals(5,target.path("meta").path("denominator").asInt());assertEquals(1,target.path("meta").path("unknownN").asInt());
-        assertEquals(5,observed.selects);assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.singleton(java.sql.Connection.TRANSACTION_REPEATABLE_READ),new java.util.HashSet<>(observed.isolations));assertFalse(observed.autoCommits.contains(true));sourceExited();
+        assertEquals(4,observed.selects);assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.singleton(java.sql.Connection.TRANSACTION_REPEATABLE_READ),new java.util.HashSet<>(observed.isolations));assertFalse(observed.autoCommits.contains(true));sourceExited();
         assertEquals(1,peer.requests.get());assertNotNull(exchange.body);
         assertEquals("101",audit(d.path("auditRef").asText()).get("doctor_id"));assertEquals(1,count("ra_ai_chat_audit"));assertEquals(runs,count("ra_ai_analysis_run"));assertEquals(before,digest());
     }

@@ -50,7 +50,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
                 assertEquals(RID,r.getString(3));
                 assertFalse(r.next());
             }
-            try(ResultSet r=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_run")){
+            try(ResultSet r=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_query_session")){
                 r.next();
                 assertEquals(0,r.getInt(1));
             }
@@ -102,14 +102,14 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         String body="{\"cohortId\":\""+id+"\"}";
         JsonNode old=privateSuccess("open",body).path("analysis");
         String run=old.path("analysisId").asText();
-        String oldPayload=scalar("SELECT HEX(payload) FROM ra_ai_analysis_run WHERE id='"+run+"'");
+        String oldPayload=scalar("SELECT HEX(query_json) FROM ra_ai_analysis_query_session WHERE id='"+run+"'");
         String definition=scalar("SELECT HEX(filters_utf8) FROM ra_private_cohort_definition WHERE id='"+id+"'");
         visit(31,3,3,"{\"result\":{\"crpScore\":2.60}}","2026-10-07",null,null);
         observed.reset();
         JsonNode next=privateSuccess("open",body).path("analysis");
         assertEquals(3,next.path("n").asInt());
         assertEquals(java.util.Arrays.asList("3","1","7"),ids(next));
-        assertTrue(observed.selects>=6);
+        assertEquals(5,observed.selects);
         assertNotEquals(old.path("analysisId"),next.path("analysisId"));
         sql("DELETE FROM patient_basic_info WHERE id=1");
         next=privateSuccess("open",body).path("analysis");
@@ -119,7 +119,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         next=privateSuccess("open",body).path("analysis");
         assertEquals(3,next.path("studyTotal").asInt());
         assertEquals(java.util.Arrays.asList("7"),ids(next));
-        assertEquals(oldPayload,scalar("SELECT HEX(payload) FROM ra_ai_analysis_run WHERE id='"+run+"'"));
+        assertEquals(oldPayload,scalar("SELECT HEX(query_json) FROM ra_ai_analysis_query_session WHERE id='"+run+"'"));
         assertEquals(definition,scalar("SELECT HEX(filters_utf8) FROM ra_private_cohort_definition WHERE id='"+id+"'"));
     }
     @Test void reopenFifteenExplicitIdsUsesOriginalStableNextPage() throws Exception {
@@ -183,7 +183,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         assertEquals(json.readTree(FILTERS),list.path("items").get(0).path("filters"));
         assertTrue(list.path("items").get(0).path("currentN").isNull());
         assertEquals(0,privateObserved.clinicalReads.get());
-        assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_run"));
+        assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_query_session"));
         assertEquals(0,privateSuccess("list","{\"page\":2,\"size\":100}").path("items").size());
         context.getBean(FakePrincipalProvider.class).doctor=202;
         assertEquals(0,privateSuccess("list","{}").path("total").asLong());
@@ -387,7 +387,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
             privateError("open",open,503,"SERVICE_UNAVAILABLE");
             privateError("list","{}",503,"SERVICE_UNAVAILABLE");
             assertEquals(0,privateObserved.clinicalReads.get());
-            assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_run"));
+            assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_query_session"));
         }
         for(int version:new int[]{
             0,2
@@ -723,7 +723,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         observed.reset();
         privateError("open",open,503,"SERVICE_UNAVAILABLE");
         assertEquals(0,privateObserved.clinicalReads.get());
-        assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_run"));
+        assertEquals("0",scalar("SELECT COUNT(*) FROM ra_ai_analysis_query_session"));
         assertEquals(2,privateSuccess("rename",command(id,1,2,"\"note\":\"no-key\"")).path("version").asLong());
         MvcResult resolver=http.perform(post("/api/ra/ai/resolveEntry").contentType("application/json").content("{\"source\":\"SIMILAR\",\"indexPatientId\":\"1\"}")).andReturn();
         assertEquals(200,resolver.getResponse().getStatus());
@@ -750,7 +750,7 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         assertEquals(1146,observed.lastMysqlError);
         assertEquals(1,privateObserved.maxActive.get());
         assertEquals(before,privateDigest());
-        assertEquals("1",scalar("SELECT COUNT(*) FROM ra_ai_analysis_run"));
+        assertEquals("1",scalar("SELECT COUNT(*) FROM ra_ai_analysis_query_session"));
         observed.reset();
         privateObserved.reset();
         assertEquals(2,privateSuccess("open",open).path("analysis").path("n").asInt());

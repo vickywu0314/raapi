@@ -230,6 +230,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 if("p05-chat".equals(scenario)||currentAnalysisScenario())try(InputStream in=getClass().getResourceAsStream("/sql/20261012_ai_chat_audit.sql")){String ddl=new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim().replace("CREATE TABLE IF NOT EXISTS","CREATE TABLE");statement.execute(ddl);ownedTables.add("ra_ai_chat_audit");event("table-owned","table","ra_ai_chat_audit");}
                 if("p07-current".equals(scenario))createParseAuditTable(statement);
                 if(currentExportScenario()){createPrivateTables(statement);createComparisonTables(statement);createExportAuditTable(statement);createApplicationTables(statement);}
+                createAnalysisQueryTable(statement);
                 event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
             }return;
         }
@@ -240,6 +241,7 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
                 s.execute(sql); ownedTables.add(TABLES[i++]);
                 event("table-owned","table",ownedTables.get(ownedTables.size()-1));
             }
+            createAnalysisQueryTable(s);
             for (String sql:resource(seedForScenario(scenario)).split(";")) if (!sql.trim().isEmpty()) s.execute(sql);
             if(scenario.equals("p03")||scenario.equals("p04")||scenario.equals("p06-comparison")||compositionScenario())createPrivateTables(s);
             if(scenario.equals("p04")||scenario.equals("p06-comparison")||compositionScenario())createComparisonTables(s);
@@ -247,6 +249,11 @@ public final class WebLoopbackApiFixture implements AutoCloseable {
             if(scenario.equals("p06-cohort")||scenario.equals("p06-comparison")||applicationScenario()||compositionScenario())createExportAuditTable(s);
             if(applicationScenario()||compositionScenario())createApplicationTables(s);
             event("schema-ready","tables",ownedTables.size(),"preparationConnections",preparationConnections);
+        }
+    }
+    private void createAnalysisQueryTable(Statement statement)throws SQLException,IOException {
+        try(InputStream in=getClass().getResourceAsStream("/sql/20261019_ai_analysis_query_session.sql")) {
+            statement.execute(new Scanner(in,"UTF-8").useDelimiter("\\A").next().trim());ownedTables.add("ra_ai_analysis_query_session");event("table-owned","table","ra_ai_analysis_query_session");
         }
     }
     static boolean allowsHttpPath(String scenario,String path) {
