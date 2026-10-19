@@ -58,6 +58,14 @@ public class ProjectServiceImpl implements ProjectService {
 		vo.setPendingQcIssues(issueCount);
 		vo.setQcIssuePatients(issuePatients);
 		vo.setResearchUsableRecords(toInt(plan.get("usableCount")));
+		// 随访完成 2 / 3 / 4 次（不含基线）：与上面同一次查询
+		String[] times = String.valueOf(plan.get("followUpTimes") == null ? "0,0,0" : plan.get("followUpTimes")).split(",");
+		vo.setFollowUp2Count(Integer.parseInt(times[0].trim()));
+		vo.setFollowUp3Count(Integer.parseInt(times[1].trim()));
+		vo.setFollowUp4Count(Integer.parseInt(times[2].trim()));
+		vo.setFollowUp2Rate(percent(vo.getFollowUp2Count(), total));
+		vo.setFollowUp3Rate(percent(vo.getFollowUp3Count(), total));
+		vo.setFollowUp4Rate(percent(vo.getFollowUp4Count(), total));
 		return vo;
 	}
 

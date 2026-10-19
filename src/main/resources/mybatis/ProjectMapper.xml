@@ -104,8 +104,19 @@
 		                        WHERE f.patient_basic_info_id = p.id AND f.research_type IN (<include refid="raResearchTypes"/>)),
 		                       COALESCE(p.create_date, p.createDate)) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
 		                       THEN 1 ELSE 0 END), 0) AS pendingCount,
-		       (SELECT COUNT(*) FROM patient_follow_up_history f WHERE <include refid="usableRecordsCond"/>) AS usableCount
-		FROM patient_basic_info p WHERE <include refid="activePatientCond"/>
+		       (SELECT COUNT(*) FROM patient_follow_up_history f WHERE <include refid="usableRecordsCond"/>) AS usableCount,
+		       <!-- 随访完成 N 次：第一条 RA 随访记录是基线访视，之后每条算一次随访；随访 ≥ N 次 = RA 随访记录 ≥ N+1 条；
+		            范围同「已入组患者」（全部 RA 患者，含已脱落）。一次子查询返回「≥2次,≥3次,≥4次」人数 -->
+		       (SELECT CONCAT(IFNULL(SUM(CASE WHEN t.c &gt;= 3 THEN 1 ELSE 0 END), 0), ',',
+		                      IFNULL(SUM(CASE WHEN t.c &gt;= 4 THEN 1 ELSE 0 END), 0), ',',
+		                      IFNULL(SUM(CASE WHEN t.c &gt;= 5 THEN 1 ELSE 0 END), 0))
+		        FROM (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS c
+		              FROM patient_follow_up_history f
+		              WHERE f.research_type IN (<include refid="raResearchTypes"/>)
+		                AND f.patient_basic_info_id IN (SELECT rr.patient_id FROM patient_relation_doctor rr WHERE rr.research_type IN (<include refid="raResearchTypes"/>))
+		              GROUP BY f.patient_basic_info_id) t) AS followUpTimes
+		FROM patient_basic_info p
+		WHERE <include refid="activePatientCond"/>
 	</select>
 
 	<!-- 跟踪患者分子：目前仍有效（未脱落）的患者 -->

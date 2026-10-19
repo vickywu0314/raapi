@@ -113,4 +113,26 @@ public class ProjectsDataVo {
 	public void setResearchUsableRecords(int researchUsableRecords) {
 		this.researchUsableRecords = researchUsableRecords;
 	}
+
+	@ApiModelProperty("随访完成 ≥2 次的患者占已入组患者的百分比（不含基线访视），1 位小数")
+	private BigDecimal followUp2Rate;
+	@ApiModelProperty("随访完成 ≥3 次的患者百分比")
+	private BigDecimal followUp3Rate;
+	@ApiModelProperty("随访完成 ≥4 次的患者百分比")
+	private BigDecimal followUp4Rate;
+	@ApiModelProperty("随访完成 ≥2 / ≥3 / ≥4 次的患者数")
+	private int followUp2Count, followUp3Count, followUp4Count;
+
+	public BigDecimal getFollowUp2Rate() { return followUp2Rate; }
+	public void setFollowUp2Rate(BigDecimal v) { followUp2Rate = v; }
+	public BigDecimal getFollowUp3Rate() { return followUp3Rate; }
+	public void setFollowUp3Rate(BigDecimal v) { followUp3Rate = v; }
+	public BigDecimal getFollowUp4Rate() { return followUp4Rate; }
+	public void setFollowUp4Rate(BigDecimal v) { followUp4Rate = v; }
+	public int getFollowUp2Count() { return followUp2Count; }
+	public void setFollowUp2Count(int v) { followUp2Count = v; }
+	public int getFollowUp3Count() { return followUp3Count; }
+	public void setFollowUp3Count(int v) { followUp3Count = v; }
+	public int getFollowUp4Count() { return followUp4Count; }
+	public void setFollowUp4Count(int v) { followUp4Count = v; }
 }
