@@ -155,6 +155,7 @@ public class OcrService {
 		try {
 			Map<String, Object> keep = new LinkedHashMap<String, Object>(draft);
 			keep.remove("fieldOptions");
+			keep.remove("tcmOptions");
 			if (mapper.updateResult(fileId, JSONObject.toJSONString(keep)) != 1) throw new BizException("503", "识别结果未保存，请稍后重试");
 		} catch (DataAccessException e) {
 			throw new BizException("503", "识别结果未保存，请稍后重试");
@@ -329,6 +330,11 @@ public class OcrService {
 			options.add(o);
 		}
 		draft.put("fieldOptions", options);
+		// 中药处方的证型 / 方剂选项（与新增随访「治疗方案 · 中药饮片」同一套）
+		Map<String, Object> tcm = new LinkedHashMap<String, Object>();
+		tcm.put("syndromes", VisitFieldDict.SYNDROMES);
+		tcm.put("fangji", VisitFieldDict.OPTION_SETS.get("fangji"));
+		draft.put("tcmOptions", tcm);
 	}
 
 	private static boolean sameUnit(String a, String b) {

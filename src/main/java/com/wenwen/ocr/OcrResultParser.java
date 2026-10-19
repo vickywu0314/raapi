@@ -181,8 +181,17 @@ public final class OcrResultParser {
 			if (d.find()) visitDate = date(d.group(1));
 		}
 
+		// 4. 中药处方：「药名 + 剂量g」≥ 3 味时当作处方，填治疗方案 · 中药饮片；处方行不再当检验项目显示
+		Map<String, Object> prescription = prescription(lines);
+		if (prescription != null) {
+			for (java.util.Iterator<Map<String, Object>> it = items.iterator(); it.hasNext();) {
+				Map<String, Object> item = it.next();
+				if (item.get("field") == null && (HERB.matcher(String.valueOf(item.get("name"))).find() || HERB.matcher(String.valueOf(item.get("result"))).find())) it.remove();
+			}
+		}
+
 		List<String> warnings = new ArrayList<String>();
-		if (basic.isEmpty() && fzjc.isEmpty()) warnings.add("没有识别出可用的信息，请换一张更清晰的图片，或手动录入");
+		if (basic.isEmpty() && fzjc.isEmpty() && prescription == null) warnings.add("没有识别出可用的信息，请换一张更清晰的图片，或手动录入");
 		if (!basic.containsKey("name")) warnings.add("没有识别出姓名");
 		if (!basic.containsKey("cardNo")) warnings.add("没有识别出身份证号，新建患者时无法查重，请手动补上");
 		Map<String, Object> out = new LinkedHashMap<String, Object>();
@@ -190,6 +199,7 @@ public final class OcrResultParser {
 		out.put("visitDate", visitDate);
 		out.put("fzjc", fzjc);
 		out.put("items", items);
+		out.put("prescription", prescription);
 		out.put("lines", lines);
 		out.put("warnings", warnings);
 		return out;
@@ -218,6 +228,57 @@ public final class OcrResultParser {
 		if (value != null && !fzjc.containsKey(key)) {
 			fzjc.put(key, value);
 		}
+	}
+
+	/** 处方里的一味药：2～6 个汉字的药名 + 剂量（g / 克），如「墨旱莲15g」「山药 15 克」 */
+	private static final Pattern HERB = Pattern.compile("([\\u4e00-\\u9fa5]{2,6})\\s*(\\d+(?:\\.\\d+)?)\\s*(?:g|G|克)(?![A-Za-z])");
+	/** 药名前常带的字样（「处方黄芪30g」「中药：当归15g」），去掉 */
+	private static final Pattern HERB_PREFIX = Pattern.compile("^(?:中药处方|中药饮片|中药|处方|方药|药物|饮片|用药|组成|加减|加|减)");
+
+	/**
+	 * 中药处方：从全部识别文字里取「药名 + 剂量」，≥ 3 味才算处方；
+	 * 证型 / 方剂只在文字里明确写了系统选项（8 个证型、各证型下的方剂）时才填，不按药味猜；
+	 * 只识别出方剂、且该方剂只属于一个证型时，带出证型。返回 null = 不是处方。
+	 */
+	static Map<String, Object> prescription(List<String> lines) {
+		String all = String.join("\n", lines);
+		List<Map<String, Object>> herbs = new ArrayList<Map<String, Object>>();
+		java.util.Set<String> seen = new java.util.HashSet<String>();
+		Matcher m = HERB.matcher(all);
+		while (m.find()) {
+			String name = HERB_PREFIX.matcher(m.group(1)).replaceFirst("");
+			if (name.length() < 1 || !seen.add(name)) continue;
+			Map<String, Object> h = new LinkedHashMap<String, Object>();
+			h.put("name", name);
+			h.put("dose", m.group(2) + "g");
+			h.put("text", name + m.group(2) + "g");
+			herbs.add(h);
+		}
+		if (herbs.size() < 3) return null;
+		String zz = null, fj = null;
+		for (String syndrome : com.wenwen.util.VisitFieldDict.SYNDROMES) {
+			if (all.contains(syndrome) || all.contains(syndrome.substring(0, syndrome.length() - 1))) { zz = syndrome; break; }
+		}
+		Map<String, List<String>> fangji = com.wenwen.util.VisitFieldDict.OPTION_SETS.get("fangji");
+		java.util.Set<String> owners = new java.util.LinkedHashSet<String>();
+		if (fangji != null) {
+			for (Map.Entry<String, List<String>> e : fangji.entrySet()) {
+				for (String f : e.getValue()) {
+					if (all.contains(f) && (fj == null || f.length() > fj.length())) fj = f;
+				}
+			}
+			for (Map.Entry<String, List<String>> e : fangji.entrySet()) if (fj != null && e.getValue().contains(fj)) owners.add(e.getKey());
+		}
+		List<String> notes = new ArrayList<String>();
+		if (zz == null && owners.size() == 1) zz = owners.iterator().next();
+		else if (zz != null && fj != null && !owners.contains(zz)) { notes.add("识别出的方剂「" + fj + "」不在证型「" + zz + "」的方剂选项里，方剂未填，请手动选择"); fj = null; }
+		if (zz == null) notes.add("没有识别出证型，请手动选择");
+		Map<String, Object> out = new LinkedHashMap<String, Object>();
+		out.put("herbs", herbs);
+		out.put("zz", zz);
+		out.put("fj", fj);
+		out.put("notes", notes);
+		return out;
 	}
 
 	/** 叫法对照表的键：名称 + 缩写规范化（去空格、括号、连字符，转大写） */

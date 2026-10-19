@@ -78,4 +78,24 @@ class OcrResultParserTest {
 		assertNull(OcrResultParser.labKey("平均红细胞体积", "RBC"));
 		assertNull(OcrResultParser.labKey("尿白细胞", "WBC"));
 	}
+
+	@Test void prescriptionHerbsAndOnlyExplicitSyndromeOrFormula() {
+		java.util.List<String> lines = java.util.Arrays.asList("中国中医科学院广安门医院 门诊病历", "诊断：类风湿关节炎 肝肾不足证", "中药处方：独活寄生汤加减",
+				"墨旱莲15g 秦艽15g", "山药15g  绵萆薢15g", "黄芪 30 克", "共7剂 每日1剂");
+		java.util.Map<String, Object> p = OcrResultParser.prescription(lines);
+		java.util.List<?> herbs = (java.util.List<?>) p.get("herbs");
+		assertEquals(5, herbs.size());
+		assertEquals("墨旱莲15g", ((java.util.Map<?, ?>) herbs.get(0)).get("text"));
+		assertEquals("黄芪30g", ((java.util.Map<?, ?>) herbs.get(4)).get("text"));
+		assertEquals("肝肾不足证", p.get("zz"));
+		assertEquals("独活寄生汤", p.get("fj"));
+		// 只写方剂、方剂只属于一个证型：带出证型
+		p = OcrResultParser.prescription(java.util.Arrays.asList("方药：身痛逐瘀汤", "桃仁10g 红花10g 当归15g"));
+		assertEquals("瘀血阻络证", p.get("zz"));
+		// 没写证型 / 方剂：不猜
+		p = OcrResultParser.prescription(java.util.Arrays.asList("当归15g 川芎10g 白芍15g"));
+		assertNull(p.get("zz")); assertNull(p.get("fj"));
+		// 不足 3 味不算处方
+		assertNull(OcrResultParser.prescription(java.util.Arrays.asList("葡萄糖 5.2", "体重50kg", "甲氨蝶呤10mg")));
+	}
 }
