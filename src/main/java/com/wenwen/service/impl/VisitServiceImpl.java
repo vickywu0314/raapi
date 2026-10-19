@@ -46,6 +46,8 @@ import com.wenwen.vo.VisitTableVo;
 
 @Service
 public class VisitServiceImpl implements VisitService {
+	@org.springframework.beans.factory.annotation.Value("${ra.visit.validation.rules:}")
+	private String validationRules = "";
 
 	private static final String NOT_CHECKED = "未查";
 
@@ -144,6 +146,7 @@ public class VisitServiceImpl implements VisitService {
 	@Override
 	public VisitEditFormVo getEditForm(Long doctorId, Long visitId) {
 		Map<String, Object> row = loadVisit(doctorId, visitId);
+		VisitValidationPolicy validation = new VisitValidationPolicy(validationRules);
 		VisitEditFormVo form = new VisitEditFormVo();
 		form.setVisitId(visitId);
 		form.setPatientId(toLong(row.get("patientId")));
@@ -154,14 +157,14 @@ public class VisitServiceImpl implements VisitService {
 		form.setVersion(version(row));
 		List<VisitEditModuleVo> modules = new ArrayList<VisitEditModuleVo>();
 		for (VisitFieldDict.Module m : VisitFieldDict.MODULES) {
-			modules.add(editModule(m, (String) row.get(m.column)));
+			modules.add(editModule(m, (String) row.get(m.column), validation, "visit:" + visitId));
 		}
 		form.setModules(modules);
 		form.setOptionSets(VisitFieldDict.OPTION_SETS);
 		return form;
 	}
 
-	private VisitEditModuleVo editModule(VisitFieldDict.Module m, String raw) {
+	private VisitEditModuleVo editModule(VisitFieldDict.Module m, String raw, VisitValidationPolicy validation, String target) {
 		VisitEditModuleVo mod = new VisitEditModuleVo();
 		mod.setKey(m.key);
 		mod.setTitle(m.title);
@@ -184,7 +187,7 @@ public class VisitServiceImpl implements VisitService {
 		for (VisitFieldDict.Group g : m.groups) {
 			List<VisitEditFieldVo> fields = new ArrayList<VisitEditFieldVo>();
 			for (VisitFieldDict.Field f : g.fields) {
-				VisitEditFieldVo fv = editField(f, f.key.startsWith("@") ? null : VisitJson.path(json, f.key));
+				VisitEditFieldVo fv = editField(m.column, f, f.key.startsWith("@") ? null : VisitJson.path(json, f.key), validation, target);
 				if (m.wx.containsKey(f.key)) {
 					fv.setWx(VisitJson.isTrue(json.get(m.wx.get(f.key))));
 				} else if (m.wxMap != null && !f.isList() && !f.key.startsWith("@")) {
@@ -203,7 +206,7 @@ public class VisitServiceImpl implements VisitService {
 			tv.setTitle(t.title);
 			List<VisitEditFieldVo> cols = new ArrayList<VisitEditFieldVo>();
 			for (VisitFieldDict.Field c : t.editColumns) {
-				cols.add(editField(c, null));
+				cols.add(editField(m.column, c, null, validation, target));
 			}
 			tv.setColumns(cols);
 			List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
@@ -235,8 +238,9 @@ public class VisitServiceImpl implements VisitService {
 		return mod;
 	}
 
-	private static VisitEditFieldVo editField(VisitFieldDict.Field f, Object value) {
+	private static VisitEditFieldVo editField(String column, VisitFieldDict.Field f, Object value, VisitValidationPolicy validation, String target) {
 		VisitEditFieldVo fv = new VisitEditFieldVo();
+		fv.setValidation(validation.describe(column, f, target));
 		fv.setKey(f.key);
 		fv.setLabel(f.label);
 		fv.setUnit(f.unit);
@@ -281,6 +285,8 @@ public class VisitServiceImpl implements VisitService {
 		}
 		Long patientId = toLong(row.get("patientId"));
 		Map<String, VisitModuleUpdate> ups = req.getModules() == null ? new HashMap<String, VisitModuleUpdate>() : req.getModules();
+		VisitValidationPolicy validation = new VisitValidationPolicy(validationRules);
+		List<String> confirmationNotes = new ArrayList<String>();
 		VisitEditor editor = new VisitEditor();
 		Map<String, Object> update = new HashMap<String, Object>();
 		update.put("visitId", req.getVisitId());
@@ -319,7 +325,9 @@ public class VisitServiceImpl implements VisitService {
 			}
 			boolean isNew = json == null;
 			JSONObject obj = isNew ? new JSONObject(true) : json;
+			JSONObject before = VisitJson.copy(obj);
 			Set<String> keys = editor.apply(m, obj, ups.get(m.column));
+			confirmationNotes.addAll(validation.validate(m, before, obj, ups.get(m.column), false, "visit:" + req.getVisitId()));
 			// 改了随访日期：病史病情里的随诊时间同步（原来有这个字段才改）
 			if (dateChanged && "bsbq".equals(m.column) && obj.containsKey("followDate") && !newDate.equals(obj.getString("followDate"))) {
 				obj.put("followDate", newDate);
@@ -377,7 +385,7 @@ public class VisitServiceImpl implements VisitService {
 		um.put("patientId", patientId);
 		boolean baseline = req.getVisitId().equals(visitMapper.getBaselineVisitId(um));
 		auditLogService.record(patientId, req.getVisitId(), "编辑随访", editor.changes,
-				null, req.getDoctorId(), operator == null ? "医生 ID " + req.getDoctorId() : operator);
+				confirmationNotes.isEmpty() ? null : String.join("；", confirmationNotes), req.getDoctorId(), operator == null ? "医生 ID " + req.getDoctorId() : operator);
 		return result;
 	}
 
@@ -396,6 +404,7 @@ public class VisitServiceImpl implements VisitService {
 	@Override
 	public VisitEditFormVo getCreateForm(Long doctorId, Long patientId) {
 		Map<String, Object> rel = myRaRelation(doctorId, patientId);
+		VisitValidationPolicy validation = new VisitValidationPolicy(validationRules);
 		Map<String, Object> map = new HashMap<String, Object>();
 		map.put("patientId", patientId);
 		List<Map<String, Object>> visits = visitMapper.listPatientVisits(map);
@@ -413,7 +422,7 @@ public class VisitServiceImpl implements VisitService {
 			if ("bblsj".equals(m.column)) {
 				continue; // 不良事件（bblsj）用途待确认，新增随访不写
 			}
-			VisitEditModuleVo mod = editModule(m, null);
+			VisitEditModuleVo mod = editModule(m, null, validation, "patient:" + patientId + ":new");
 			mod.setImages(new ArrayList<VisitImageGroupVo>());
 			mod.setOthers(new ArrayList<VisitFieldVo>());
 			modules.add(mod);
@@ -490,6 +499,8 @@ public class VisitServiceImpl implements VisitService {
 		List<Map<String, Object>> visits = visitMapper.listPatientVisits(map);
 
 		// 各模块：从空对象开始合并表单，没填的字段不写 key（与编辑随访同一套转换）
+		VisitValidationPolicy validation = new VisitValidationPolicy(validationRules);
+		List<String> confirmationNotes = new ArrayList<String>();
 		Map<String, VisitModuleUpdate> ups = req.getModules() == null ? new HashMap<String, VisitModuleUpdate>() : req.getModules();
 		VisitEditor editor = new VisitEditor();
 		Map<String, JSONObject> objs = new HashMap<String, JSONObject>();
@@ -500,6 +511,7 @@ public class VisitServiceImpl implements VisitService {
 			}
 			JSONObject obj = new JSONObject(true);
 			changed.put(m.column, editor.apply(m, obj, ups.get(m.column)));
+			confirmationNotes.addAll(validation.validate(m, new JSONObject(true), obj, ups.get(m.column), true, "patient:" + patientId + ":new"));
 			objs.put(m.column, obj);
 		}
 		editor.recompute(objs.get("fzjc"), objs.get("bqpg"), changed.get("fzjc"), changed.get("bqpg"));
@@ -551,7 +563,8 @@ public class VisitServiceImpl implements VisitService {
 		um.put("patientId", patientId);
 		boolean baseline = visitId.equals(visitMapper.getBaselineVisitId(um));
 		auditLogService.record(patientId, visitId, "新增随访", null,
-				(baseline ? "基线访视" : "常规随访") + " " + visitDate + "；填写了 " + filled + " 个模块",
+				(baseline ? "基线访视" : "常规随访") + " " + visitDate + "；填写了 " + filled + " 个模块"
+						+ (confirmationNotes.isEmpty() ? "" : "；" + String.join("；", confirmationNotes)),
 				doctorId, operator == null ? "医生 ID " + doctorId : operator);
 
 		VisitCreateResultVo vo = new VisitCreateResultVo();

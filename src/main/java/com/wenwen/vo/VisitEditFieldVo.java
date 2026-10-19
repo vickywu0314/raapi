@@ -5,6 +5,9 @@ import io.swagger.annotations.ApiModelProperty;
 
 @ApiModel(value = "编辑随访：一个字段（或清单的一列）")
 public class VisitEditFieldVo {
+	private VisitFieldValidationVo validation;
+	public VisitFieldValidationVo getValidation() { return validation; }
+	public void setValidation(VisitFieldValidationVo value) { validation = value; }
 
 	@ApiModelProperty("老系统 JSON 字段名")
 	private String key;

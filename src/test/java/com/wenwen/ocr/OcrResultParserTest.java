@@ -7,6 +7,26 @@ import org.junit.jupiter.api.Test;
 
 /** 检验项目 → 辅助检查字段（用宣武医院血常规+网织报告单的实际项目名称） */
 class OcrResultParserTest {
+    @Test void completeNumericResultsRetainComparatorsAndNeverInferUnitsOrPolarity() {
+        for (String value : new String[]{"<5", "≤5", ">5", "≥5", "1e2", "-1"})
+            assertEquals(value, OcrResultParser.value("bxb", value));
+        for (String value : new String[]{"4 mg/L", "4abc", "NaN", "Infinity", "1e309"})
+            assertNull(OcrResultParser.value("bxb", value));
+        assertEquals("-1", OcrResultParser.value("lfsyz", "-1"));
+        assertEquals("30 IU/mL", OcrResultParser.value("lfsyz", "30 IU/mL"));
+        assertEquals(">25 U/mL", OcrResultParser.value("kccpkt", ">25 U/mL"));
+        assertEquals("阴性", OcrResultParser.value("ana", "阴性"));
+        assertEquals("阳性", OcrResultParser.value("ssa", "++"));
+    }
+    @Test void numericPrefixCannotSilentlyDiscardUnrecognizedResultText() {
+        com.alibaba.fastjson.JSONObject medical = com.alibaba.fastjson.JSONObject.parseObject("{\"words_result\":{\"Item\":[[{\"word_name\":\"项目名称\",\"word\":\"白细胞\"},{\"word_name\":\"英文缩写\",\"word\":\"WBC\"},{\"word_name\":\"结果\",\"word\":\"10000abc\"},{\"word_name\":\"单位\",\"word\":\"×10⁹/L\"}]]}}");
+        java.util.Map<String,Object> parsed = OcrResultParser.parse(medical, null);
+        org.junit.jupiter.api.Assertions.assertTrue(((java.util.Map<?,?>)parsed.get("fzjc")).isEmpty(), "OCR must not wash a malformed result into a number");
+        java.util.Map<?,?> item = (java.util.Map<?,?>)((java.util.List<?>)parsed.get("items")).get(0);
+        assertEquals("10000abc", item.get("result")); assertNull(item.get("value"));
+        assertEquals(Boolean.TRUE, item.get("needsConfirmation"));
+        assertNull(OcrResultParser.value("bxb", "10000abc"));
+    }
 
 	@Test
 	void bloodRoutineMapsOnlyTheFourCountFields() {

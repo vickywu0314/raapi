@@ -8,6 +8,9 @@ import io.swagger.annotations.ApiModelProperty;
 
 @ApiModel(value = "编辑随访：一个模块提交的内容（只需提交表单里的值，后端只写有变化的字段）")
 public class VisitModuleUpdate {
+	private Map<String, VisitValueConfirmation> confirmations;
+	public Map<String, VisitValueConfirmation> getConfirmations() { return confirmations; }
+	public void setConfirmations(Map<String, VisitValueConfirmation> value) { confirmations = value; }
 
 	@ApiModelProperty("字段 key → 新值（list 传字符串数组，其它传字符串；清空传空串）")
 	private Map<String, Object> fields;

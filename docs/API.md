@@ -513,8 +513,8 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 项 | 值 |
 |---|---|
 | 页面 | 访视详情「编辑本次随访」→ `visit-edit.html?id=患者ID&visit=随访ID` |
-| 地址 | `POST /api/ra/visit/visitEditForm`，入参 `doctorId`、`visitId` |
-| 说明 | 基本信息只读（页面另调 3.1 `patientDetail`）；随访日期和 7 个病历模块可改 |
+| 地址 | `POST /api/ra/visit/visitEditForm`，入参 `visitId`；须登录，旧 `doctorId` 参数忽略 |
+| 说明 | 基本信息只读（页面另调 3.1 `patientDetail`）；API 保留 7 个病历模块，旧 `bblsj` 只读归入不良反应的历史附加记录 |
 
 出参 `data`：`visitDate`、`visitType`、`version`（数据版本，保存时原样传回）、`modules[]`：
 
@@ -561,7 +561,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 项 | 值 |
 |---|---|
 | 地址 | `POST /api/ra/visit/visitCreateForm` |
-| 入参 | `doctorId`、`patientId`（须在本医生名下、未脱落；脱落返回 409，先「恢复随访」） |
+| 入参 | `patientId`（须登录且在当前医生名下、未脱落；旧 `doctorId` 参数忽略；脱落返回 409，先「恢复随访」） |
 | 出参 | 结构同 4.3 编辑随访表单（模块 → 分组 → 字段 / 清单），另有 `visitNo` 第几次随访（1 = 基线）、`visitDate` 默认今天、`optionSets` 联动选项（主症 / 次症随证型，方剂随证型） |
 | 自动带入 | 病史病情：发病时间、确诊时间取患者档案（与基本信息同一取法）；随访时间 = 随访日期；首诊时间 = 最早一次随访里填的首诊时间，没有则取最早一次随访日期（基线访视取今天）；男性患者「月经」默认选「男性」。医生都可以改 |
 
@@ -580,6 +580,26 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | 长度 | 模块 JSON 超过老表字段长度（bsbq 等 2000、bqpg 4000）返回 400 |
 | 出参 | `visitId`、`patientId` 为规范十进制字符串（null 保持 null）；`filledCount` 仍为数字，表示填写了几个模块。新增页核对患者 ID 与入口一致、访视 ID 为规范字符串后才跳转 |
 | 留痕 | 修改记录「新增随访」：访视类型、日期、填写模块数 |
+
+### 4.7 共用录入校验与医生核对（ENTRY-20261019）
+
+`visitEditForm`、`visitCreateForm`、`updateVisit` 和 `createVisit` 以当前登录会话医生为身份；客户端 `doctorId` 不可指定确认人。旧调用也须登录，匿名返回业务码 `401`。原 version 先验和原文条件 UPDATE 不变。
+
+新增/实际修改的检验结果必须是完整、有限数值，可保留 `<`、`≤`、`>`、`≥`（含 ASCII 组合、全角符号）、`=`、科学计数法；不截掉尾随文字。RF/抗CCP 保留既有 `IU/mL`、`U/mL` 合法数字后缀和原文；同字典单位且无参考规则不新增确认，后缀与字典单位不一致须明确“单位不一致，请核对”后确认，系统零换算。匹配单位时仅取数字部分作参考比较，不改存储原文。RF/抗CCP 保留既有阴/阳性及 +/- 字面，负数不据此推为阴性。对象/数组/布尔值、NaN、Infinity 等不是新检验数值。真实日历日期及已有 VAS 0–100 规则同样在后端校验。未改旧值和未查+旧值共存不因无关编辑被重写；新改的非空数值与最终“未查”矛盾则拒绝。原“未查”字面保留，不冒充数值或正常结果。负数并无统一临床下限，CRP/ESR 的既有评分失效合同保留。
+
+可选部署属性 `ra.visit.validation.rules` 是以字典 `column.key` 为键的 JSON 对象，缺省 `{}`。仅接受 `fzjc` 中当前字典标为 `laboratory` 的字段，且不得有 `showIf` / `notBaseline` 依赖；其它模块、日期/VAS以及 ANA 等非 laboratory 的 radioList 字段配置一律 `503` 拒绝，不提供全表单条件必填或基线重排机制。每项只接受：`required`（boolean，默认 false）、`allowUnchecked`（boolean，默认 false）、`referenceMin` / `referenceMax`（有限十进制数，可单侧，最小值不大于最大值）、`unit`（如提供须与后端字典单位完全相同）。参考范围仅适用于检验字段；不自动单位换算。未知字段/属性、重复键、错类型、错单位或非法范围返回 `503`“随访校验规则配置不可用”，不能静默丢规则。
+
+表单字段新增 `validation`：`kind`、`required`、`allowUnchecked`、已有 `min/max`、`referenceConfigured`、`referenceMin/referenceMax`（精确十进制字符串或 null）、`qualitativeAllowed`、`unitSuffixAllowed`（仅 RF/抗CCP）、`ruleVersion`、`target`。无配置范围表示不能据此判断正常，页面明确提示范围未配置。可选必填仅支持上述无条件 laboratory 字段；编辑时仅对实际改值/未查状态变化生效，不要求旧缺失字段在无关编辑时补齐。只有显式 `allowUnchecked:true` 才将“未查”/wx 视为新必填豁免。
+
+已配置参考范围下，超出或无法证明整个结果集合在范围内的**本次新改结果**，保存前必须逐项明确确认。例如双侧区间内的 `<某数` 仍不能证明满足下限，不能丢符号按边界数判正常；只有单侧区间与比较符集合确可证明包含关系时才不要求核对。格式非法硬拒，参考异常允许医生核对后保存，不将参考区间当作绝对合法界限。
+
+每个模块提交可新增 `confirmations: {字段key: {value, unit, ruleVersion, target}}`。`value` 是本次提交值，`unit` 为后端字典单位，`ruleVersion` 来自当前配置，`target` 为表单给出的 `visit:访视ID` 或 `patient:患者ID:new`。任一不匹配/缺失返回 `400`，其他访视、旧规则或改值后的确认不能套用。前端确认不默认勾选，取消/改值/改未查/身份或页面失效均不发 create；确认在第一次创建请求之前完成，保留未知创建结果锁定，不能自动重试 create。服务端仍复验，并在同一保存事务内以当前医生记录“医生已核对并确认检验结果”及值、单位、规则版本；审计失败整笔回滚，无实际变化不单写确认审计。
+
+OCR 与手录使用同一保存校验。OCR 原文 `10000abc` 等无法完整解析时保留原结果和独立单位列、给出核对提示，不自动填入 `10000`，不猜单位换算。
+
+页面仅显示六个顶层模块；非空旧 `bblsj` 在“不良反应”底部作为 escaped 只读“历史附加记录”，空值不呈现，不生成输入控件、不迁入 `blsj`、不清空旧 JSON；API 七模块仍保留。不良反应 `event=有` 门控沿用。附件第5条遵用户后续指令保持原样。
+
+本批只接收已确认的技术范围：尚无经批准的所需指标集合、字段单位/参考及合理范围、必填未查豁免清单，因此未填任何临床默认，不能称附件第1/2条全解决；不良事件原文“是之前/之后”门控仍待业务裁决。配置标准获确认后另行启用。
 
 ---
 
