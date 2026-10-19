@@ -98,6 +98,8 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 |---|---|---|---|
 | `enrolledPatients` | int | 已入组患者 | 全局 RA 患者（至少一条 RA 医患关系，含已脱落；不按 doctorId 限定） |
 | `followUpCompletionRate` | number | 计划随访完成率（%），1 位小数 | `followUpDoneCount ÷ followUpDueCount × 100`；分母为 0 时返回 0.0 |
+| `followUp2Rate` / `followUp3Rate` / `followUp4Rate` | number | 随访完成 2 次 / 3 次 / 4 次率（%），1 位小数；项目总览页用这三项替代计划随访完成率 | 不含基线：RA 随访记录 ≥3 / ≥4 / ≥5 条的患者 ÷ `totalPatients` × 100；分母为 0 时返回 0.0 |
+| `followUp2Count` / `followUp3Count` / `followUp4Count` | int | 上面三项的分子（人数） | 与其它总览指标同一次查询 |
 | `followUpDueCount` | int | 应随访人数（完成率的分母） | 未脱落、且入组已超过一个随访周期（90 天）的患者 |
 | `followUpDoneCount` | int | 已随访人数（完成率的分子） | 上述患者中，最近 90 天内有随访记录的人数 |
 | `dataQualityRate` | number | 整体数据质量（%），1 位小数 | 没有任何待处理质控问题的患者 ÷ 全部患者 × 100 |
@@ -142,6 +144,9 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
     "data": {
         "enrolledPatients": 20,
         "followUpCompletionRate": 0.0,
+        "followUp2Rate": 25.0,
+        "followUp3Rate": 10.0,
+        "followUp4Rate": 5.0,
         "followUpDoneCount": 0,
         "followUpDueCount": 15,
         "dataQualityRate": 0.0,
@@ -587,7 +592,9 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 
 新增/实际修改的检验结果必须是完整、有限数值，可保留 `<`、`≤`、`>`、`≥`（含 ASCII 组合、全角符号）、`=`、科学计数法；不截掉尾随文字。RF/抗CCP 保留既有 `IU/mL`、`U/mL` 合法数字后缀和原文；同字典单位且无参考规则不新增确认，后缀与字典单位不一致须明确“单位不一致，请核对”后确认，系统零换算。匹配单位时仅取数字部分作参考比较，不改存储原文。RF/抗CCP 保留既有阴/阳性及 +/- 字面，负数不据此推为阴性。对象/数组/布尔值、NaN、Infinity 等不是新检验数值。真实日历日期及已有 VAS 0–100 规则同样在后端校验。未改旧值和未查+旧值共存不因无关编辑被重写；新改的非空数值与最终“未查”矛盾则拒绝。原“未查”字面保留，不冒充数值或正常结果。负数并无统一临床下限，CRP/ESR 的既有评分失效合同保留。
 
-可选部署属性 `ra.visit.validation.rules` 是以字典 `column.key` 为键的 JSON 对象，缺省 `{}`。仅接受 `fzjc` 中当前字典标为 `laboratory` 的字段，且不得有 `showIf` / `notBaseline` 依赖；其它模块、日期/VAS以及 ANA 等非 laboratory 的 radioList 字段配置一律 `503` 拒绝，不提供全表单条件必填或基线重排机制。每项只接受：`required`（boolean，默认 false）、`allowUnchecked`（boolean，默认 false）、`referenceMin` / `referenceMax`（有限十进制数，可单侧，最小值不大于最大值）、`unit`（如提供须与后端字典单位完全相同）。参考范围仅适用于检验字段；不自动单位换算。未知字段/属性、重复键、错类型、错单位或非法范围返回 `503`“随访校验规则配置不可用”，不能静默丢规则。
+可选部署属性 `ra.visit.validation.rules` 是以字典 `column.key` 为键的 JSON 对象，缺省 `{}`。仅接受 `fzjc` 中当前字典标为 `laboratory` 的字段，且不得有 `showIf` / `notBaseline` 依赖；其它模块、日期/VAS以及 ANA 等非 laboratory 的 radioList 字段配置一律 `503` 拒绝，不提供全表单条件必填或基线重排机制。每项只接受：`required`（boolean，默认 false）、`allowUnchecked`（boolean，默认 false）、`referenceMin` / `referenceMax`（有限十进制数，可单侧，最小值不大于最大值）、`unit`（如提供须与后端字典单位完全相同）。参考范围仅适用于检验字段；不自动单位换算。
+
+2026-10-19 起 `application.properties` 给了一套默认规则（待业务确认，可在服务器配置覆盖）：血常规、炎症、免疫、肝肾功能、血脂血糖等常用成人参考范围（不分性别）；白细胞、血红蛋白、血小板、血沉、C反应蛋白为必填并允许勾「未查」。超出范围的值前端逐项弹窗，医生确认后才保存；未改动的历史值不重新校验。未知字段/属性、重复键、错类型、错单位或非法范围返回 `503`“随访校验规则配置不可用”，不能静默丢规则。
 
 表单字段新增 `validation`：`kind`、`required`、`allowUnchecked`、已有 `min/max`、`referenceConfigured`、`referenceMin/referenceMax`（精确十进制字符串或 null）、`qualitativeAllowed`、`unitSuffixAllowed`（仅 RF/抗CCP）、`ruleVersion`、`target`。无配置范围表示不能据此判断正常，页面明确提示范围未配置。可选必填仅支持上述无条件 laboratory 字段；编辑时仅对实际改值/未查状态变化生效，不要求旧缺失字段在无关编辑时补齐。只有显式 `allowUnchecked:true` 才将“未查”/wx 视为新必填豁免。
 
@@ -861,6 +868,8 @@ OCR 与手录使用同一保存校验。OCR 原文 `10000abc` 等无法完整解
 | `visitDate` | 报告 / 采样 / 就诊日期（yyyy-MM-dd），作为随访日期 |
 | `fzjc` | 辅助检查预填：系统字段 → 值（数值取开头的数字，含 `<`、`>`；ANA、抗SS-A/SS-B、抗Ro-52 取「阳性 / 阴性」） |
 | `items[]` | 报告上的每个检验项目：`name`、`abbr`、`result`、`unit`（报告原文）；`alias`（叫法键：名称+缩写去空格括号连字符转大写）；`field` / `fieldLabel` / `fieldUnit`（对应的系统字段，对不上为 null）；`matchedBy`（`learned` 按医生以前的对应 / `builtin` 内置同义词）；`value`（填入值）；`unitWarning`（报告单位与系统单位不同，提醒换算，如肌酐 mg/dL ↔ μmol/L）；`needsConfirmation` / `mappingWarning`（名称、缩写冲突时字段为空，提示医生明确选择） |
+| `prescription` | 识别到中药处方时返回（至少 3 味「药名+剂量 g/克」），否则无此字段：`herbs[]`（`name`、`dose`、`text`=「药名+剂量g」）、`zz`（证型，仅当原文写了随访字典里的证型才返回）、`fj`（方剂，原文出现的字典方剂；与证型不匹配时不返回并写进 `notes`；只写方剂且该方剂只属于一个证型时带出证型）、`notes[]`。前端核对后填入「治疗方案 · 中药饮片」一行（`zlfa.cyList`：`zz`/`fj`/`bccy`）；处方药行不再出现在 `items` 里 |
+| `tcmOptions` | 证型 / 方剂下拉选项：`syndromes`、`fangji`（证型 → 方剂列表）；不存进 `ocr_record` |
 | `fieldOptions[]` | 可对应的系统字段（辅助检查里的化验项）：`field`、`label`（分组 · 名称）、`unit`、`type`；页面下拉框用 |
 | `lines[]` | 识别出的原文（逐行），供核对 |
 | `warnings[]` | 提示：没识别出姓名 / 身份证号（无法查重）、部分接口失败等 |
