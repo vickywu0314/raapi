@@ -72,6 +72,8 @@
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
   - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
   - `src/main/resources/sql/20261019_ai_analysis_query_session.sql`：当前AI分析小型查询会话表；先建表及核权限，再升级应用。旧ra_ai_analysis_run保留供回退，不再作为新分析读写前置
+  - `src/main/resources/sql/20261019_mysql56_compat.sql`：MySQL 5.6 兼容（2026-10-19），**只给之前执行过旧版 20261008_private_cohort_definition.sql 的库**用（把 active_name 生成列转成普通列）；新库不需要，执行了也不改任何东西
+  - **目标库是 MySQL 5.6 时**（不能改数据库配置）：上面全部脚本已在真实 MySQL 5.6.51 默认配置（innodb_large_prefix=OFF、Antelope）上从老表结构依次执行通过；`20261008_private_cohort_definition.sql` 已去掉 5.6 不支持的生成列、`20261012_ocr_lab_alias.sql` 的 alias 改为 varchar(191)（唯一索引不超过 767 字节）。注意 5.6 默认 max_allowed_packet=4MB，比单条 AI 比较结果上限（8MB）小，结果特别大时比较会失败
   - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
   - `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
   - `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`，医生手动对应过的叫法）

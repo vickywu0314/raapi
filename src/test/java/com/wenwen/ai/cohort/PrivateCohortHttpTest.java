@@ -288,7 +288,8 @@ class PrivateCohortHttpTest extends PrivateCohortHttpFixture {
         privateError("save",body.replace(note,note+emoji),400,"INVALID_REQUEST");
         privateError("save",SAVE.replace("  Trial  ","   "),400,"INVALID_REQUEST");
         try{
-            sql("INSERT INTO ra_private_cohort_definition(id,owner_doctor_id,study_code,name,note,version,filters_version,filters_utf8,filters_sha256,created_at_ms,updated_at_ms) SELECT '00000000-0000-0000-0000-000000000999',owner_doctor_id,study_code,name,note,version,filters_version,filters_utf8,filters_sha256,created_at_ms,updated_at_ms FROM ra_private_cohort_definition WHERE owner_doctor_id=101 AND CAST(name AS BINARY)=CAST('Trial' AS BINARY)");
+            // MySQL 5.6 无生成列：active_name 为普通列，由应用写入；这里验证唯一索引仍拒绝重复的活动名称
+            sql("INSERT INTO ra_private_cohort_definition(id,owner_doctor_id,study_code,name,note,version,filters_version,filters_utf8,filters_sha256,created_at_ms,updated_at_ms,active_name) SELECT '00000000-0000-0000-0000-000000000999',owner_doctor_id,study_code,name,note,version,filters_version,filters_utf8,filters_sha256,created_at_ms,updated_at_ms,active_name FROM ra_private_cohort_definition WHERE owner_doctor_id=101 AND CAST(name AS BINARY)=CAST('Trial' AS BINARY)");
             fail("数据库未保护活动名称");
         }catch(SQLException e){
             assertEquals(1062,e.getErrorCode());

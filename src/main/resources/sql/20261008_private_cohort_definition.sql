@@ -1,4 +1,7 @@
 -- 仅新增私有定义与成功回执；生产目标版本和长期留存待接收。
+-- 兼容 MySQL 5.6 / 5.7（2026-10-19）：active_name 原为生成列（5.6 不支持），改为普通列，由 PrivateCohortMapper 的新增 / 改名 / 删除语句写入，
+-- 含义不变：未删除时 = 名称的二进制，删除后 = NULL；唯一索引 private_active_name 照旧保证同一医生下未删除的条件不重名。
+-- 之前已执行过生成列版本的库，再执行 20261019_mysql56_compat.sql 转成普通列。
 CREATE TABLE ra_private_cohort_definition (
  id VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
  owner_doctor_id BIGINT NOT NULL,
@@ -12,7 +15,7 @@ CREATE TABLE ra_private_cohort_definition (
  created_at_ms BIGINT NOT NULL,
  updated_at_ms BIGINT NOT NULL,
  deleted_at_ms BIGINT NULL,
- active_name VARBINARY(120) GENERATED ALWAYS AS (CASE WHEN deleted_at_ms IS NULL THEN CAST(name AS BINARY) ELSE NULL END) STORED,
+ active_name VARBINARY(120) NULL,
  UNIQUE KEY private_active_name(owner_doctor_id,study_code,active_name),
  KEY private_list(owner_doctor_id,study_code,deleted_at_ms,created_at_ms,id)
 ) ENGINE=InnoDB;
