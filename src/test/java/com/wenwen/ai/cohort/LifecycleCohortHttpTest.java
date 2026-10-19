@@ -54,7 +54,7 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
             assertEquals(changed,sourceDigest());
             unchanged(roots);
             exited();
-            System.out.println("P07b S"+state+" fresh/open n37 eval"+(state==4?36:37)+"; retained S0; compare valid"+(state==4?5:6)+"/6 P="+P[state]+"; XLSX old37/7, fresh "+(state==4?"NEED_APPLY/7":"37/7"));
+            System.out.println("P07b S"+state+" fresh/open n37 eval"+(state==4?36:37)+"; live query current; comparison S0; compare valid"+(state==4?5:6)+"/6 P="+P[state]+"; XLSX old37/7, fresh "+(state==4?"NEED_APPLY/7":"37/7"));
         }
     }
     @Test void completeUniverseChangesInvalidateAllRetainedConsumers() throws Exception {
@@ -250,7 +250,7 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
         assertEquals(auditBefore,count("ra_ai_export_audit"));
         assertEquals(writes,context.getBean(ObservedWriter.class).completed);
         unchanged(r);
-        assertEquals(1,count("ra_ai_analysis_run"));
+        assertEquals(1,count("ra_ai_analysis_query_session"));
         assertEquals(1,count("ra_ai_compare_run"));
         JsonNode fresh=success("{}"),opened=open(r.definition),comparison=compareSuccess(compareBody(r.aDefinition,"now"));
         for(JsonNode resource:Arrays.asList(fresh,opened)){
@@ -305,8 +305,9 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
                 assertEquals(6,row(first,"female").path("a").path("denominator").asInt());
             }
             else {
-                assertCohort(first,0,37,37);
-                assertEquals("M",find(allRows(first),111).path("clinical").path("sex").asText());
+                assertEquals(37,first.path("n").asInt());assertEquals(range(101,110),ids(first));
+                assertEquals(0,first.path("metricMeta").path("femaleRate").path("numerator").asInt());
+                for(int i=0;i<4;i++)assertEquals(COUNTS[0][i],first.path("activity").path("current").get(i).path("count").asInt());
             }
             String changed=sourceDigest();
             JsonNode next="compare".equals(consumer)?compareSuccess(compareBody(r.aDefinition,"now")):"open".equals(consumer)?open(r.definition):success("{}");
@@ -321,11 +322,11 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
                 assertEquals("F",find(allRows(next),111).path("clinical").path("sex").asText());
                 cohortFile(next,1,37);
             }
-            retained(r,0);
+            retained(r,1,"1110");
             assertEquals(changed,sourceDigest());
             unchanged(r);
             exited();
-            System.out.println("P07b RR "+consumer+" current full old M/2.70, next full new F/4.80; old retained fixed S0");
+            System.out.println("P07b RR "+consumer+" current full old M/2.70, next full new F/4.80; old query live current; comparison fixed S0");
         }
     }
     void sourceView() {
@@ -340,14 +341,14 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
                 assertEquals(Connection.TRANSACTION_REPEATABLE_READ,comparisonObserved.isolations.get(i).intValue());
             }
         }
-        assertEquals(5,n);
+        assertEquals(4,n);
         assertEquals(1,identities.size());
     }
     @Test void realClinicalSqlFailuresNeverFallbackAndScopeFailuresWithholdFiles() throws Exception {
         population();
         Roots r=roots("now",null);
         String source=sourceDigest();
-        long analyses=count("ra_ai_analysis_run"),comparisons=count("ra_ai_compare_run");
+        long analyses=count("ra_ai_analysis_query_session"),comparisons=count("ra_ai_compare_run");
         resetOwners();
         observed.failSecondSql=true;
         for(String consumer:new String[]{"cohort","open","compare"}){
@@ -358,17 +359,18 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
             assertTrue(observed.mysqlFailures>failures);
             assertEquals("42S02",observed.lastSqlState);
             assertEquals(1146,observed.lastMysqlError);
-            assertEquals(analyses,count("ra_ai_analysis_run"));
+            assertEquals(analyses,count("ra_ai_analysis_query_session"));
             assertEquals(comparisons,count("ra_ai_compare_run"));
             unchanged(r);
             assertEquals(source,sourceDigest());
             exited();
         }
-        retained(r,0);
+        pageError(r.analysis,503,"SERVICE_UNAVAILABLE");fileError(xlsx(fileBody(r.analysis,false)),503,"SERVICE_UNAVAILABLE");sameRetainedComparison(r.comparison,readComparison(r.comparison.path("compareResultId").asText()));
+        observed.failSecondSql=false;
         int failures=comparisonObserved.mysqlFailures;
         long auditBefore=count("ra_ai_export_audit");
         int written=context.getBean(ObservedWriter.class).completed;
-        comparisonObserved.failSqlContains="SELECT p.id FROM patient_basic_info";
+        comparisonObserved.failSqlContains="FROM patient_basic_info";
         pageError(r.analysis,503,"SERVICE_UNAVAILABLE");
         readError(r.comparison.path("compareResultId").asText(),503,"SERVICE_UNAVAILABLE");
         fileError(xlsx(fileBody(r.analysis,false)),503,"SERVICE_UNAVAILABLE");
@@ -391,7 +393,7 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
         unchanged(r);
         assertEquals(source,sourceDigest());
         exited();
-        System.out.println("P07b real MySQL42S02/1146 new three consumers503/no new run; clinical fault old retained+files200; scope fault old four consumers503/no file/audit; recovered");
+        System.out.println("P07b real MySQL42S02/1146 new three consumers503/no new run; clinical fault query page/files503; scope fault old four consumers503/no file/audit; recovered");
     }
     @Test void trustedDoctorAndAnonymousIdentityIsolateAllConsumerResources() throws Exception {
         population();
@@ -690,24 +692,14 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
         assertEquals(state==4?5:6,activity.path("a").path("denominator").asInt());
         assertEquals(state==4?1:0,activity.path("a").path("unknownN").asInt());
     }
-    void retained(Roots r,int state)throws Exception {
-        JsonNode middle=page(r.analysis,r.analysis.path("patients").path("nextCursor").asText());
-        assertEquals(range(111,130),ids(middle));
-        JsonNode last=page(r.analysis,middle.path("patients").path("nextCursor").asText());
-        assertEquals(range(131,137),ids(last));
-        decimal(find(middleRows(middle),111).path("das28At"),"2.70");
-        JsonNode retainedPatient=find(middleRows(middle),111);
-        assertEquals("1110",retainedPatient.path("selection").path("evalVisitId").asText());
-        assertEquals("M",retainedPatient.path("clinical").path("sex").asText());
-        for(String key:new String[]{"at","asOfDate","readStartedAt","readCompletedAt","computedAt","policyVersions","expiresAt"})assertEquals(r.analysis.path("meta").path(key),middle.path("meta").path(key),key);
-        if(state>=2){
-            assertEquals("lifecycle-current-name-CANARY",retainedPatient.path("name").asText());
-            assertEquals("lifecycle-current-study-CANARY",retainedPatient.path("studyNo").asText());
-        }
-        sameRetainedComparison(r.comparison,readComparison(r.comparison.path("compareResultId").asText()));
-        cohortFile(r.analysis,0,37);
-        comparisonFile(r.comparison,0);
-        unchanged(r);
+    void retained(Roots r,int state)throws Exception {retained(r,state,state==4?null:state==1||state==2?"1111":"1110");}
+    void retained(Roots r,int state,String selectedVisit)throws Exception {
+        JsonNode middle=page(r.analysis,r.analysis.path("patients").path("nextCursor").asText());List<String> expected=order(state,137);assertEquals(expected.subList(10,30),ids(middle));JsonNode last=page(r.analysis,middle.path("patients").path("nextCursor").asText());assertEquals(expected.subList(30,37),ids(last));
+        List<JsonNode> visible=new ArrayList<>(middleRows(middle));visible.addAll(middleRows(last));if(expected.indexOf("111")>=10){JsonNode patient=find(visible,111);decimal(patient.path("das28At"),SCORE[state]);assertEquals(selectedVisit,patient.path("selection").path("evalVisitId").isNull()?null:patient.path("selection").path("evalVisitId").asText());}
+        for(String key:new String[]{"at","asOfDate","policyVersions","expiresAt"})assertEquals(r.analysis.path("meta").path(key),middle.path("meta").path(key),key);
+        assertTrue(middle.path("meta").has("displayReadCompletedAt"));sameRetainedComparison(r.comparison,readComparison(r.comparison.path("compareResultId").asText()));
+        JsonNode current=json.valueToTree(context.getBean(com.wenwen.ai.result.AnalysisResultStore.class).export(101,r.analysis.path("analysisId").asText(),clock.instant(),1000).result);
+        cohortFile(current,state,37);comparisonFile(r.comparison,0);unchanged(r);
     }
     List<JsonNode> middleRows(JsonNode page){
         List<JsonNode> out=new ArrayList<>();
@@ -726,7 +718,7 @@ class LifecycleCohortHttpTest extends AiExportHttpFixture {
         assertArrayEquals(r.aBytes,bytes("ra_private_cohort_definition","filters_utf8",r.aDefinition));
     }
     byte[] analysisPayload(String id)throws Exception{
-        return bytes("ra_ai_analysis_run","payload",id);
+        return bytes("ra_ai_analysis_query_session","query_json",id);
     }
     byte[] bytes(String table,String field,String id)throws Exception{
         try(Connection c=raw.getConnection();PreparedStatement q=c.prepareStatement("SELECT "+field+" FROM "+table+" WHERE id=?")){

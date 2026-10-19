@@ -1,22 +1,34 @@
 # AI 队列发布与回滚手册
 
-Date: 2026-10-08
+Date: 2026-10-19
 Status: Current
 Owner: 后端开发者；目标环境接收由 DBA/运维负责
-Scope: 当前23条新增HTTP入口的启动准入、七份新DDL核查、原状态留存及整组应用回退；技术准备资料，不是发布批准，不执行生产操作
+Scope: 当前23条新增HTTP入口的启动准入、相关新DDL核查、原状态留存及整组应用回退；技术准备资料，不是发布批准，不执行生产操作
 
 本手册用于维护者准备并核查关闭、SQL预演、应用回退与恢复材料。新开关只决定当前实例是否接收新请求；已有定义、保留结果、审计和申请状态不能被开关重写。真实目标主机、当前/回退工件和部署渠道尚未交付，生产SQL、发布或回退均未执行。
 
 接口合同见 [API §7.9](API.md#79-启动配置准入与关闭边界)，合成本地验证入口见 [测试指南 P07c](测试运行指南.md#p07c启动准入关闭与原状态保真)。进度、外部接收owner、触发与关闭证据只由 [唯一登记](../../docs/plans/ai-cohort/review-register.md#接入与发布接收义务) 维护；本页不建立第二份状态台账。
 
+## 本轮查询会话迁移（2026-10-19）
+
+当前行为以[实时查询决定](../../docs/decisions/AI队列实时查询与性能修复-20261019.md)及[API §7.2](API.md#72-查询会话授权实时分页)为准。本次先解除完整结果blob保存前置；没有生产执行或部署批准。
+
+1. 由DBA在目标MySQL5.7环境预演并执行20261019_ai_analysis_query_session.sql，仅新增独立小会话表；核列/索引、InnoDB及应用对该表的SELECT/INSERT/DELETE权限。DDL有IF NOT EXISTS，但已有同名异构表仍须人工核结构，不能据幂等语法忽略漂移。
+2. 配置原TTL/key及独立比较/文件限制，再发布固定审查过的整组后端/前端工件。旧analysis.result-max-bytes不再影响正常分析；不依赖Redis。不要借性能修复对真实旧表执行索引或其它DDL。
+3. 新分析创建规范查询会话，分页/COHORT导出实时重读，固定asOf/规则，源更新可导致跨页漏重。升级前旧analysisId返回明确失效并重新分析；compareResultId仍沿独立聚合/TTL。核首10/后20、权限更改、超旧8MiB合成结果和独立导出限制。
+4. 旧ra_ai_analysis_run不再被当前应用读写，但不自动DROP、清空或迁移其完整payload。原记录的留存/清理由DBA另行接收，不在本次代码上线步骤中擅自删除。
+5. 回退整组旧应用时保留新旧表；新query-session ID不会被旧应用理解，客户端须重新分析。旧blob仅按旧应用原TTL/权限策略处理，不延寿、不从新会话补造旧快照。对新表删除不作为回退动作。
+
+本地Java/Node/合成MySQL5.7与未运行浏览器/真实接收分别由[本轮登记](../../docs/plans/ai-analysis-real-data/review-register.md#perf-20261019)接收；后文旧测试数和旧blob场景保留历史范围，不能冒称当前验收。
+
 ## 1. 工件与环境准入
 
 在任何目标操作前，由运维/DBA接收并核对：
 
-- 固定当前代码commit/tree、对应实现与独立评审/Gate证据。以下P07c冻结身份仅是历史片参考，当前组合固定源和限定技术/真实接收状态由[ai-analysis-real-data唯一登记](../../docs/plans/ai-analysis-real-data/review-register.md#p07-gate)拥有；不得把旧冻结工件当当前部署工件。本片冻结前基线commit为 `aa52476b0b62f9138501978965ae94a918932608`、tree为 `d0e78482815c8d8817a59805ce0fd1e201172ebe`；冻结提交为 `ad4eda63b9104e889a2fe429347f8562c3c85c60`、tree为 `56a67934670f97b6b3cb330be6ba38e6560c1749`，均不是完成实现/部署证据。P07c冻结输入为 [P07c Prompt](../../docs/plans/ai-cohort/tasks/P07c.md)，前序技术证据由 [P07b登记](../../docs/plans/ai-cohort/review-register.md#task-投影) 和 [P06技术Gate](../../docs/plans/ai-cohort/review-register.md#p06-gate) 拥有。
+- 固定当前代码commit/tree、对应实现与独立评审/Gate证据。以下P07c冻结身份仅是历史片参考，当前组合固定源和限定技术/真实接收状态由[ai-analysis-real-data唯一登记](../../docs/plans/ai-analysis-real-data/review-register.md#perf-20261019)拥有；不得把旧冻结工件当当前部署工件。本片冻结前基线commit为 `aa52476b0b62f9138501978965ae94a918932608`、tree为 `d0e78482815c8d8817a59805ce0fd1e201172ebe`；冻结提交为 `ad4eda63b9104e889a2fe429347f8562c3c85c60`、tree为 `56a67934670f97b6b3cb330be6ba38e6560c1749`，均不是完成实现/部署证据。P07c冻结输入为 [P07c Prompt](../../docs/plans/ai-cohort/tasks/P07c.md)，前序技术证据由 [P07b登记](../../docs/plans/ai-cohort/review-register.md#task-投影) 和 [P06技术Gate](../../docs/plans/ai-cohort/review-register.md#p06-gate) 拥有。
 - 构建/运行使用Java 8；仓库 [pom.xml](../pom.xml) 的Spring Boot parent为 `2.2.0.RELEASE`、Java目标为 `1.8`。不以本地编译成功推断目标JVM、依赖或部署工件已核实。
 - 经批准的当前工件与回退工件的文件名、来源、SHA256、代码commit/tree；各自配置版本/内容hash、兼容schema和秘密注入方式。工件hash与Git tree不是同一个值，必须分别记录。
-- 目标基线MySQL5.7.44、库身份、所有相关表InnoDB、实际JDBC连接的短REPEATABLE_READ事务与时区配置；按[兼容与迁移](MySQL5.7兼容与迁移.md)接收64MiB packet、Barracuda/large_prefix/DYNAMIC及严格模式，保完整索引与8MiB容量。开发隔离5.7实证和旧8.4历史均不能代替目标预演；禁止直接降级8 datadir，逻辑迁移/切换/回退须独立接收。
+- 目标基线MySQL5.7.44、库身份、所有相关表InnoDB、实际JDBC连接的短REPEATABLE_READ事务与时区配置；按[兼容与迁移](MySQL5.7兼容与迁移.md)接收64MiB packet、Barracuda/large_prefix/DYNAMIC及严格模式，保完整索引与对应功能的独立容量限制。开发隔离5.7实证和旧8.4历史均不能代替目标预演；禁止直接降级8 datadir，逻辑迁移/切换/回退须独立接收。
 - 真实Principal映射、患者/访视/字典适配、访问权限、留存政策、医学/统计及字段/日期外发批准，按各自原触发接收，不用启动配置替代批准。
 
 **操作待交付（AQC-EXT-04）**：目标host/库/账号、受控认证文件、工件存放与启动方式、流量切换/进程关闭渠道、当前及回退工件hash和配置版本、目标SQL预演/部署/回退证据均须原owner交付。本手册不猜测systemd/Docker命令，不启动 `RaApplication`，不访问生产凭据或目标数据库。
@@ -54,7 +66,10 @@ sha256sum "${RA_CURRENT_ARTIFACT:?需接收当前工件绝对路径}" \
 | `ra.export.smtp.host` / `port` / `from`、`ra.export.apply-mail-to` | 默认空；port 1..65535、唯一合法from/to | SK/管理员/运维接收真实地址与host/port。首次绑定from/to不得因改配置静默换收件人 |
 | `ra.export.smtp.username` / `password` / `mode` | 凭据同时有或同时无；mode默认 `STARTTLS` | 生产强制STARTTLS并显式 `mail.smtp.ssl.protocols=TLSv1.2`，保留默认JVM信任链与hostname验证；测试 `LOOPBACK_PLAIN`、临时CA/PKCS12不用于生产。凭据经安全渠道注入 |
 | `ra.ai.analysis.result-ttl-seconds` | 默认 `900`；正数且时间乘法/加法不溢出 | 分析/比较共享TTL；重新开启不延长旧ID有效期，无后台定时清理 |
-| `ra.ai.analysis.result-max-bytes` | 默认 `8388608`；正数且≤16777215 | 保留结果/普通文件共享容量；超限真实拒绝，不截行；不把缩容解释为重新计算旧run |
+| `ra.ai.analysis.result-max-bytes` | 旧兼容配置；当前生产不消费 | 不再阻止分析、比较或导出；勿通过调大此值修复容量 |
+| `ra.ai.comparison.result-max-bytes` | 默认8388608；1..16777215 | 独立比较聚合保留容量 |
+| `ra.export.xlsx.max-bytes` | 默认16777216；1..67108864 | 独立XLSX输出字节限制 |
+| `ra.export.xlsx.max-rows / max-cells` | 默认100000 / 1000000；合法1..1000000 / 1..10000000 | 行投影前预算与实际writer校验，不约束正常分析 |
 | `ra.ai.analysis.cursor-key-base64` | 默认空；标准Base64解码至少32字节 | 生产key仅安全注入，不生成/记录；缺/错key在相关分析SQL前503，轮换使旧cursor失效 |
 | `ra.export.free-months` | 默认int `6`，新功能仅允许已绑定值 `6` | 不用非法值充当关闭门；其他已绑定整数让新导出/首次申请拒绝503，坏文本保持原Spring绑定失败，还会影响旧ExportService |
 
@@ -62,7 +77,7 @@ sha256sum "${RA_CURRENT_ARTIFACT:?需接收当前工件绝对路径}" \
 
 ## 3. 关闭新请求
 
-1. 运维先准备并接收下列无秘密目标启动片段，保留其他经核验的配置，尤其 `free-months=6`、TTL/cap与原cursor key；不为关闭轮换key或改持久状态。
+1. 运维先准备并接收下列无秘密目标启动片段，保留其他经核验的配置，尤其 `free-months=6`、TTL、各功能独立容量与原cursor key；不为关闭轮换key或改持久状态。
 
 ```properties
 ra.ai.api.enabled=false
@@ -99,11 +114,12 @@ ra.export.smtp.enabled=false
 
 ## 4. SQL清单与留存
 
-七文件共 **8个新表**，全部InnoDB，无旧患者外键；以下SHA256是完整文件内容hash，不是执行结果。生产脚本目录（仓库根相对）为 `raapi/src/main/resources/sql/`。
+当前七个活动DDL文件对应 **8个活动表**，另列旧analysis文件/表仅供回退核查，共八文件九表。它们全部InnoDB，无旧患者外键；以下SHA256是完整文件内容hash，不是执行结果。生产脚本目录（仓库根相对）为 `raapi/src/main/resources/sql/`。
 
 | 文件 | 新表、目的与索引 | SHA256 |
 |---|---|---|
-| [20261007_ai_analysis_run.sql](../src/main/resources/sql/20261007_ai_analysis_run.sql) | `ra_ai_analysis_run`：有期完整分析数值/全U指纹/v1 payload/hash；主键id、`idx_analysis_expiry(expires_at_ms,id)` | `bde67e3e9a11eb1e6815c81f2d2152a31f0fb1e841c7332462bcb39078d37146` |
+| [20261019_ai_analysis_query_session.sql](../src/main/resources/sql/20261019_ai_analysis_query_session.sql) | 当前规范query-session v2；MEDIUMTEXT条件、owner/asOf/规则/范围/TTL，PK id及expiry,id索引 | `fb1c919aeb4ac325b84a2fe3f97d73c031c4c06361469adc5eb453f66595d469` |
+| [20261007_ai_analysis_run.sql](../src/main/resources/sql/20261007_ai_analysis_run.sql) | 历史ra_ai_analysis_run，保留供旧应用回退；当前应用不读写 | `bde67e3e9a11eb1e6815c81f2d2152a31f0fb1e841c7332462bcb39078d37146` |
 | [20261008_private_cohort_definition.sql](../src/main/resources/sql/20261008_private_cohort_definition.sql) | `ra_private_cohort_definition` 与 `ra_private_cohort_command`：长期不可变条件/成功回执；定义主键id、stored二进制active_name及 `private_active_name(owner_doctor_id,study_code,active_name)` 唯一、`private_list`；回执主键(owner_doctor_id,action,request_id) | `835990379ef696294499ec5a805715f87d6623e3aa98d3317cd7692b012a8800` |
 | [20261008_ai_compare_run.sql](../src/main/resources/sql/20261008_ai_compare_run.sql) | `ra_ai_compare_run`：独立有期比较payload/hash/全U指纹；主键id、`idx_compare_expiry(expires_at_ms,id)` | `73fb256b9b80570dadee39595a0dbfbffc492b566d2ad2d491701dd3c47b87c6` |
 | [20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql) | `ra_ai_parse_audit`：仅安全解析/应用事件；主键event_id，无额外二级索引，utf8mb4 | `a8aeb6c12c29089bb102d79554deb0f4ea05e95ff353ba26581b1cd562c2bbd0` |
@@ -111,12 +127,12 @@ ra.export.smtp.enabled=false
 | [20261008_ai_export_request.sql](../src/main/resources/sql/20261008_ai_export_request.sql) | `ra_ai_export_request`：旧申请companion与attempt；主键(owner_doctor_id,request_id)、application_id唯一、`idx_owner_created`，utf8mb4_unicode_ci | `5373a68ab74fa6c5be9de77c835cdaffc367fde5b148e75ce1198f3f30b03349` |
 | [20261012_ai_chat_audit.sql](../src/main/resources/sql/20261012_ai_chat_audit.sql) | `ra_ai_chat_audit`：metadata-only 问答审计；主键event_ref、trace_id唯一，无旧表外键，不含问题/病例原文 | `0b874bad0511ddea88df0af6135afc08b6232ffa357be18e0dc14cef75c4e5f2` |
 
-旧 [20261006_export_application.sql](../src/main/resources/sql/20261006_export_application.sql) 是兼容前置表，不计入8个新表；文件SHA256为 `f3e89d5688c7267f5006f32cdc11d4cbec7f62f8b00948ad6df66249acf29a52`。先核目标已有 `export_application` 的列/引擎/默认值/主键及 `idx_doctor(doctor_id,create_time)`，不能因其脚本 `IF NOT EXISTS` 返回成功推断结构一致。若缺表，由DBA在原接收/授权范围内另行安排；不自动执行TODO里的其他旧迁移或研究编号/疾病回填。
+旧 [20261006_export_application.sql](../src/main/resources/sql/20261006_export_application.sql) 是兼容前置表，不计入8个活动表；文件SHA256为 `f3e89d5688c7267f5006f32cdc11d4cbec7f62f8b00948ad6df66249acf29a52`。先核目标已有 `export_application` 的列/引擎/默认值/主键及 `idx_doctor(doctor_id,create_time)`，不能因其脚本 `IF NOT EXISTS` 返回成功推断结构一致。若缺表，由DBA在原接收/授权范围内另行安排；不自动执行TODO里的其他旧迁移或研究编号/疾病回填。
 
 访问/留存要求：
 
 - 定义与成功回执长期保留；逻辑删除释放活动名称，不物理删回执，不恢复被删定义。
-- 分析/比较按原共享TTL，创建时仅本表限清1000条过期行；无请求不承诺整点物理清除，已清缺行404、到期仍按原410。重开不延寿或重建旧ID。
+- 分析会话/比较按原共享TTL，创建时仅各自当前表限清1000条过期行；无请求不承诺整点物理清除。分析未知/已清/旧ID及到期均410要求重分析；比较缺行仍404、到期410。旧analysis blob表当前不参与清理。重开不延寿或重建旧ID。
 - 解析审计、导出审计、旧申请/companion的访问权限、自由reason与摘要留存由外部owner接收；开关不增加查询/恢复管理API，不自动删除审计或申请。
 - DDL部署账号与运行账号分离，按目标环境审批最小权限。运行新表分析/比较需SELECT/INSERT/DELETE，定义需SELECT/INSERT/UPDATE、成功回执SELECT/INSERT、解析审计INSERT、问答审计INSERT、导出审计INSERT/UPDATE、companion SELECT/INSERT/UPDATE。旧源保持SELECT；申请只INSERT旧表并更新本片创建行的mail_to/mail_sent，不能获准批改旧status或旧患者/访视。
 
@@ -125,8 +141,9 @@ ra.export.smtp.enabled=false
 先将账号、库与受控认证文件经安全渠道填写并核实，再执行；认证文件不得放仓库或公开输出。下列命令是形状，未提供目标值，不代表已连接或执行。`--defaults-extra-file` 必须作为mysql的第一个选项，不把密码放命令行或环境示例。
 
 ```sh
-# 从仓库根核对七个新文件及旧前置；不能用目录通配执行所有历史SQL。
+# 从仓库根核对七个活动DDL、旧analysis回退文件及旧前置；不能用目录通配执行所有历史SQL。
 sha256sum \
+ raapi/src/main/resources/sql/20261019_ai_analysis_query_session.sql \
  raapi/src/main/resources/sql/20261007_ai_analysis_run.sql \
  raapi/src/main/resources/sql/20261008_private_cohort_definition.sql \
  raapi/src/main/resources/sql/20261008_ai_compare_run.sql \
@@ -152,12 +169,15 @@ mysql --defaults-extra-file="${AUTH_FILE:?需接收受控认证文件}" \
 SELECT TABLE_NAME, ENGINE, TABLE_COLLATION
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN (
- 'export_application','ra_ai_analysis_run','ra_private_cohort_definition',
+ 'export_application','ra_ai_analysis_query_session','ra_ai_analysis_run','ra_private_cohort_definition',
  'ra_private_cohort_command','ra_ai_compare_run','ra_ai_parse_audit',
  'ra_ai_export_audit','ra_ai_export_request','ra_ai_chat_audit')
 ORDER BY TABLE_NAME;
 SHOW CREATE TABLE export_application;
 SHOW INDEX FROM export_application;
+SHOW CREATE TABLE ra_ai_analysis_query_session;
+SHOW INDEX FROM ra_ai_analysis_query_session;
+-- 以下旧表核对仅用于已存在旧应用的回退资料
 SHOW CREATE TABLE ra_ai_analysis_run;
 SHOW INDEX FROM ra_ai_analysis_run;
 SHOW CREATE TABLE ra_private_cohort_definition;
@@ -181,7 +201,7 @@ DBA逐列核长度、类型、NULL/default、字符集/排序规则、主键/唯
 受控预演/真实DDL执行顺序：
 
 1. 保持新API、文件、LLM、SMTP关闭，先完成目标兼容/权限/留存及旧申请表核查。准备可恢复的环境备份和操作记录，由DBA确认，不在本Flow自动创建备份/迁移平台。
-2. 在DBA批准的目标兼容预演库，按上表准确顺序逐文件执行并逐次保存UTC、命令、exit、完整错误与执行后schema；private文件含两条CREATE，必须逐statement确认。分析→私有两表→比较→解析审计→导出审计→申请companion→问答审计共8表，旧申请表必须在新companion业务启用前存在并兼容。
+2. 在DBA批准的目标兼容预演库，按上表活动DDL准确顺序逐文件执行并逐次保存UTC、命令、exit、完整错误与执行后schema；已部署且结构相符的文件不重放，旧analysis文件不作为当前新部署前置。private文件含两条CREATE，必须逐statement确认。查询会话→私有两表→比较→解析审计→导出审计→申请companion→问答审计共8个活动表，旧申请表必须在新companion业务启用前存在并兼容。
 3. 仅当DBA已核某文件全部目标表均缺失且获准执行，才使用下列命令形状。每次选择一个准确文件，不使用 `--force` 或一键目录循环；本页不给已填的生产命令。
 
 ```sh
@@ -191,20 +211,20 @@ mysql --defaults-extra-file="${AUTH_FILE:?需接收受控认证文件}" \
  < "${SQL_FILE:?需选准确未执行DDL}"
 ```
 
-4. **部分成功时不盲重放**。原六份DDL采用严格CREATE；新增chat文件含IF NOT EXISTS，返回成功仍不证明既存结构匹配。七文件整体没有自动迁移/回滚协议，MySQL DDL不能靠普通事务整体回滚。遇错误保持入口关闭，依据完整错误与SHOW CREATE/INDEX确定哪些statement已落地、既存结构是否逐项匹配；由DBA从原文件提取仅缺失且已核实的statement续作，并再次核查。尤其private定义表已建、command未建时，不能整份重跑，也不能加IF NOT EXISTS掩盖漂移。
+4. **部分成功时不盲重放**。原历史analysis及五个活动DDL采用严格CREATE；chat与query-session文件含IF NOT EXISTS，返回成功仍不证明既存结构匹配。这些文件整体没有自动迁移/回滚协议，MySQL DDL不能靠普通事务整体回滚。遇错误保持入口关闭，依据完整错误与SHOW CREATE/INDEX确定哪些statement已落地、既存结构是否逐项匹配；由DBA从原文件提取仅缺失且已核实的statement续作，并再次核查。尤其private定义表已建、command未建时，不能整份重跑，也不能加IF NOT EXISTS掩盖漂移。
 5. 不自动DROP/recreate，不改旧患者/访视，不回填历史CRP，不以“部署失败”删除已成功新表或申请。schema漂移/兼容不明确时停在EXT-04接收，先保留事实，再由有权owner决定修复。
 
 ## 6. 合成DDL证据与本地复验
 
 当前 ai-analysis-real-data/P07a 组合沿生产 typed session 与药品/FM 配置验证23路、文件/聊天独立门和同 owned 库重建。真实 session 保存/失效由实际容器处理，测试匿名明确不带 Cookie，重建后重新取得 typed Cookie；原表完整 rows/digest 与旧引用 TTL 必须保持，不重seed。当前验证入口见[测试指南 P07a](测试运行指南.md#ai-分析真实数据-p07a当前四页组合)。下述457等计数保留原 P07c 历史范围，不升级为当前实跑。
 
-真实fixture装配边界（源码静态核查）：
+历史P07c fixture装配边界（当时源码静态核查，不是2026-10-19当前装配）：
 
 - `ExportApplicationHttpFixture → AiExportHttpFixture → ComparisonHttpFixture → PrivateCohortHttpFixture → CohortHttpFixture` 执行生产private/compare/export audit/request四文件，以及旧申请DDL。analysis使用测试 `ai-cohort/p03c/schema.sql`；该文件与生产analysis DDL逐字相同，SHA256均为 `bde67e3e9a11eb1e6815c81f2d2152a31f0fb1e841c7332462bcb39078d37146`。
 - `AiGatewayHttpFixture → ParseCohortHttpFixture` 执行生产parse audit DDL并保留真实网关bean及字面loopback成功peer。
 - 旧指南/登记拥有已实际运行的Java8/隔离MySQL8.4/HTTP/POI/loopback证据。上面静态装配与同字节核查只说明本片可复验输入，不单独证明P07c运行成功，更不证明目标库预演或全量历史数据质量。
 
-本片准确命令由 [测试指南 P07c](测试运行指南.md#p07c启动准入关闭与原状态保真) 拥有；包含首最高损失delete、focused与完整普通选择，保持旧深结构方法排除、同datadir串行、clean与两个非零测试发现guard。本地context重建不是生产滚动部署。
+上述历史片准确命令由 [测试指南 P07c](测试运行指南.md#p07c启动准入关闭与原状态保真) 拥有；包含首最高损失delete、focused与完整普通选择，其当时保留旧深结构方法排除、同datadir串行、clean与两个非零测试发现guard；本轮普通测试不继承该方法排除，实际新证由本轮登记接收。本地context重建不是生产滚动部署。
 
 本轮实际fresh clean验收：两新类18/0/0/0（2026-10-08T19:05:17.507656534Z～2026-10-08T19:06:05.218057219Z）；冻结focused选择10类168/0/0/0（2026-10-08T19:06:46.023839629Z～2026-10-08T19:08:43.707726414Z）；冻结完整普通选择48类457/0/0/0（2026-10-08T19:09:28.776111758Z～2026-10-08T19:12:11.598003594Z），三轮均exit0。focused恰原150方法+新增18，不能沿用P07b另一focused选择的151计数；完整普通恰保留原46类439唯一方法+本片两类18新增，另1旧P06a方法仅历史复用，未运行/改写/重放，源码458不是458 fresh。
 

@@ -554,7 +554,7 @@ public class PatientServiceImpl implements PatientService {
         java.util.stream.IntStream.rangeClosed(33,126),java.util.stream.IntStream.rangeClosed(0xE000,0xF8FF))
         .filter(value->value!='%'&&value!='_').toArray();
     /** 选择原文中不存在的单字符，避免5.7 unicode_ci下转义符自身重复的不匹配。 */
-    private static String likeEscape(String keyword) {
+    static String likeEscape(String keyword) {
         if(keyword==null)return "!";
         java.util.Set<Integer> present=new java.util.HashSet<>();keyword.codePoints().forEach(present::add);
         for(int candidate:LIKE_ESCAPE_CANDIDATES) {
@@ -563,7 +563,7 @@ public class PatientServiceImpl implements PatientService {
         throw new IllegalArgumentException("搜索词包含全部可用转义字符");
     }
     /** 仅转义两个LIKE通配符；转义字符不在原文内，因此不需要自身翻倍。 */
-    private static String escapeLike(String s,String escape) {
+    static String escapeLike(String s,String escape) {
         return s==null?null:s.replace("%",escape+"%").replace("_",escape+"_");
     }
 

@@ -65,6 +65,9 @@ JSON响应使用下面这个外层结构，业务数据在 `data` 里；文件�
 
 ## 一、项目总览页
 
+2026-10-19性能修复保持项目级RA计数口径：projectsData正常非空读取由7条业务SELECT降为4条，QC输入无访视日期排序/解析；严格完整JSON校验及任意历史canonical DAS28存在性不变。活动/计划/完成/待访及可用访视统计合并，保最早同刻多访视、RA成员/miss和空值政策。该结构改善不代表现场耗时SLA。
+
+
 ### 1.1 项目总览数据
 
 页面顶部 6 个指标卡 + “研究执行概览”区块，一个接口全部返回。
@@ -923,7 +926,7 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 #### 范围、源读取与评分口径
 
 - U仅包含当前可信医生在**同一关系行**符合共享RA白名单的 `patient_basic_info.id`；按内部id唯一计数，脱落miss=1不默认排除，相同姓名不同id仍分别计数，孤立关系/访视不创造患者
-- 五条固定批量SELECT（临床患者列、患者id、必要访视列（含zlfa）、合并症行、原三M缺失事实）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；旧源表访问仅SELECT；新增结果表的独立事务见7.2，任何失败不回部分数据或旧结果
+- 四条固定批量SELECT（含ID的临床患者列、必要访视列（含zlfa）、合并症行、原三M缺失事实）在同一个短InnoDB REPEATABLE_READ事务/读取视图中执行。源事务释放session/连接后才解析必要JSON、纯计算和装配响应；旧源表访问仅SELECT；新增结果表的独立事务见7.2，任何失败不回部分数据或旧结果
 - 一次请求以注入Clock固定上海asOfDate。now选择日期非空、≤asOfDate且CRP有效的最新临床日期；同日按访视id最大决胜，忽略时刻差异。最新坏值不挡历史有效值；下一新请求重新读取已提交源变化并重新评估Clock
 - CRP仅取 `bqpg.result.crpScore`，数值/字符串保持十进制原标量精度并复用共享两位HALF_UP canonical。0有效；malformed JSON、null/负值/非法值、只有ESR不成为有效CRP，ESR不能补CRP。缺组成项仍可使用存量值，不启用未核实复算或写回历史
 - C=U∩ids限制∩sex∩age∩sero∩cm∩act∩tx∩at资格∩data。at=now无act时无评分患者仍计入n；at=6m仅纳入可靠当前episode且有合格6m评分者，baseline缺失不单独排除；有act必须有所选时点有效CRP。target为canonical≤2.7，mod-high为>2.7；四档为<2.3、2.3～2.7、>2.7且≤4.1、>4.1
@@ -968,7 +971,7 @@ lines.groups固定line=1/2/3，含line/count/value/status/displayText，分母C.
 
 fm含nFM/nOther/unknownN/status/reason/rows，仅明确TRUE/FALSE进入两组，UNKNOWN不并入FALSE。任组成员<3则INSUFFICIENT_SAMPLE/GROUP_SIZE_LT_3且rows=[]；足够时OK/reason=null，固定das28/tjc/sjc/crp/pain/haq六行。每行包含metric/meanFM/meanOther/nFMValid/nOtherValid/difference/highlight/status/reason/displayFM/displayOther/displayDifference，仅取同eval访视合法value；无有效值的均值为null/显示“—”，双方有值才有差值和高亮，否则NO_DATA/MISSING_METRIC、difference/highlight=null。差方向FM−Other，均值至少16位；高亮用未舍入总和/人数的交叉乘比较绝对差，pain≥5、haq≥0.2、其余≥0.5；显示DAS/TJC/SJC/CRP1位、pain0位、HAQ2位。显示0.5或0.20不会将真实0.49999/0.19999升级为高亮。存在的每行追加下述test；描述差值/高亮保持原阈值，与P显著性独立。
 
-真实FM源仍只有TRUE/UNKNOWN，真实HTTP诚实抑制比较表；真实pain.value仍null，不能猜尺度。明确合成derived FALSE与已确认尺度pain只能证明实际Service聚合器分支，不能证明真实临床源/医学接收。源显示随五SELECT一致读，独立writer在首SELECT后改姓名/编号时当前响应保持旧值、下一请求新值，无第六查询或N+1。
+真实FM源仍只有TRUE/UNKNOWN，真实HTTP诚实抑制比较表；真实pain.value仍null，不能猜尺度。明确合成derived FALSE与已确认尺度pain只能证明实际Service聚合器分支，不能证明真实临床源/医学接收。源显示随四SELECT一致读，独立writer在首SELECT后改姓名/编号时当前响应保持旧值、下一请求新值，无额外显示查询或N+1。
 
 独立合成六人示例：U.n=6，ageMedian=50(valid5)、durationMedian=3(valid5)、femaleRate=0.5、seroRate=0.3333333333333333(unknown2)、targetRate=0.4(2/5/unknown1)、completeRate=0.6666666666666667(4/6)、incompleteCount=2。sex=F后排序C=[3,1,6]，n=3、cohortRate=0.5、ageMedian=55(valid2)、targetRate=0.5(1/2)，studyTargetRate仍0.4。显式ids=[]返回空C，studyTotal仍6，全部C比例0/NO_DATA、中位null、固定零活动/线桶、空groups/rows/items；无授权U时studyTotal=0。
 
@@ -1089,37 +1092,37 @@ crpAt是所选eval访视的evaluation.crp；crpCurrent是所有截至asOf有日�
 
 失败success=false、data=null、message为安全通用提示，不暴露SQL/病例/连接或凭据。认证及输入拒绝发生在业务源SQL前。真实登录、目标生产库/隔离配置、医学与发布接收仍待对应owner，合成验证不能替代这些接入证据。
 
-### 7.2 同次结果授权稳定分页
+<a id="72-同次结果授权稳定分页"></a>
 
-本节 `/api/ra/ai/cohortPatients` 使用§7.9整体启动门；下列原分页与错误顺序在准入放行后适用。
+### 7.2 查询会话授权实时分页
 
-`POST /api/ra/ai/cohortPatients` 仍先可信Principal，根仅接收非空字符串analysisId与cursor。UTF-8 body最多4096字节（最多读取4097），cursor最多2048 ASCII字符；未知/重复键、尾随JSON、缺项/类型错误400/INVALID_REQUEST，超body413/LIMIT_EXCEEDED，游标语法/签名或偏移错误400/CURSOR_INVALID。
+本节按[2026-10-19决定](../../docs/decisions/AI队列实时查询与性能修复-20261019.md)替代完整结果blob快照。POST /api/ra/ai/cohortPatients仍使用§7.9整体启动门和可信Principal，根仅接收analysisId与cursor。UTF-8正文最多4096字节，cursor最多2048 ASCII字符；未知/重复键、尾随JSON或类型错误400/INVALID_REQUEST，正文超限413/LIMIT_EXCEEDED，游标语法/签名/偏移形态错误400/CURSOR_INVALID。
 
-成功data恰为analysisId、patients、meta。patients含total/items/returnedCount/nextCursor/hasMore；首屏10，后页20，真实offset10→30→50，不采用page×20。可重复读取同一签名游标；末页不足20按实际返回，无剩余则nextCursor=null/hasMore=false。空C也保存完整空结果，items=[]/total=returnedCount=0，绝不扩为U。
+#### 实时计算与确定排序
 
-meta保留分析at/asOfDate/readStartedAt/readCompletedAt/computedAt/policyVersions/expiresAt，当前traceId与X-Trace-Id一致，原trace另作为analysisTraceId，增加displayReadCompletedAt；completion=P03_RESULT、patientProjection=RETAINED_NUMERIC_V1。旧访视/临床/治疗/图表数值与政策保持创建时快照，新cohort仍实时读取并新建ID；后页只返回名单，不重复返回统计图表。
+analysisId指向有期规范查询会话，不再指向完整患者数值快照。每个分析/后页/COHORT导出重新读取当前授权源，复用同一derive/select/排序和投影计算；保会话原asOfDate与规则/字典版本，统计覆盖完整C而不是当前页。四条批量源SELECT处于同一短REPEATABLE_READ视图，连接释放后计算；没有Redis或结果缓存。
 
-#### 当前范围、显示与保留隐私
+排序固定DAS28_AT_DESC_NULL_LAST_ID_ASC：DAS28降序、null最后、同分数值患者ID升序。首屏10，后页20，offset10→30→50。源/规则未变时同游标结果一致；普通临床资料更新可改变后页总数、成员和值，跨请求允许漏项/重复，不承诺强快照。当前C缩小使offset越过末尾时返回空末页，不扩回U，也不把合法旧cursor当作伪造。
 
-- 新表ra_ai_analysis_run存owner、全U范围指纹、sort_key、payload_version=1、完整UTF-8数值JSON及SHA256、epoch毫秒created/expires；不与旧患者表建外键
-- 指纹为SHA256(医生十进制ID+LF+RA+LF+完整U去重数值升序每ID+LF)，不是C或本页。后页先核资源owner，再于独立短REQUIRES_NEW/REPEATABLE_READ只读视图读取当前完整U并比对；删除/撤权/新增U成员均409/SCOPE_CHANGED，含C外成员，miss不默认排除
-- U匹配后同一视图仅一次批量查询最多20个id/name/study_no，用绑定参数及相同doctor+RA EXISTS限制。读完释放后组装，名称/研究编号取当前显示，列null可返回；覆盖缺行或SQL错误503，不能用空姓名冒充记录。无card_no/病例JSON查询或N+1
-- 载荷用逐层显式allowlist，保留全C合法数值、baseline/eval/now访视ID/日期、资格/缺失/质量、临床来源结构、映射通用药ID和合法日期、聚合、规范filters、分析时间/政策/trace；永不保存name/studyNo、身份证/生日、RF/CCP原文、未知药名、原病例JSON或任意pain.raw
-- 原live首屏仍保留既有raw诊断。后页score/baseline raw仅留已验证合法数值标量文本，精确长小数不经double；未核实pain仍value/unit=null、原质量/UNVERIFIED_SCALE保留，raw=null且rawRetention=OMITTED。任意源raw调试字段不保证跨页持久化。小数从最初解码使用BigDecimal，必要类型/行数/合法唯一ID/排序或hash损坏503，不补0、不回源重建
+成功data仍为analysisId/patients/meta。patients包含total/items/returnedCount/nextCursor/hasMore，末页nextCursor=null/hasMore=false；空C成功创建小会话。meta含at/asOfDate/readStartedAt/readCompletedAt/computedAt/expiresAt/patientProjection/policyVersions/traceId/supportedFilters/completion/statisticalDisclosure；读取和计算时间是本次值，patientProjection=LIVE_SOURCE_V04。page另保displayReadCompletedAt=本次源读取完成时间，移除无生产消费者的旧analysisTraceId。后页仅返回名单与meta，不计算或重复返回未消费的聚合/图表/检验；X-Trace-Id与本次traceId一致。
 
-#### 配置、签名、时间与错误优先级
+只给所需首10/后20投影完整患者行及来源数组；为了派生筛选/排序仍读取并计算必要的完整候选，不能宣称数据库只读20行或恒定时间。完整临床质量、缺失和来源按本次源计算，不截断患者或依据。首屏沿原live诊断字段；后页仍逐行安全allowlist，只保合法数值raw、去未核实pain原文/非法治疗日期，再补当前name/studyNo，不能因取消blob而放宽原后页输出防护。
 
-部署注入ra.ai.analysis.result-ttl-seconds（默认900，正数且乘法/时间加法不溢出）、ra.ai.analysis.result-max-bytes（默认8388608，正数且≤16777215）、ra.ai.analysis.cursor-key-base64（默认空，标准Base64解码至少32字节）。不生成/配置/记录生产key；缺key/配置错误让本功能503/SERVICE_UNAVAILABLE且cohort读源SQL前拒绝，不阻其它bean启动。容量按最终UTF-8字节超限413/RESULT_TOO_LARGE，不能写run或发布ID；缩小当前容量不重新计算旧有效run。key轮换会使旧游标签名无效。
+#### 会话、授权与兼容
 
-cursor为Base64url无padding的固定JSON载荷加点号加HMAC-SHA256，含v=1、analysisId、doctorId、nextOffset、固定sort=DAS28_AT_DESC_NULL_LAST_ID_ASC、expiresAtMs；签名覆盖原载荷全部字节、MAC常量时间比较，不把请求字段替换为签名字段或让客户端owner授予权限。
+新表ra_ai_analysis_query_session仅保存id、owner_doctor_id、全U scope_fingerprint、sort_key、query_version=2、规范query_json、as_of_date、policy_fingerprint及created/expires epoch毫秒。query_json使用MEDIUMTEXT，应用限定规范UTF-8≤128KiB，原输入128KiB/5000 IDs规则不变；不另加TEXT约64KiB限制。无患者行、来源数组或blob，无旧患者外键。原ra_ai_analysis_run保留，应用不再读写；不自动drop或迁移其payload。
 
-顺序：可信身份→有界body/游标语法及MAC（400）→签名doctor不符404/RESOURCE_NOT_FOUND且零DB→请求入口时已到签名expiry则410/ANALYSIS_EXPIRED且零DB（行已清走亦同）→持久行缺失/非owner404→行到期410→行与签名版本/sort/expiry不符、hash/载荷/SQL/程序损坏503→offset非法400→全U改变409→同视图显示并返回。不存在部分页、跨run恢复、旧源回退或对外SQL/载荷/key信息。
+U指纹仍为SHA256(医生十进制ID+LF+RA+LF+完整U去重数值升序每ID+LF)，不是C或本页。每次先核会话owner，再在本次同RR源视图比对完整U；删除、撤权或新增U成员（包括C外）均409/SCOPE_CHANGED。页内显示与数值来自同次源，没有per-patient查询。规则/字典版本变化410并要求重新分析；SQL/程序/规范query损坏503，不空成功、不回退旧blob。
 
-created_at_ms取本次computedAt的epoch毫秒，expires_at_ms加TTL毫秒，expiresAt从该最终毫秒值转UTC Instant；now≥expiresAt即到期，入口前1ms可读。源五SELECT事务先结束，全C计算/排序/allowlist编码及容量检查之后，独立写事务先DELETE expires_at_ms≤创建时点 ORDER BY expires_at_ms,id LIMIT 1000再INSERT，commit成功才构造成功响应。INSERT/commit前失败一并回滚新行与此轮清理，源表及有效旧结果不变；结果读亦是短独立只读事务，首次MyBatis SQL错误翻译的metadata读取共用该owner，异常返回前归还。
+旧、已清理或随机不存在的analysisId统一410/ANALYSIS_EXPIRED并提示重新分析；存在会话的其他owner仍404/RESOURCE_NOT_FOUND。这替代旧缺行404与保留数值语义。
 
-每次新创建只清理本新表最多1000条过期记录，下一创建继续；不读/输出其他医生载荷，不删有效run/旧患者，没有新增scheduler，无请求时不承诺整点物理清除，但过期永不能分页。commit后的HTTP写出/网络失败不能回滚数据库，可能留下无客户端成功ID的完整TTL孤立行，由后续清理收走，不自动重用该结果。合成验收实际覆盖HTTP writeInternal抛IOException，不宣称真实网络断连。
+#### 配置、游标与事务边界
 
-本接口不授予私有队列保存、下载、邮件、共享或AI访问权限。生产DDL/key/真实身份、目标隔离与数据保留政策仍须AQC-EXT-01/04及最终接收，不因本次合成开发完成而关闭；医学/统计批准和其余外部义务保持原边界。
+ra.ai.analysis.result-ttl-seconds默认900，必须正数且毫秒乘法/expiry加法不溢出；ra.ai.analysis.cursor-key-base64仍须标准Base64解码至少32字节。缺/错TTL/key在新分析源SQL前503，不阻其他bean启动。旧ra.ai.analysis.result-max-bytes不再参与分析、比较或导出准入，非法旧值也不会重新引入分析cap；比较/文件独立限制见§7.5/§7.7。
+
+cursor仍是Base64url无padding固定JSON加点号及HMAC-SHA256，含v=1、analysisId、doctorId、nextOffset、sort及expiresAtMs；MAC覆盖原全部字节、常量时间比较。顺序：可信身份→输入/MAC→签名owner不符404且零DB→入口时签名到期410且零DB→会话缺失410/非owner404/过期410→持久格式版本变更410、损坏503→当前U改变409→规则/字典指纹变化410→实时计算和当页投影。key轮换使旧签名无效。
+
+创建时以computedAt设置created与TTL，源事务/完整候选计算结束后，在独立短写事务按expires,id顺序限删expires_at_ms≤created的最多1000行并INSERT小会话；commit成功才发布ID。提交前失败回滚该轮清理/新行，原有效会话不变；commit后HTTP失败可留有期孤立会话，后续创建清理，不自动复用。无请求时不承诺整点物理清理，过期始终拒绝。原生产身份、DDL/保留策略和医学统计接收边界不变。
 
 ### 7.3 授权相似患者条件入口
 
@@ -1127,7 +1130,7 @@ created_at_ms取本次computedAt的epoch毫秒，expires_at_ms加TTL毫秒，exp
 
 `POST /api/ra/ai/resolveEntry` 使用JSON根对象，恰接收两个非空字符串：`source="SIMILAR"`、`indexPatientId`。索引id采用现有规范正long十进制文本，不接受number、0、负值、前零、空白或溢出；source大小写精确，不接受数组、多source或其他类型。未知字段（包括doctorId、cohortId、compare、q、filters、ids）、重复键、尾随JSON、非对象/缺项/null/非法类型均400/INVALID_REQUEST，非UTF8编码或非法UTF8同样拒绝。body最多4096 UTF8字节，最多读取4097；超限413/LIMIT_EXCEEDED。上述拒绝在SQL前发生。
 
-Controller先要求可信Principal，再固定入口Clock.instant，随后读body；匿名401/UNAUTHENTICATED且不读取body、不借连接，header/请求doctorId/principal.name不提供权限。以入口时刻固定Asia/Shanghai日期，沿现有SourceAdapter的本人doctor+RA同关系完整U、五条批量SELECT及短REPEATABLE_READ视图读取；先检查index在U，再查其PatientClinical。不存在、他人、非RA、物理删除或撤权统一404/RESOURCE_NOT_FOUND。SQL/程序错误503/SERVICE_UNAVAILABLE、data=null，不回退旧候选或解释为缺失。源owner在解析临床事实/条件装配及公开响应前退出，resolver只读，不创建或清理analysis run，也不需要结果签名key；cohort缺key仍按7.2返回503。
+Controller先要求可信Principal，再固定入口Clock.instant，随后读body；匿名401/UNAUTHENTICATED且不读取body、不借连接，header/请求doctorId/principal.name不提供权限。以入口时刻固定Asia/Shanghai日期，沿现有SourceAdapter的本人doctor+RA同关系完整U、四条批量SELECT及短REPEATABLE_READ视图读取；先检查index在U，再查其PatientClinical。不存在、他人、非RA、物理删除或撤权统一404/RESOURCE_NOT_FOUND。SQL/程序错误503/SERVICE_UNAVAILABLE、data=null，不回退旧候选或解释为缺失。源owner在解析临床事实/条件装配及公开响应前退出，resolver只读，不创建或清理analysis run，也不需要结果签名key；cohort缺key仍按7.2返回503。
 
 成功data恰含source、filters、missingBasis、status、canApply、reason、meta。source固定SIMILAR；meta恰含asOf（上海ISO日期）、readStartedAt/readCompletedAt（UTC Instant）、traceId（同X-Trace-Id）、policyVersion=`dev-similar-v01`。不会返回indexPatientId、姓名/研究编号、身份证/生日、病例JSON或临床provenance。
 
@@ -1137,7 +1140,7 @@ Controller先要求可信Principal，再固定入口Clock.instant，随后读bod
 - missingBasis按sex/age/sero固定顺序。至少生成一项限制时canApply=true，缺失表空为READY，否则PARTIAL_BASIS；filters经现有CohortQuery校验/规范化，全部键为studyCode/at/act/ids/sex/age/sero/cm/tx/data，studyCode=RA、at=now、其余未生成键为null
 - 没有任何可生成限制时NO_BASIS、canApply=false、filters=null；全未知列三项，只有血清阴性且无sex/age时只列sex/age。不自动分析整体U或塞空ids。除UNSUPPORTED_BASIS外reason=null
 
-canApply=true时客户端将filters原样包装成`{"filters":...}`调用7.1标准cohort；可显式追加/调整其普通条件，本入口不接收隐式合并。索引本人默认不排除，按自然条件匹配。候选只是当次授权事实产生的条件，不是权限凭证或analysis结果；两次HTTP各自固定asOf并重新读当前U/事实，后一次cohort不重新推断相似条件，也不保证index继续授权。旧候选不能让已撤权患者进入U。空C仍保留完整零桶/NO_DATA/null和真实analysisId，后页继续7.2当前范围复查、到期和保留数值规则。
+canApply=true时客户端将filters原样包装成`{"filters":...}`调用7.1标准cohort；可显式追加/调整其普通条件，本入口不接收隐式合并。索引本人默认不排除，按自然条件匹配。候选只是当次授权事实产生的条件，不是权限凭证或analysis结果；两次HTTP各自固定asOf并重新读当前U/事实，后一次cohort不重新推断相似条件，也不保证index继续授权。旧候选不能让已撤权患者进入U。空C仍保留完整零桶/NO_DATA/null和真实analysisId，后页继续7.2当前范围复查、到期和实时重算规则。
 
 本片提供SIMILAR与现有完整cohort/分页组合，私有定义另见§7.4，比较另见§7.5；规则问题解析、显式应用与已交付受控AI网关见§7.6及[P05开发技术Gate](../../docs/plans/ai-cohort/review-register.md#p05-gate)；合成验证不代表真实身份、医学/统计批准、生产DB/key/发布接收。
 
@@ -1161,7 +1164,7 @@ name采用Java8 String.trim，仅首尾U+0000～U+0020被移除；结果1～30 U
 
 list item/open.cohort恰含cohortId、name、note、完整规范filters、version、createdAt、updatedAt、currentN:null。两个时间由Clock epoch毫秒转UTC Instant。列表只返回本人未删定义，以createdAt倒序/id二进制升序，count与items在一个独立短REPEATABLE_READ只读视图中；超页正常空items，不查询临床表、不运行分析或填写人数。filters长期不可变，只保存显式筛选条件及用户输入ids；null ids不限，[]为空C，不把某次U交集、患者成员、人数、分析ID、姓名、身份证或病例JSON落入定义/回执。
 
-open先完成本人有效定义的短读/codec验证并释放，再直接调用原§7.1完整analyze。每次重新读当前完整U/临床源，产生新的analysisId，保留原五卡四图/FM/统计/排序以及§7.2签名后页。显式ids每次重新交当前U；新访视、物理删除及撤关系影响下一open，原analysis数值仍是原创建快照。响应cohort固定本次读取的元数据，定义读取后并发rename/delete不追溯撤销已开始的分析；不承诺跨两个短读与网络的长事务。缺签名key时save/list/rename/delete仍可用，有效open沿原配置503且临床SQL前拒绝；不存在资源仍404，非法持久定义仍503。
+open先完成本人有效定义的短读/codec验证并释放，再直接调用原§7.1完整analyze。每次重新读当前完整U/临床源，产生新的analysisId，保留原五卡四图/FM/统计/排序以及§7.2签名后页。显式ids每次重新交当前U；新访视、物理删除及撤关系影响下一open；已有analysisId的后页/导出也按§7.2实时重算或因U变化拒绝，原首页已展示内容不自动推送更新。响应cohort固定本次读取的元数据，定义读取后并发rename/delete不追溯撤销已开始的分析；不承诺跨两个短读与网络的长事务。缺签名key时save/list/rename/delete仍可用，有效open沿原配置503且临床SQL前拒绝；不存在资源仍404，非法持久定义仍503。
 
 SAVE/RENAME/DELETE的成功回执以owner/action/requestId唯一，业务结果只含cohortId/version，与定义变动在同一独立短写事务提交。首次trace保留在回执，本次响应trace独立。先验证body，再查回执，再看资源/活动/CAS/名称。同规范参数重放原结果，异参409/IDEMPOTENCY_CONFLICT；JSON属性顺序/空白、save ids顺序/重复及默认at等价，但rename省略与note:null不同。后续rename/delete不影响原save或原rename的重放。两独立实例竞争由数据库兜底；NAME/CAS或request键冲突后先结束原事务，再新短读已提交胜者回执，同参优先重放、异参优先幂等冲突，没有回执才返回实际名称/版本冲突。没有缓存或无限重试。
 
@@ -1181,13 +1184,15 @@ SAVE/RENAME/DELETE的成功回执以owner/action/requestId唯一，业务结果�
 
 ### 7.5 同源两队列完整比较与有期重读
 
+比较容量独立配置ra.ai.comparison.result-max-bytes，默认8388608、合法1..16777215；TTL/key仍沿analysis配置，旧analysis.result-max-bytes不再作为比较容量。
+
 本节 `/api/ra/ai/compare` 与 `/api/ra/ai/compareResult` 使用§7.9整体启动门；下列原比较与重读合同在准入放行后适用。
 
 `POST /api/ra/ai/compare` 的根对象恰接收必需的 `a`、`b` 和可省略的 `excludeOverlap`（默认false，显式值只能boolean）。每侧恰为 `{"source":"FILTERS","filters":{...}}` 或 `{"source":"SAVED","cohortId":"标准小写UUID"}`。合法FILTERS/SAVED两侧可以组合；同一侧混带两种来源拒绝。FILTERS空对象合法，完全复用§7.1的条件、默认now、ids:null不限与ids:[]空集。SAVED只读取本人未删定义并严格解码固定条件，投影本次cohortId和元数据version；不调用open的分析入口，不带name/note、旧analysisId、计算成员、snapshot、SIMILAR或q/AI。
 
 可信身份先body；匿名401且body/SQL未读。compare原UTF8 body最多256KiB、最多读取上限+1；严格UTF8、重复键、尾随JSON、根/侧/类型和额外键校验。每侧保留原filters节点，包装为 `{"filters":...}` 后交同一CohortQuery，执行包装后128KiB以及去重前5000个ids的原限额。新协议不单独限制filters原文空白片段，也不按charset标头拒绝实际合法UTF8。两个侧的全部语法和条件先校验，再按A/B顺序读SAVED，之后判断规范at相同。FILTERS/FILTERS异at零DB；含SAVED异at最多定义短读，临床源零查询。非法输入400/INVALID_REQUEST，原字节或数组超限413/LIMIT_EXCEEDED；不会从坏定义回落全U。
 
-比较固定一个started、同次上海asOf、一个字典snapshot、一次本人RA完整源U和一次派生。定义短读退出后才读取源；源五SELECT仍共用短REPEATABLE_READ视图，释放连接后才纯计算。`CohortComputation.derive/select` 由原analyze与新compare真实共用，沿原QC/临床/治疗/at/活动筛选及6m资格；原首屏、统计、DTO、分页和单队列v1不变。两个C先按患者id求交集，再逐指标缺失处理；排重时双方都减去完整交集，人数、聚合和日期覆盖重新计算。不调用两次analyze拼结果，也不创建单队列run。
+比较固定一个started、同次上海asOf、一个字典snapshot、一次本人RA完整源U和一次派生。定义短读退出后才读取源；源四SELECT仍共用短REPEATABLE_READ视图，释放连接后才纯计算。`CohortComputation.derive/select` 由原analyze与新compare真实共用，沿原QC/临床/治疗/at/活动筛选及6m资格；首屏和统计口径不变；单队列会话/实时分页按本轮§7.2取代旧v1数值保留。两个C先按患者id求交集，再逐指标缺失处理；排重时双方都减去完整交集，人数、聚合和日期覆盖重新计算。不调用两次analyze拼结果，也不创建单队列run。
 
 成功data恰含 `compareResultId,studyTotal,a,b,overlapN,excludeOverlap,rows,meta`。studyTotal为完整U，overlapN为排除前交集人数，不返回交集id。每侧恰含 `source,filters,cohortId,cohortVersion,nBeforeExclusion,n,evalN,submittedUniqueIdsN,effectiveIdsN`；FILTERS id/version为null，SAVED为本次固定值；filters为完整规范条件。submitted/effective仍是显式ids去重数与先交U的数量，不因其它条件或排重改义。
 
@@ -1208,7 +1213,7 @@ sourceDateCoverage恰含a/b，各有除n外11指标；每项 `{validN,datedN,und
 
 新 [比较专表DDL](../src/main/resources/sql/20261008_ai_compare_run.sql) 建 `ra_ai_compare_run`，InnoDB、无旧表外键，含id、owner、完整U指纹、v1 MEDIUMBLOB/SHA256、created/expires毫秒与(expiry,id)索引。新codec独立allowlist双端校验完整键集、12行/枚举/规范条件/UUID/日期、计数分母与coverage、四分位/IQR/差值/比例/P状态及行时间；有效hash的语义坏载荷仍503。payload不保存compareResultId、姓名/研究编号/身份证/生日/原JSON/问句/name/note或患者明细；只有显式filters.ids可保留。
 
-创建复用§7.2部署门槛（含签名key校验）、TTL与容量，没有新key。缺/错配置在临床源前503。最终UTF8 bytes超cap为413/RESULT_TOO_LARGE且零cleanup/INSERT；容量合格后，新结果owner在一个REQUIRES_NEW短写事务内仅清本新表expires≤created、按expiry/id最多1000行，再INSERT。提交成功才发布ID，任一SQL或post-INSERT/precommit故障回滚新行和本轮cleanup。定义/源事务此时均退出；不清单队列表，无后台缓存/清理。commit后的网络失败可能留下完整TTL孤立行；没有幂等key，合法重发可生成新run。
+创建复用§7.2的TTL/key部署门槛（含签名key校验），容量独立使用ra.ai.comparison.result-max-bytes，没有新key。缺/错配置在临床源前503。最终UTF8 bytes超cap为413/RESULT_TOO_LARGE且零cleanup/INSERT；容量合格后，新结果owner在一个REQUIRES_NEW短写事务内仅清本新表expires≤created、按expiry/id最多1000行，再INSERT。提交成功才发布ID，任一SQL或post-INSERT/precommit故障回滚新行和本轮cleanup。定义/源事务此时均退出；不清单队列表，无后台缓存/清理。commit后的网络失败可能留下完整TTL孤立行；没有幂等key，合法重发可生成新run。
 
 `POST /api/ra/ai/compareResult` 根仅 `{"compareResultId":"标准小写UUID"}`，最多4096原UTF8 bytes，同样严格解析。身份通过后、读body前固定requestedAt。顺序：身份→输入400/413→新表短find→缺行/非owner404→requestedAt≥expiry为410/COMPARE_EXPIRED→codec坏载荷503→独立短只读RR查询本人RA完整id并复验U指纹→变化409/SCOPE_CHANGED→固定完整表。当前U增、物理删、撤权均失效，包含不在A/B的患者；不读取display/姓名、临床/字典或SAVED定义，不重算旧值。普通访视/姓名/定义元数据更新不改旧表，真实fresh应用context可重读。清理后缺行404；没有signed expiry，不凭ID声称识别已清行的过期史。
 
@@ -1291,13 +1296,13 @@ HTTP与数据库无共同事务。正常HTTP owner退出后才进入原短审计
 {"source":"COMPARE","compareResultId":"00000000-0000-0000-0000-000000000001","metrics":["n","das28At","crpAt","haqAt","target","activity"]}
 ```
 
-每种source仅接收示例中的键；选择器可省略，不得显式null、空数组、重复、未知或非字符串，两引用/选择器不可混带。省略为DEFAULT完整目录，显式数组为EXPLICIT并按目录排序；不自动补ID、不自动替换为免费列。内容直接消费同一已验run的固定payload/hash/完整U指纹，不取首屏、不重新analyze/统计、不读姓名/研究号或SAVED名称/备注。完整U包含当前C或A/B以外的本人RA患者，读取时和完整文件生成后均重验；最后再以新的Clock瞬时检验expiry。每个结果/范围/审计事务在POI和输出前退出，不宣称最后检查与外部源/网络强原子。
+每种source仅接收示例中的键；选择器可省略，不得显式null、空数组、重复、未知或非字符串，两引用/选择器不可混带。省略为DEFAULT完整目录，显式数组为EXPLICIT并按目录排序；不自动补ID、不自动替换为免费列。COHORT通过小查询会话以固定asOf/规则重读当前源并完整计算C，按本次实际安全投影流式计算内容SHA256，不用query hash冒充payload hash；不取首屏、不持久保存完整结果。COMPARE仍消费独立已验run的固定聚合payload/hash。两者不把姓名或SAVED名称/备注写入保留载荷。完整U包含当前C或A/B以外的本人RA患者，读取时和完整文件生成后均重验；最后再以新的Clock瞬时检验expiry。每个结果/范围/审计事务在POI和输出前退出，不宣称最后检查与外部源/网络强原子。
 
-COHORT默认目录：`patientId,sex,age,studyNo,treatmentCategory,genericDrugIds,line,schemeDurationMonths,das28Base,das28At,das28Current,crpCurrent,fm,as,completeness`。每保留患者一行、原顺序和值不变；无ID子集仍保留全C。`das28At`标题明确now或6m，真正6m来自原selected访视，不新增独立six列。四个日期列分别取baselineProvenance.observedAt、scoreProvenance.observedAt、selection.nowDate、crpCurrent.observedAt，不互借日期。ID/sex/age/studyNo无可靠来源日；治疗/QC/病史缺完整复合来源证据，非空默认通常NEED_APPLY。任一患者被选字段缺日或越窗，阻断整次，不删行或把旧值抹空。可靠来源日期存在而值缺失可BLANK；空C只输出原表头、EMPTY和rowN=0。
+COHORT默认目录：`patientId,sex,age,studyNo,treatmentCategory,genericDrugIds,line,schemeDurationMonths,das28Base,das28At,das28Current,crpCurrent,fm,as,completeness`。每个本次实时C患者一行，按确定性顺序；无ID子集仍取本次全C，不保证等于较早页面的患者值。`das28At`标题明确now或6m，真正6m来自原selected访视，不新增独立six列。四个日期列分别取baselineProvenance.observedAt、scoreProvenance.observedAt、selection.nowDate、crpCurrent.observedAt，不互借日期。ID/sex/age/studyNo无可靠来源日；治疗/QC/病史缺完整复合来源证据，非空默认通常NEED_APPLY。任一患者被选字段缺日或越窗，阻断整次，不删行或把旧值抹空。可靠来源日期存在而值缺失可BLANK；空C只输出原表头、EMPTY和rowN=0。
 
 COMPARE默认12指标：`n,age,duration,das28At,crpAt,haqAt,female,sero,target,complete,activity,line`；默认非空完整表会因age/female等undated需申请。显式六指标示例在真实coverage完整且窗内时成功，保留原A/B人数、unknown/known/validN、numerator/denominator、分布、差值、raw P/显示P和检验状态，不复算/二次排重。非空侧validN=0阻断；空侧不阻断，结构计数/原NO_DATA信息保留，不造P。
 
-窗口固定本次上海today与`today.withDayOfMonth(1).minusMonths(6)`，含起点，不按180天，也不以查询/计算/生日/确诊日补来源。新接口复用`ra.export.free-months`的既有int绑定，缺省6且只允许绑定值6；5/12/0/负数在引用SQL前503。空串/非法文本/int越界保持真实Spring装配失败，不承诺可服务HTTP503。容量仅调用共享`AnalysisSettings.maxBytes()`，默认8388608、合法1..16777215；非法配置引用SQL前503，不调用无关cursor key/TTL校验。完整序列化bytes超过上限413/RESULT_TOO_LARGE，零文件输出，不截行/ZIP。
+窗口固定本次上海today与`today.withDayOfMonth(1).minusMonths(6)`，含起点，不按180天，也不以查询/计算/生日/确诊日补来源。新接口复用`ra.export.free-months`的既有int绑定，缺省6且只允许绑定值6；5/12/0/负数在引用SQL前503。空串/非法文本/int越界保持真实Spring装配失败，不承诺可服务HTTP503。文件限制独立：ra.export.xlsx.max-bytes默认16777216，合法1..67108864；max-rows默认100000，合法1..1000000；max-cells默认1000000，合法1..10000000（后二者同ra.export.xlsx.前缀）。候选选出后、全量行投影前按字段宽度和256个metadata单元格预算限制，writer再核实际行/单元格；输出字节仍有界。超限413/RESULT_TOO_LARGE，零文件输出，不截行/ZIP；正常分析/翻页不因导出限制失败。非法限制503；旧analysis.result-max-bytes不再消费。
 
 合法但需申请返回409、success=false、code=NEED_APPLY、message=“所选导出内容需要申请”。data恰含`decision,source,referenceId,selectionMode,requested,eligible,blocked,freeStart,today,policyVersion`，policyVersion=dev-export-v01。requested按目录列出本次内容；eligible是完整保留数据/同次窗口检查通过的目录代码（也包括未请求项），不包含临床值。客户端须重新显式选择，服务端不自动采用eligible。blocked只包含requested未通过项，每项恰`field,side,reason,affectedN`；COHORT side=null、COMPARE A/B，按内容目录/side/原因排序。有限原因是NO_VALID_CONTRIBUTION、INCOMPLETE_SOURCE_EVIDENCE、MISSING_SOURCE_DATE、SOURCE_BEFORE_WINDOW、SOURCE_AFTER_TODAY。COHORT affectedN为该原因实际行数；比较缺日/证据不全为undatedN，无有效贡献为非空侧n；比较窗前/未来为整个受阻聚合的validN，不能标作实际越窗人数。缺日与窗外原因可并存，人数不可相加。NEED_APPLY不记录申请、不发SMTP、不授权下载；伴随审计失败仍保留原409/data。
 
@@ -1311,7 +1316,7 @@ COMPARE默认12指标：`n,age,duration,das28At,crpAt,haqAt,female,sero,target,c
 
 专用[审计DDL](../src/main/resources/sql/20261008_ai_export_audit.sql)只新增ra_ai_export_audit，25列/InnoDB/无旧表外键，id复用服务器trace UUID。每次请求是一条独立尝试，无下载幂等或审计grant。8个INSERT/UPDATE操作各REQUIRES_NEW短事务且必须影响1行；UPDATE绑定原id/可信owner和精确前态CAS。ALLOW先PREPARING/NOT_STARTED提交才允许POI；完整生成且Workbook关闭后READY保留generated/file_rows/file_bytes；最终scope/TTL拒绝尽力REJECTED，补记失败不覆盖原409/410/503。STARTED成功提交确认后才设二进制头/write/flush；其后错误终止容器输出，不拼JSON、不重发、不close容器stream。正常write/flush返回后WRITTEN仅证明服务器写出，delivery仍UNKNOWN；失败/提交确认丢失可能已提交，不能猜回滚、反向状态或重发。生成容量失败的伴随FAILED更新出错仍原413；中断保flag，不借新JDBC补记。
 
-其它错误data=null：输入400/INVALID_REQUEST，body超限413/LIMIT_EXCEEDED，缺行/跨owner404/RESOURCE_NOT_FOUND；未清理的expiry边界410/ANALYSIS_EXPIRED或COMPARE_EXPIRED；完整U变化409/SCOPE_CHANGED；codec/SQL/配置/程序503/SERVICE_UNAVAILABLE。没有文件bytes时返回JSON，无伪.xlsx。技术验证仅合成Java8/MySQL/HTTP/POI；真实身份/目标DB/医学统计和AQC-REL-02字段/日期对外批准仍OPEN，申请通知技术接口见§7.8，真实SMTP/收件仍由EXT-06接收，不代表生产启用。
+其它错误data=null：输入400/INVALID_REQUEST，body超限413/LIMIT_EXCEEDED，COHORT会话缺失/旧ID为410/ANALYSIS_EXPIRED，COMPARE缺行或任何跨owner404/RESOURCE_NOT_FOUND；expiry边界410/ANALYSIS_EXPIRED或COMPARE_EXPIRED；完整U变化409/SCOPE_CHANGED；codec/SQL/配置/程序503/SERVICE_UNAVAILABLE。没有文件bytes时返回JSON，无伪.xlsx。技术验证仅合成Java8/MySQL/HTTP/POI；真实身份/目标DB/医学统计和AQC-REL-02字段/日期对外批准仍OPEN，申请通知技术接口见§7.8，真实SMTP/收件仍由EXT-06接收，不代表生产启用。
 
 ### 7.8 唯一导出申请、一次通知与同申请安全重试
 
@@ -1325,7 +1330,7 @@ COMPARE默认12指标：`n,age,duration,das28At,crpAt,haqAt,female,sero,target,c
 
 requestId为canonical小写UUID，按可信owner隔离。日期为1000..9999年四位ISO日期，start≤end；首次申请end不晚于本次上海today。日期表示申请范围，不重新筛/扩展引用数据。用途仅RESEARCH/DATA_CHECK/OTHER；reason仅trim首尾后1..1000合法Unicode码点，保存旧表，不入邮件/响应/应用日志。规范hash固定source/reference/目录顺序selected/date/purpose/reason，排除requestId、动态源和邮件配置；键序/JSON空白/字段数组重排同参，说明内部字符、字段、日期、用途或引用变化409/IDEMPOTENCY_CONFLICT。
 
-静态解析后先按owner/requestId短读已提交回执。同参只回原applicationId及当前通知状态，不重读TTL/U/窗口，不新申请或隐式发信；异参409先于旧引用失效。首次才校验6个月政策与同owner/TTL/hash/完整U引用、实际blocked非空；ALLOW为409/APPLICATION_NOT_REQUIRED，缺行/非owner404，到期410，U变更409，损坏/SQL/配置503。申请链不调用xlsx prepare、POI或导出审计，不获取文件权利。
+静态解析后先按owner/requestId短读已提交回执。同参只回原applicationId及当前通知状态，不重读TTL/U/窗口，不新申请或隐式发信；异参409先于旧引用失效。首次才校验6个月政策与同owner/TTL/hash/完整U引用、实际blocked非空；ALLOW为409/APPLICATION_NOT_REQUIRED；COHORT未知/旧会话410，COMPARE缺行及任何非owner404，到期410，U变更409，损坏/SQL/配置503。申请链不调用xlsx prepare、POI或导出审计，不获取文件权利。
 
 首次创建在REQUIRES_NEW短事务内预约新[ra_ai_export_request](../src/main/resources/sql/20261008_ai_export_request.sql)（owner/requestId主键、applicationId唯一），调用现有ExportMapper真实INSERT旧export_application，再回填正ID；提交只能两表完整，故障回滚。新companion仅保存dev-export-apply-v01安全摘要/条件选择计数/政策/人数与通知事实；无患者值/ID数组/姓名/备注/病例或自由说明。旧doctor_name/mail_to初始null、status保持pending；旧pending/approved/rejected不参与新授权或通知。仅本片创建的旧行允许mail_to/mail_sent更新；旧DDL、CSV/apply接口保持。
 
@@ -1387,7 +1392,7 @@ reason仅null或NOT_CONFIGURED/INVALID_MAIL_CONFIG/RECIPIENT_CHANGED/NOTIFICATIO
 
 修改配置文件/PropertySource后必须重新创建context/重启实例；当前实例不热更新。即使旧Environment已可见false，旧实例仍用构造时值；另一个disabled新context拒新请求，旧实例已准入调用仍沿原Service完成。开关不追溯中断、不倒写持久数据或撤回外发；真正销毁context/进程仍遵从原shutdown规则，不保证被销毁实例继续成功或强杀native DNS。
 
-关闭/重开保留同identity的定义/成功回执、分析/比较payload、导出审计以及申请/attempt/from/to；旧结果仅在原TTL内可重读，过期410/清理后404与完整U变化409保持，重开不延寿/重建旧ID。同参apply重放只读原回执，UNKNOWN/SENT不重发，FAILED仅显式retry经原claim获得新attempt；SENT只说明SMTP受理，WRITTEN只说明本地写出，均不代表送达、审批或文件grant。
+关闭/重开保留同identity的定义/成功回执、分析查询会话/比较payload、导出审计以及申请/attempt/from/to；比较聚合与分析会话仅在原TTL内可重读；分析按当前源重算，过期/清理后410，比较清理后404与完整U变化409保持，重开不延寿/重建旧ID。同参apply重放只读原回执，UNKNOWN/SENT不重发，FAILED仅显式retry经原claim获得新attempt；SENT只说明SMTP受理，WRITTEN只说明本地写出，均不代表送达、审批或文件grant。
 
 当前四页共享上述身份/范围/门：患者与访视 ID 是字符串；私有定义动态重开，保留引用与比较/文件仍沿原 TTL 与全 U 复验。重建 context 后使用真实认证取得 typed Cookie；容器是否保存会话不构成本协议保证。问答开关 `ra.ai.chat.enabled` 及 `ra.ai.chat.aggregate-outbound-approved` / `ra.ai.chat.clinical-outbound-approved` 默认 false，parse 许可不打开 chat，模型不能修改 scope。
 
@@ -1429,7 +1434,7 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 
 `POST /api/ra/ai/overview` 仅接受严格 UTF-8 JSON 空对象 `{}`。未知键（包括 doctorId）、重复键、尾随内容、数组/null/空体/非法 UTF-8 返回 400/INVALID_REQUEST；请求最多 4096 字节，最多读 4097 判超限并返回 413/LIMIT_EXCEEDED。先由实际 PrincipalProvider.requireCurrent 验证服务器 typed session，再检查整体 AI 门；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零 body/业务 SQL 读取。header、principal.name 和本地登录信息不赋权。
 
-独立 AiOverviewController/AiOverviewService 复用 §7.1 的本人 RA 去重 U、短 REPEATABLE_READ 五 SELECT、同次上海 asOfDate、一次药品字典 snapshot 及共享 derive/select/DescriptiveAnalysis。源连接释放后才计算。包含本人已脱落 RA 关系，排除他人、非 RA、孤立关系；不调用 analyze、不创建或清理 AnalysisRun、不缓存、不新增表、不调用模型或 SMTP。源或程序失败 503/SERVICE_UNAVAILABLE，失败 data=null，不能返回空成功。统一 DataResult 与 X-Trace-Id；成功 meta.traceId 同响应 header。
+独立 AiOverviewController/AiOverviewService 复用 §7.1 的本人 RA 去重 U、短 REPEATABLE_READ 四 SELECT、同次上海 asOfDate、一次药品字典 snapshot 及共享 derive/select/DescriptiveAnalysis。源连接释放后才计算。包含本人已脱落 RA 关系，排除他人、非 RA、孤立关系；不调用 analyze、不创建或清理 AnalysisRun、不缓存、不新增表、不调用模型或 SMTP。源或程序失败 503/SERVICE_UNAVAILABLE，失败 data=null，不能返回空成功。统一 DataResult 与 X-Trace-Id；成功 meta.traceId 同响应 header。
 
 | data 字段 | 含义 |
 |---|---|
@@ -1448,7 +1453,7 @@ AI 来源的患者时间线使用原字符串患者和访视 ID 导航；访视�
 
 `POST /api/ra/ai/patientSearch` 接收准确对象 `{keyword:string,page:integer,size:integer}`，三项必填。keyword 必须为配对 Unicode，最多 200 codepoints，原文传输；服务 trim 后，姓名、十进制患者 ID 和研究号 contains 匹配，反斜杠、`%`、`_` 为字面字符。空白关键词可显式查询全部本人 RA。page 为 1～2147483647，size 为 1～200；拒绝字符串数字、小数、布尔、未知/重复键、无效 UTF-8/Unicode、尾随 JSON、数组/null/空体。复用 4096 bytes 严格 reader，最多读 4097 bytes；非法输入 400/INVALID_REQUEST，超限 413/LIMIT_EXCEEDED。
 
-身份→整体 AI 门→正文→SQL 顺序沿 7.10；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零正文/连接。仅复用 `PatientService.listPatients` 当前医生 RA 查询，无 request doctorId、隐式过滤、持久写、模型或缓存。RA 关系去重；与§2.1共用建档时间（create_date空则createDate）倒序、无建档末尾、同时间患者ID倒序；访视变化不改变此顺序。沿现 QcSnapshotReader 短 RR 读取，不声明后续全部临床富化为同一原子快照。
+身份→整体 AI 门→正文→SQL 顺序沿 7.10；匿名 401/UNAUTHENTICATED、门关 503/SERVICE_UNAVAILABLE 均零正文/连接。采用当前医生RA限定的轻量count+LIMIT三字段查询，不调用列表临床/QC富化，无request doctorId、隐式过滤、持久写、模型或缓存。RA 关系去重；与§2.1共用建档时间（create_date空则createDate）倒序、无建档末尾、同时间患者ID倒序；访视变化不改变此顺序。两条窄SELECT同一短RR；关键词沿列表同一动态ESCAPE转义函数，不为三字段搜索读取访视、临床JSON或合并疾病。
 
 成功 `DataResult.data` 恰为 `{items:[{patientId:string,name:string|null,studyNo:string|null}],total:int,page:int,size:int}`，patientId 是规范正十进制 Long 字符串，三字段准确，不输出身份证、手机、临床 DTO 或医生字段。例如搜索 `9007199254740993` 的合成结果：`{items:[{patientId:"9007199254740993",name:"synthetic-patient-odd",studyNo:"RA-ODD"}],total:1,page:1,size:20}`。越界页仍 HTTP200/空 items 并保真实 total 与请求 page/size；无结果不同于匿名和 SQL 故障。源故障 503/SERVICE_UNAVAILABLE/data=null，所有请求带 X-Trace-Id。
 

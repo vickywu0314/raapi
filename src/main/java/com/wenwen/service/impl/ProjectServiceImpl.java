@@ -36,9 +36,8 @@ public class ProjectServiceImpl implements ProjectService {
 
 		com.wenwen.ai.qc.QcSnapshot snapshot=qcReader.readProject();
         int total = snapshot.getPatientIds().size();
-		int active = projectMapper.countActivePatients();
-
-		Map<String, Object> plan = projectMapper.countFollowUpPlan(map);
+		Map<String, Object> plan = projectMapper.countProjectMetrics(map);
+		int active = toInt(plan.get("activeCount"));
 		int due = toInt(plan.get("dueCount"));
 		int done = toInt(plan.get("doneCount"));
 
@@ -55,10 +54,10 @@ public class ProjectServiceImpl implements ProjectService {
 		vo.setTrackingPatients(active);
 		vo.setTotalPatients(total);
 		vo.setTrackingRate(percent(active, total));
-		vo.setPendingFollowUpPatients(projectMapper.countPendingFollowUp(map));
+		vo.setPendingFollowUpPatients(toInt(plan.get("pendingCount")));
 		vo.setPendingQcIssues(issueCount);
 		vo.setQcIssuePatients(issuePatients);
-		vo.setResearchUsableRecords(projectMapper.countUsableRecords());
+		vo.setResearchUsableRecords(toInt(plan.get("usableCount")));
 		return vo;
 	}
 

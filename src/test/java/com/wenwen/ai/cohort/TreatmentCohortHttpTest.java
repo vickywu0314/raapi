@@ -137,8 +137,8 @@ class TreatmentCohortHttpTest extends TreatmentHttpFixture {
         };
         JsonNode current=treatment(success("{}"),1); assertEquals(1,commits.get()); assertEquals("TNFi",current.path("category").asText()); assertEquals(5,current.path("schemeDurationMonths").asInt()); released();
         assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());
-        assertEquals(java.util.Collections.nCopies(5,false),observed.autoCommits);
-        assertEquals(java.util.Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
+        assertEquals(java.util.Collections.nCopies(4,false),observed.autoCommits);
+        assertEquals(java.util.Collections.nCopies(4,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
         observed.reset(); JsonNode next=treatment(success("{}"),1); assertEquals("JAKi",next.path("category").asText()); assertEquals(3,next.path("schemeDurationMonths").asInt()); released();
         sql("DELETE FROM patient_follow_up_history WHERE id=100"); observed.reset(); assertEquals("UNKNOWN",treatment(success("{}"),1).path("state").asText()); released();
     }
@@ -171,7 +171,7 @@ class TreatmentCohortHttpTest extends TreatmentHttpFixture {
         };
         error("{}",503,"SERVICE_UNAVAILABLE"); assertEquals(1,failures.get()); sourceReleased();
         dictionary().view=new com.wenwen.ai.treatment.DevelopmentDrugDictionary().snapshot(); observed.reset(); observed.failSecondSql=true;
-        error("{}",503,"SERVICE_UNAVAILABLE"); assertTrue(observed.mysqlFailures>0); assertEquals(3,observed.selects);
+        error("{}",503,"SERVICE_UNAVAILABLE"); assertTrue(observed.mysqlFailures>0); assertEquals(2,observed.selects);
         assertEquals(1,observed.borrowed); assertEquals(1,observed.returned); assertEquals(0,observed.active.get());
         observed.reset(); assertEquals("TNFi",treatment(success("{}"),1).path("category").asText()); released();
     }

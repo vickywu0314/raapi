@@ -44,7 +44,7 @@ class AiOverviewHttpTest extends DescriptiveHttpFixture {
         assertEquals("2026-10-07T02:00:00Z",m.path("readStartedAt").asText());assertEquals("2026-10-07T02:00:00Z",m.path("readCompletedAt").asText());assertEquals(snapshots+1,dictionary().snapshots);
         assertEquals(9,m.path("policyVersions").size());assertTrue(m.path("policyVersions").path("drugDictionary").asText().startsWith("dev-"));
         assertEquals(6,d.size());for(String secret:new String[]{"patientId","合成患者","110101","analysisId","cursor","OTHER-SECRET"})assertFalse(d.toString().contains(secret));
-        sourceReleased();assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(java.util.Collections.nCopies(5,false),observed.autoCommits);
+        sourceReleased();assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());assertEquals(java.util.Collections.nCopies(4,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(java.util.Collections.nCopies(4,false),observed.autoCommits);
         try(java.sql.Connection c=raw.getConnection();java.sql.Statement s=c.createStatement();java.sql.ResultSet r=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_run")){r.next();assertEquals(0,r.getInt(1));}
     }
 

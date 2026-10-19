@@ -8,13 +8,17 @@ public final class MissingDataPolicy {
     public static final String VERSION="dev-missing-v04";
     private MissingDataPolicy() { }
     public static Map<Long,MissingDataStatus> evaluate(List<Long> ids,Collection<? extends VisitMatcher.Candidate> visits,List<Map<String,Object>> issues) {
+        Set<Long> valid=new HashSet<>(); for(VisitMatcher.Candidate visit:visits) if(visit.getScore()!=null) valid.add(visit.getPatientId());
+        return evaluateValidDas28(ids,valid,issues);
+    }
+    /** 已经由共同严格raw/canonical边界接纳的患者集合；存在性不需要日期或Visit对象。 */
+    public static Map<Long,MissingDataStatus> evaluateValidDas28(List<Long> ids,Set<Long> valid,List<Map<String,Object>> issues) {
         Map<Long,Set<String>> codes=new LinkedHashMap<>();
         for(Long id:ids) codes.put(id,new TreeSet<>());
         for(Map<String,Object> row:issues) {
             long id=((Number)row.get("patient_id")).longValue(); String code=(String)row.get("rule_code");
             if(codes.containsKey(id) && Arrays.asList("M_BASELINE_LAB","M_COMORBIDITY","M_MEDICATION").contains(code)) codes.get(id).add(code);
         }
-        Set<Long> valid=new HashSet<>(); for(VisitMatcher.Candidate visit:visits) if(visit.getScore()!=null) valid.add(visit.getPatientId());
         Map<Long,MissingDataStatus> result=new LinkedHashMap<>();
         for(Long id:ids) { if(!valid.contains(id)) codes.get(id).add("M_DAS28"); result.put(id,new MissingDataStatus(codes.get(id))); }
         return Collections.unmodifiableMap(result);

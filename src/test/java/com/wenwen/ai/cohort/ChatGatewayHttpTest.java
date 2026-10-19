@@ -49,6 +49,6 @@ class ChatGatewayHttpTest extends ChatHttpFixture {
     @Test void fullAllowedHistoryOverContextBudgetRejectsBeforeNetworkAndAudit()throws Exception {
         context.close();chatProperties.put("ra.ai.fm-evidence.json",ConfiguredFmHttpTest.configuration("synthetic-chat-fm",0));buildContext(false);
         String q=String.join("",Collections.nCopies(500,"😀"));String body=json.writeValueAsString(object("scope",object("kind","ALL"),"question",q,"previousQuestions",Arrays.asList(q,q,q)));
-        AiGatewayLoopbackPeer.Exchange planned=answer("TARGET_RATE");error(body,413,"CONTEXT_TOO_LARGE");assertEquals(0,peer.requests.get());assertEquals(1,planned.received.getCount());assertEquals(0,count("ra_ai_chat_audit"));assertEquals(5,observed.selects);networkExited();auditExited();peer.discardUnused(planned);
+        AiGatewayLoopbackPeer.Exchange planned=answer("TARGET_RATE");error(body,413,"CONTEXT_TOO_LARGE");assertEquals(0,peer.requests.get());assertEquals(1,planned.received.getCount());assertEquals(0,count("ra_ai_chat_audit"));assertEquals(4,observed.selects);networkExited();auditExited();peer.discardUnused(planned);
     }
 }

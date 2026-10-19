@@ -105,9 +105,9 @@ class CurrentExportCompositionTest {
 
     @Test void retainedReadAndSourceFailureCannotPublishFileOrEmptySuccess()throws Exception{
         try(WebLoopbackApiFixture f=new WebLoopbackApiFixture()){
-            Client c=start(f);String id=c.data(AI+"cohort","{\"filters\":{\"ids\":[\"2\"]}}").path("analysisId").asText();int rows=count(f,"ra_ai_analysis_run");
-            f.observed.failRunReadSql=true;denied(c.post(EXPORT+"xlsx",request(id,"[\"das28Current\"]")),503,"SERVICE_UNAVAILABLE");assertEquals(1,f.observed.mysqlFailures);assertEquals(0,count(f,"ra_ai_export_audit"));assertEquals(rows,count(f,"ra_ai_analysis_run"));f.observed.failRunReadSql=false;
-            f.observed.failSecondSql=true;denied(c.post(AI+"cohort","{}"),503,"SERVICE_UNAVAILABLE");assertEquals(rows,count(f,"ra_ai_analysis_run"));assertEquals(0,count(f,"ra_ai_export_audit"));f.observed.failSecondSql=false;
+            Client c=start(f);String id=c.data(AI+"cohort","{\"filters\":{\"ids\":[\"2\"]}}").path("analysisId").asText();int rows=count(f,"ra_ai_analysis_query_session");
+            f.observed.failRunReadSql=true;denied(c.post(EXPORT+"xlsx",request(id,"[\"das28Current\"]")),503,"SERVICE_UNAVAILABLE");assertEquals(1,f.observed.mysqlFailures);assertEquals(0,count(f,"ra_ai_export_audit"));assertEquals(rows,count(f,"ra_ai_analysis_query_session"));f.observed.failRunReadSql=false;
+            f.observed.failSecondSql=true;denied(c.post(AI+"cohort","{}"),503,"SERVICE_UNAVAILABLE");assertEquals(rows,count(f,"ra_ai_analysis_query_session"));assertEquals(0,count(f,"ra_ai_export_audit"));f.observed.failSecondSql=false;
             assertEquals(0,f.applicationPeer.connections.get());assertEquals(0,f.observed.active.get());assertEquals(f.observed.borrowed,f.observed.returned);
         }
     }

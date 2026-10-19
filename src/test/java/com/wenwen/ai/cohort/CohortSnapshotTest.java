@@ -44,7 +44,7 @@ class CohortSnapshotTest extends CohortHttpFixture {
         assertEquals(8.0,patientById(data,1).path("das28At").asDouble()); assertEquals(3.0,patientById(data,20).path("das28At").asDouble());
         assertEquals(3,data.path("activity").path("evalN").asInt()); assertSnapshotReleased();
     }
-    private void assertSnapshotReleased() { assertSnapshotReleased(5,2); }
+    private void assertSnapshotReleased() { assertSnapshotReleased(4,2); }
     private void assertSnapshotReleased(int selects,int owners) {
         assertEquals(selects,observed.selects); assertEquals(owners,observed.borrowed); assertEquals(owners,observed.returned); assertEquals(0,observed.active.get());
         assertEquals(1,new HashSet<>(observed.queryConnections).size());
@@ -66,7 +66,7 @@ class CohortSnapshotTest extends CohortHttpFixture {
         JsonNode envelope=json.readTree(response.getResponse().getContentAsByteArray());
         assertFalse(envelope.path("success").asBoolean()); assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertTrue(envelope.path("data").isNull());
         assertNotNull(response.getResponse().getHeader("X-Trace-Id")); assertTrue(observed.mysqlFailures>0,"故障必须实际到达 MySQL 而非仅提前抛异常");
-        assertSnapshotReleased(3,1);
+        assertSnapshotReleased(2,1);
         String body=response.getResponse().getContentAsString();
         for(String secret:new String[]{"SELECT","p01c_missing_source_table","jdbc:","crpScore","synthetic"}) assertFalse(body.contains(secret));
     }
@@ -81,6 +81,6 @@ class CohortSnapshotTest extends CohortHttpFixture {
         assertEquals(503,response.getResponse().getStatus());
         JsonNode envelope=json.readTree(response.getResponse().getContentAsByteArray());
         assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText()); assertFalse(envelope.path("success").asBoolean()); assertTrue(envelope.path("data").isNull());
-        assertEquals(3,instants.get()); assertSnapshotReleased(5,1); assertFalse(response.getResponse().getContentAsString().contains("synthetic-private-program-fault"));
+        assertEquals(3,instants.get()); assertSnapshotReleased(4,1); assertFalse(response.getResponse().getContentAsString().contains("synthetic-private-program-fault"));
     }
 }

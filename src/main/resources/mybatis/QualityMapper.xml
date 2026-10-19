@@ -19,7 +19,7 @@
 
 	<select id="listVisits" resultType="Map">
 		SELECT f.id AS visitId, f.patient_basic_info_id AS patientId,
-		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate, f.fzjc
+		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate
 		FROM patient_follow_up_history f
 		WHERE f.patient_basic_info_id IN (<include refid="myPatients"/>)
 		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)

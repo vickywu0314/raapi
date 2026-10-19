@@ -203,7 +203,7 @@ class FeatureAdmissionHttpTest extends ExportApplicationHttpFixture {
         return m;
     }
     String stateDigest()throws Exception{
-        return rows("SELECT * FROM ra_private_cohort_definition ORDER BY id")+rows("SELECT * FROM ra_private_cohort_command ORDER BY owner_doctor_id,action,request_id")+rows("SELECT * FROM ra_ai_analysis_run ORDER BY id")+rows("SELECT * FROM ra_ai_compare_run ORDER BY id")+rows("SELECT * FROM ra_ai_export_audit ORDER BY id")+rows("SELECT * FROM export_application ORDER BY id")+rows("SELECT * FROM ra_ai_export_request ORDER BY owner_doctor_id,request_id");
+        return rows("SELECT * FROM ra_private_cohort_definition ORDER BY id")+rows("SELECT * FROM ra_private_cohort_command ORDER BY owner_doctor_id,action,request_id")+rows("SELECT * FROM ra_ai_analysis_query_session ORDER BY id")+rows("SELECT * FROM ra_ai_compare_run ORDER BY id")+rows("SELECT * FROM ra_ai_export_audit ORDER BY id")+rows("SELECT * FROM export_application ORDER BY id")+rows("SELECT * FROM ra_ai_export_request ORDER BY owner_doctor_id,request_id");
     }
     @Test void anonymousIdentityPrecedesBothClosingModesOnAllNonParseRoutes()throws Exception {
         exportPopulation37();
@@ -305,7 +305,7 @@ class FeatureAdmissionHttpTest extends ExportApplicationHttpFixture {
         String audit=file.getResponse().getHeader("X-Trace-Id");
         assertEquals(1,rawCount("SELECT COUNT(*) FROM ra_ai_export_audit WHERE id='"+audit+"' AND generation_status='READY' AND transfer_status='WRITTEN' AND file_rows=37 AND file_bytes="+file.getResponse().getContentAsByteArray().length));
         String app=data("/api/ra/export/applyAnalysis",applicationBody(run,401)).path("applicationId").asText();
-        String before=stateDigest(),definition=rows("SELECT * FROM ra_private_cohort_definition WHERE id='"+d+"'"),commands=rows("SELECT * FROM ra_private_cohort_command ORDER BY owner_doctor_id,action,request_id"),runRow=rows("SELECT * FROM ra_ai_analysis_run WHERE id='"+run+"'"),compareRow=rows("SELECT * FROM ra_ai_compare_run WHERE id='"+comparison+"'"),auditRow=rows("SELECT * FROM ra_ai_export_audit WHERE id='"+audit+"'");
+        String before=stateDigest(),definition=rows("SELECT * FROM ra_private_cohort_definition WHERE id='"+d+"'"),commands=rows("SELECT * FROM ra_private_cohort_command ORDER BY owner_doctor_id,action,request_id"),runRow=rows("SELECT * FROM ra_ai_analysis_query_session WHERE id='"+run+"'"),compareRow=rows("SELECT * FROM ra_ai_compare_run WHERE id='"+comparison+"'"),auditRow=rows("SELECT * FROM ra_ai_export_audit WHERE id='"+audit+"'");
         byte[] rBytes=analysisPayload(run),kBytes=payload(comparison);
         analysisProperties.put(GLOBAL,"false");
         analysisProperties.put(FILE,"false");
@@ -323,7 +323,7 @@ class FeatureAdmissionHttpTest extends ExportApplicationHttpFixture {
         sameRetainedComparison(k,readComparison(comparison));
         assertEquals(definition,rows("SELECT * FROM ra_private_cohort_definition WHERE id='"+d+"'"));
         assertEquals(commands,rows("SELECT * FROM ra_private_cohort_command ORDER BY owner_doctor_id,action,request_id"));
-        assertEquals(runRow,rows("SELECT * FROM ra_ai_analysis_run WHERE id='"+run+"'"));
+        assertEquals(runRow,rows("SELECT * FROM ra_ai_analysis_query_session WHERE id='"+run+"'"));
         assertEquals(compareRow,rows("SELECT * FROM ra_ai_compare_run WHERE id='"+comparison+"'"));
         assertArrayEquals(rBytes,analysisPayload(run));
         assertArrayEquals(kBytes,payload(comparison));
@@ -342,7 +342,7 @@ class FeatureAdmissionHttpTest extends ExportApplicationHttpFixture {
         assertEquals(clock.now.plusSeconds(900).toString(),fresh.path("meta").path("expiresAt").asText());
         compareSuccess(compareBody(d));
         errorAt("/api/ra/ai/compareResult","{\"compareResultId\":\""+comparison+"\"}",404,"RESOURCE_NOT_FOUND");
-        errorAt("/api/ra/export/xlsx",fileBody(run),404,"RESOURCE_NOT_FOUND");
+        errorAt("/api/ra/export/xlsx",fileBody(run),410,"ANALYSIS_EXPIRED");
         assertEquals(auditRow,rows("SELECT * FROM ra_ai_export_audit WHERE id='"+audit+"'"));
         assertEquals(definition,rows("SELECT * FROM ra_private_cohort_definition WHERE id='"+d+"'"));
         exited();
@@ -549,7 +549,7 @@ class FeatureAdmissionHttpTest extends ExportApplicationHttpFixture {
             oldAvailability.requireApi();
             oldExited(oldObserved,oldPrivate,oldComparison,oldExport,oldApplication,oldWriter);
             deny("/api/ra/ai/cohort","{}","队列功能暂不可用");
-            assertEquals(2,rawCount("SELECT COUNT(*) FROM ra_ai_analysis_run"));
+            assertEquals(2,rawCount("SELECT COUNT(*) FROM ra_ai_analysis_query_session"));
             exited();
         }
         finally{

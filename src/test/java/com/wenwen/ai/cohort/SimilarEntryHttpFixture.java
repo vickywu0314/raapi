@@ -40,6 +40,6 @@ abstract class SimilarEntryHttpFixture extends RetainedCohortHttpFixture {
         assertEquals(observed.borrowed,observed.returned);assertEquals(0,observed.active.get());
     }
     void resolverReleased() {
-        assertEquals(5,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());
+        assertEquals(4,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());
     }
 }

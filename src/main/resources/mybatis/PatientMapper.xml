@@ -6,6 +6,26 @@
 	只返回当前医生名下（patient_relation_doctor.doctor_id）的 RA 患者；RA 包含哪些研究类型见 ProjectMapper.raResearchTypes。
 -->
 <mapper namespace="com.wenwen.mapper.PatientMapper" >
+	<!-- 可信搜索不消费QC、随访或临床信息；IN成员关系避免重复RA关系放大行数。 -->
+	<sql id="searchPatientScope">
+		FROM patient_basic_info p
+		WHERE p.id IN (SELECT r.patient_id FROM patient_relation_doctor r
+		              WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
+		<if test="keyword != null and keyword != ''">
+			AND (p.name LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
+			     OR CAST(p.id AS CHAR) LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
+			     OR p.study_no LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape})
+		</if>
+	</sql>
+	<select id="countSearchPatients" resultType="int" parameterType="Map">
+		SELECT COUNT(*) <include refid="searchPatientScope"/>
+	</select>
+	<select id="searchPatients" resultType="Map" parameterType="Map">
+		SELECT p.id AS patientId, p.name, p.study_no AS studyNo <include refid="searchPatientScope"/>
+		ORDER BY COALESCE(p.create_date, p.createDate) IS NULL,
+		         COALESCE(p.create_date, p.createDate) DESC, p.id DESC
+		LIMIT #{offset}, #{size}
+	</select>
 
 	<!--
 		当前医生名下患者，每行一个患者，附带计算字段：
@@ -36,13 +56,16 @@
 		            WHEN DATE_ADD(DATE(v.lastVisit), INTERVAL p.follow_cycle MONTH) &lt;= DATE_ADD(CAST(#{asOf} AS DATE), INTERVAL 14 DAY) THEN 'soon'
 		            ELSE 'active' END AS followStatus
 		FROM patient_basic_info p
-		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) d ON d.patient_id = p.id
-		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND miss = 1 AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)) w ON w.patient_id = p.id
+		JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		      <if test="patientId != null">AND patient_id = #{patientId}</if>) d ON d.patient_id = p.id
+		LEFT JOIN (SELECT DISTINCT patient_id FROM patient_relation_doctor WHERE doctor_id = #{doctorId} AND miss = 1 AND research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		      <if test="patientId != null">AND patient_id = #{patientId}</if>) w ON w.patient_id = p.id
 		LEFT JOIN (SELECT f.patient_basic_info_id AS pid, COUNT(*) AS visitCount,
 		                  MAX(COALESCE(f.follow_up_date, f.followUpDate)) AS lastVisit,
 		                  MIN(COALESCE(f.follow_up_date, f.followUpDate)) AS firstVisit
 		           FROM patient_follow_up_history f
 		           WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		             <if test="patientId != null">AND f.patient_basic_info_id = #{patientId}</if>
 		             AND f.patient_basic_info_id IN (SELECT r.patient_id FROM patient_relation_doctor r WHERE r.doctor_id = #{doctorId} AND r.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>))
 		           GROUP BY f.patient_basic_info_id) v ON v.pid = p.id
 		<if test="patientId != null">WHERE p.id = #{patientId}</if>
@@ -89,6 +112,15 @@
 		  AND f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
 		ORDER BY f.patient_basic_info_id, COALESCE(f.follow_up_date, f.followUpDate) IS NULL,
 		         COALESCE(f.follow_up_date, f.followUpDate) DESC, f.id DESC
+	</select>
+
+	<!-- 项目QC只判断任意历史有效canonical CRP，无需日期、访视ID和排序。 -->
+	<select id="listQcDas28" resultType="Map" parameterType="Map">
+		SELECT f.patient_basic_info_id AS patientId, f.bqpg AS bqpg
+		FROM patient_follow_up_history f
+		WHERE f.research_type IN (<include refid="com.wenwen.mapper.ProjectMapper.raResearchTypes"/>)
+		  AND f.patient_basic_info_id IN (SELECT p.id FROM patient_basic_info p WHERE 1=1
+		      <include refid="com.wenwen.mapper.ProjectMapper.qcScope"/>)
 	</select>
 
 	<!-- 疾病分型用：各次随访辅助检查 fzjc 原文，释放连接后共同scalar读取RF/CCP，每个患者最近的在前 -->

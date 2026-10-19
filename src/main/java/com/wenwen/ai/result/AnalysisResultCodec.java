@@ -12,7 +12,7 @@ public final class AnalysisResultCodec {
     private static final String METRIC="value sourceVisitId sourceField observedAt unit quality missingReason";
     private static final String TEST="method status pValue displayP significant nA nB reason warnings policyVersion testDenominator alternative alpha continuityCorrection tiesCorrection pValueMethod expectedBelow5Cells expectedCellCount";
     private static final String PROPORTION="numerator denominator unknownN status displayText";
-    public byte[] encode(AiCohortVo vo,List<Map<String,Object>> rows,CohortQuery query){
+    public Map<String,Object> project(AiCohortVo vo,List<Map<String,Object>> rows,CohortQuery query){
         Map<String,Object> out=new LinkedHashMap<>();
         out.put("n",vo.getN());out.put("studyTotal",vo.getStudyTotal());out.put("submittedUniqueIdsN",vo.getSubmittedUniqueIdsN());out.put("effectiveIdsN",vo.getEffectiveIdsN());
         Map<String,Object> activity=fields(vo.getActivity(),"baseN baseUnknownN evalN unknownN unknownTxN");
@@ -24,16 +24,21 @@ public final class AnalysisResultCodec {
         Map<String,Object> fm=fields(vo.getFm(),"nFM nOther unknownN status reason");List<Map<String,Object>> fmRows=new ArrayList<>();for(Object x:(Collection<?>)vo.getFm().get("rows")){Map<String,Object> r=fields(x,"metric meanFM meanOther nFMValid nOtherValid difference highlight status reason displayFM displayOther displayDifference");r.put("test",fields(map(x).get("test"),TEST));fmRows.add(r);}fm.put("rows",fmRows);out.put("fm",fm);
         Map<String,Object> lines=fields(vo.getLines(),"unknownLineN");lines.put("groups",list(vo.getLines().get("groups"),"line count value status displayText"));out.put("lines",lines);
         Map<String,Object> meta=fields(vo.getMeta(),"at asOfDate readStartedAt readCompletedAt computedAt traceId expiresAt supportedFilters completion patientProjection statisticalDisclosure");meta.put("policyVersions",fields(vo.getMeta().get("policyVersions"),"statistics descriptive qc crp now clinical serology treatment visitMatcher drugDictionary fmSource"));out.put("meta",meta);out.put("filters",query.normalizedFilters());
-        List<Map<String,Object>> projected=new ArrayList<>();for(Map<String,Object> r:rows)projected.add(row(r));out.put("rows",projected);
+        List<Map<String,Object>> projected=new ArrayList<>();for(Map<String,Object> r:rows)projected.add(projectRow(r));out.put("rows",projected);
         AnalysisPayloadValidation.validate(out);
-        try{return json.writeValueAsBytes(out);}catch(java.io.IOException e){throw new IllegalStateException("结果编码失败",e);}
+        return Collections.unmodifiableMap(out);
+    }
+    /** 仅供瞬时内容校验/兼容单元测试，分析成功路径不会序列化完整结果。 */
+    public byte[] encode(AiCohortVo vo,List<Map<String,Object>> rows,CohortQuery query){
+        try{return json.writeValueAsBytes(project(vo,rows,query));}catch(java.io.IOException e){throw new IllegalStateException("结果编码失败",e);}
     }
     @SuppressWarnings("unchecked") public Map<String,Object> decode(AnalysisRun run) {
         if(run.getPayloadVersion()!=1||!AnalysisValues.SORT.equals(run.getSortKey())||!AnalysisValues.sha256(run.getPayload()).equals(run.getPayloadSha256()))throw AnalysisSettings.unavailable();
         try{Map<String,Object> payload=json.readValue(run.getPayload(),Map.class);AnalysisPayloadValidation.validate(payload);if(!java.time.Instant.ofEpochMilli(run.getExpiresAtMs()).toString().equals(((Map<?,?>)payload.get("meta")).get("expiresAt")))throw AnalysisSettings.unavailable();return payload;}catch(java.io.IOException e){throw AnalysisSettings.unavailable();}
     }
     private static Map<String,Object> provenance(Object v,Object score){Map<String,Object> out=fields(v,"source sourceVisitId sourceField observedAt quality missingReason");Object raw=map(v).get("raw");out.put("raw",score!=null&&raw instanceof String&&com.wenwen.ai.clinical.EvaluationPolicy.number((String)raw)!=null?raw:null);return out;}
-    private static Map<String,Object> row(Map<String,Object> r){
+    /** 后页与导出复用的显式安全行投影；不触发其它候选患者来源构建。 */
+    public static Map<String,Object> projectRow(Map<String,Object> r){
         Map<String,Object> out=fields(r,"patientId das28At das28Base das28Current deltaDas28 activity");out.put("clinical",fields(r.get("clinical"),"sex age diseaseDurationYears sero fm as"));out.put("qc",fields(r.get("qc"),"status missingCodes ruleVersion"));
         out.put("selection",fields(r.get("selection"),"at episodeKey baselineVisitId baselineDate evalVisitId evalDate nowVisitId nowDate target6mDate eligible6m quality missingReason deltaMissingReason"));
         out.put("scoreProvenance",provenance(r.get("scoreProvenance"),r.get("das28At")));out.put("baselineProvenance",provenance(r.get("baselineProvenance"),r.get("das28Base")));

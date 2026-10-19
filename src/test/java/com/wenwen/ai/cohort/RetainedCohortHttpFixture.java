@@ -26,11 +26,11 @@ abstract class RetainedCohortHttpFixture extends TreatmentHttpFixture {
         for(int i=0;i<count;i++){int id=201+i;sql("INSERT INTO patient_basic_info(id,name) VALUES("+id+",'synthetic-tied')");sql("INSERT INTO patient_relation_doctor(doctor_id,patient_id,research_type) VALUES(101,"+id+",0)");visit(id*10,id,0,"{\"result\":{\"crpScore\":3}}","2026-10-07",null,null);}
     }
     void setting(String name,String value){org.springframework.test.util.ReflectionTestUtils.setField(context.getBean(com.wenwen.ai.result.AnalysisSettings.class),name,value);}
-    int runs() throws Exception {try(Connection c=raw.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_run")){assertTrue(r.next());return r.getInt(1);}}
+    int runs() throws Exception {try(Connection c=raw.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_query_session")){assertTrue(r.next());return r.getInt(1);}}
     void pageError(String id,String cursor,int status,String code) throws Exception {pageBodyError("{\"analysisId\":\""+id+"\",\"cursor\":\""+cursor+"\"}",status,code);}
     void pageBodyError(String body,int status,String code) throws Exception {org.springframework.test.web.servlet.MvcResult r=pageRequest(body);assertEquals(status,r.getResponse().getStatus(),r.getResponse().getContentAsString());JsonNode n=json.readTree(r.getResponse().getContentAsByteArray());assertEquals(code,n.path("code").asText());assertTrue(n.path("data").isNull());assertFalse(n.path("success").asBoolean());assertNotNull(r.getResponse().getHeader("X-Trace-Id"));}
     void expiredCopies(String source,int count) throws Exception {
-        try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("INSERT INTO ra_ai_analysis_run SELECT ?,202,scope_fingerprint,sort_key,payload_version,payload,payload_sha256,created_at_ms,? FROM ra_ai_analysis_run WHERE id=?")) {
+        try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("INSERT INTO ra_ai_analysis_query_session SELECT ?,202,scope_fingerprint,sort_key,query_version,query_json,as_of_date,policy_fingerprint,created_at_ms,? FROM ra_ai_analysis_query_session WHERE id=?")) {
             for(int i=1;i<=count;i++){s.setString(1,String.format(java.util.Locale.ROOT,"00000000-0000-0000-0000-%012d",i));s.setLong(2,clock.now.toEpochMilli()-1);s.setString(3,source);s.addBatch();}s.executeBatch();
         }
     }
@@ -40,13 +40,10 @@ abstract class RetainedCohortHttpFixture extends TreatmentHttpFixture {
         }
         return com.wenwen.ai.result.AnalysisValues.sha256(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
-    boolean runExists(String id) throws Exception {try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("SELECT COUNT(*) FROM ra_ai_analysis_run WHERE id=?")){s.setString(1,id);try(ResultSet r=s.executeQuery()){assertTrue(r.next());return r.getInt(1)>0;}}}
-    void replacePayload(String id,byte[] bytes,boolean correctHash)throws Exception {
-        try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("UPDATE ra_ai_analysis_run SET payload=?,payload_sha256=? WHERE id=?")){s.setBytes(1,bytes);s.setString(2,correctHash?com.wenwen.ai.result.AnalysisValues.sha256(bytes):String.join("",Collections.nCopies(64,"0")));s.setString(3,id);assertEquals(1,s.executeUpdate());}
-    }
+    boolean runExists(String id) throws Exception {try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("SELECT COUNT(*) FROM ra_ai_analysis_query_session WHERE id=?")){s.setString(1,id);try(ResultSet r=s.executeQuery()){assertTrue(r.next());return r.getInt(1)>0;}}}
     void treatmentSource(long visit,String value)throws Exception {try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("UPDATE patient_follow_up_history SET zlfa=? WHERE id=?")){s.setString(1,value);s.setLong(2,visit);assertEquals(1,s.executeUpdate());}}
     byte[] stored(String id) throws Exception {
-        try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("SELECT payload FROM ra_ai_analysis_run WHERE id=?")) {
+        try(Connection c=raw.getConnection();PreparedStatement s=c.prepareStatement("SELECT query_json FROM ra_ai_analysis_query_session WHERE id=?")) {
             s.setString(1,id);try(ResultSet r=s.executeQuery()){assertTrue(r.next());byte[] b=r.getBytes(1);assertFalse(r.next());return b;}
         }
     }

@@ -103,12 +103,21 @@ class Mysql57CompatibilityTest {
         assertEquals("Dynamic",text("SELECT ROW_FORMAT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ocr_lab_alias'"));
         assertNull(text("SELECT SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ocr_lab_alias' AND INDEX_NAME='uk_alias'"));
     }
-    @Test void retainedMapperRoundTripsEightMiBBeyondMysql57DefaultPacket()throws Exception{
-        script("/sql/20261007_ai_analysis_run.sql");tables.add("ra_ai_analysis_run");
-        SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(source);factory.setMapperLocations(new org.springframework.core.io.Resource[]{new ClassPathResource("mybatis/AiAnalysisRunMapper.xml")});
-        AiAnalysisRunMapper mapper=new SqlSessionTemplate(factory.getObject()).getMapper(AiAnalysisRunMapper.class);
+    @Test void comparisonMapperRoundTripsEightMiBBeyondMysql57DefaultPacket()throws Exception{
+        script("/sql/20261008_ai_compare_run.sql");tables.add("ra_ai_compare_run");
+        SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(source);factory.setMapperLocations(new org.springframework.core.io.Resource[]{new ClassPathResource("mybatis/AiComparisonRunMapper.xml")});
+        com.wenwen.mapper.AiComparisonRunMapper mapper=new SqlSessionTemplate(factory.getObject()).getMapper(com.wenwen.mapper.AiComparisonRunMapper.class);
         byte[] bytes=new byte[8388608];for(int i=0;i<bytes.length;i++)bytes[i]=(byte)(i%251);
-        AnalysisRun run=new AnalysisRun();run.setId("00000000-0000-0000-0000-000000000057");run.setOwnerDoctorId(101L);run.setScopeFingerprint(String.join("",Collections.nCopies(64,"a")));run.setSortKey("test");run.setPayloadVersion(1);run.setPayload(bytes);run.setPayloadSha256(com.wenwen.ai.result.AnalysisValues.sha256(bytes));run.setCreatedAtMs(1L);run.setExpiresAtMs(1000L);
-        assertEquals(1,mapper.insert(run));AnalysisRun stored=mapper.find(run.getId());assertArrayEquals(bytes,stored.getPayload());assertEquals(run.getPayloadSha256(),stored.getPayloadSha256());
+        com.wenwen.ai.result.ComparisonRun run=new com.wenwen.ai.result.ComparisonRun();run.setId("00000000-0000-0000-0000-000000000057");run.setOwnerDoctorId(101L);run.setScopeFingerprint(String.join("",Collections.nCopies(64,"a")));run.setPayloadVersion(1);run.setPayload(bytes);run.setPayloadSha256(com.wenwen.ai.result.AnalysisValues.sha256(bytes));run.setCreatedAtMs(1L);run.setExpiresAtMs(1000L);
+        assertEquals(1,mapper.insert(run));com.wenwen.ai.result.ComparisonRun stored=mapper.find(run.getId());assertArrayEquals(bytes,stored.getPayload());assertEquals(run.getPayloadSha256(),stored.getPayloadSha256());
+    }
+    @Test void querySessionMapperRoundTripsFiveThousandCanonicalLongIdsBeyondTextCapacity()throws Exception {
+        script("/sql/20261019_ai_analysis_query_session.sql");tables.add("ra_ai_analysis_query_session");
+        List<String> ids=new ArrayList<>();for(int i=0;i<5000;i++)ids.add(Long.toString(Long.MAX_VALUE-i));
+        String input=new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(com.wenwen.vo.AiCohortVo.object("filters",com.wenwen.vo.AiCohortVo.object("ids",ids)));
+        com.wenwen.ai.query.CohortQuery query=com.wenwen.ai.query.CohortQuery.read(new java.io.ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)),new com.wenwen.ai.scope.TrustedDoctor(101));String canonical=new com.wenwen.ai.result.AnalysisQueryCodec().encode(query);assertTrue(canonical.getBytes(StandardCharsets.UTF_8).length>65535);assertTrue(canonical.getBytes(StandardCharsets.UTF_8).length<128*1024);
+        SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(source);factory.setMapperLocations(new org.springframework.core.io.Resource[]{new ClassPathResource("mybatis/AiAnalysisRunMapper.xml")});AiAnalysisRunMapper mapper=new SqlSessionTemplate(factory.getObject()).getMapper(AiAnalysisRunMapper.class);
+        AnalysisRun run=new AnalysisRun();run.setId("00000000-0000-0000-0000-000000000058");run.setOwnerDoctorId(101L);run.setScopeFingerprint(String.join("",Collections.nCopies(64,"a")));run.setSortKey(com.wenwen.ai.result.AnalysisValues.SORT);run.setPayloadVersion(2);run.setQueryJson(canonical);run.setAsOfDate("2026-10-19");run.setPolicyFingerprint(String.join("",Collections.nCopies(64,"b")));run.setCreatedAtMs(1);run.setExpiresAtMs(1000);
+        assertEquals(1,mapper.insert(run));AnalysisRun stored=mapper.find(run.getId());assertEquals(canonical,stored.getQueryJson());assertNull(stored.getPayload());assertEquals(query.normalizedFilters(),new com.wenwen.ai.result.AnalysisQueryCodec().decode(stored).normalizedFilters());assertEquals("mediumtext",text("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ra_ai_analysis_query_session' AND COLUMN_NAME='query_json'"));
     }
 }

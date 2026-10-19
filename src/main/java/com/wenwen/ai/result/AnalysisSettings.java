@@ -9,6 +9,6 @@ public final class AnalysisSettings {
     public int maxBytes(){try{int n=Integer.parseInt(maxBytes);if(n<=0||n>16777215)throw new IllegalArgumentException();return n;}catch(RuntimeException e){throw unavailable();}}
     public byte[] key(){try{byte[] key=Base64.getDecoder().decode(keyBase64);if(key.length<32)throw new IllegalArgumentException();return key;}catch(RuntimeException e){throw unavailable();}}
     public void validateAt(long now){validate();try{Math.addExact(now,ttlMillis());}catch(ArithmeticException e){throw unavailable();}}
-    public void validate(){ttlMillis();maxBytes();key();}
+    public void validate(){ttlMillis();key();}
     public static CohortException unavailable(){return new CohortException(503,"SERVICE_UNAVAILABLE","分析暂不可用");}
 }

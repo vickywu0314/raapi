@@ -33,19 +33,24 @@ public final class CohortSourceAdapter {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.core.env.Environment environment;
     public SourceBatch read(long doctorId, LocalDate asOf) {
+        final double rfLimit=rfUln,ccpLimit=ccpUln;
         ConfiguredFmEvidenceSource.View fmView=new ConfiguredFmEvidenceSource(environment).snapshot();
-        // Spring-managed MyBatis 的五条批量 SELECT 共享本事务。回调仅读取，不解析病例或计算。
+        // Spring-managed MyBatis 的四条批量 SELECT 共享本事务。回调仅读取，不解析病例或计算。
         Map<String,Object> scope=new HashMap<>(); scope.put("doctorId",doctorId); scope.put("patientId",null);
-        RawBatch raw = snapshot.execute(status -> new RawBatch(mapper.patients(doctorId),mapper.patientIds(doctorId),mapper.visits(doctorId),mapper.comorbidities(doctorId),mapper.missingIssues(scope)));
+        RawBatch raw = snapshot.execute(status -> new RawBatch(mapper.patients(doctorId),mapper.visits(doctorId),mapper.comorbidities(doctorId),mapper.missingIssues(scope)));
         Instant completed = clock.instant(); // execute 已完成事务及连接释放
         List<ScoreVisit> visits = new ArrayList<>();
         for (VisitRow row : raw.visits) visits.add(parse(row));
+        Map<Long,List<ScoreVisit>> visitsByPatient=new HashMap<>();
+        for(ScoreVisit visit:visits)visitsByPatient.computeIfAbsent(visit.getPatientId(),id->new ArrayList<>()).add(visit);
+        Map<Long,List<ComorbidityRow>> comorbiditiesByPatient=new HashMap<>();
+        for(ComorbidityRow row:raw.comorbidities)comorbiditiesByPatient.computeIfAbsent(row.getPatientId(),id->new ArrayList<>()).add(row);
         Map<Long,PatientClinical> clinical = new LinkedHashMap<>();
         Map<Long,String> serology = new HashMap<>();
         for (ScoreVisit visit : visits) {
             if (visit.getObservedAt()==null || visit.getObservedAt().isAfter(asOf)) continue;
-            String state=ClinicalPolicy.serology(serology.get(visit.getPatientId()),com.wenwen.util.SerologyUtil.classify(visit.getRf(),rfUln));
-            serology.put(visit.getPatientId(),ClinicalPolicy.serology(state,com.wenwen.util.SerologyUtil.classify(visit.getCcp(),ccpUln)));
+            String state=ClinicalPolicy.serology(serology.get(visit.getPatientId()),com.wenwen.util.SerologyUtil.classify(visit.getRf(),rfLimit));
+            serology.put(visit.getPatientId(),ClinicalPolicy.serology(state,com.wenwen.util.SerologyUtil.classify(visit.getCcp(),ccpLimit)));
         }
         Map<Long,Set<String>> associations=new HashMap<>();
         for (ComorbidityRow row : raw.comorbidities) {
@@ -60,22 +65,25 @@ public final class CohortSourceAdapter {
             String sero=serology.getOrDefault(row.getId(),"UNKNOWN");
             String fm=fmView!=null?fmView.state(row.getId(),asOf):associations.getOrDefault(row.getId(),Collections.emptySet()).contains("FM")?"TRUE":"UNKNOWN";
             String as=associations.getOrDefault(row.getId(),Collections.emptySet()).contains("AS")?"TRUE":"UNKNOWN";
-            List<Map<String,Object>> tests=new ArrayList<>();
-            for (ScoreVisit visit : visits) if (visit.getPatientId()==row.getId() && visit.getObservedAt()!=null && !visit.getObservedAt().isAfter(asOf)) {
-                addTest(tests,visit,"fzjc.lfsyz",SerologyUtil.classify(visit.getRf(),rfUln));
-                addTest(tests,visit,"fzjc.kccpkt",SerologyUtil.classify(visit.getCcp(),ccpUln));
-            }
-            Map<String,Object> provenance=object(
-                "sex",fact("patient_basic_info.gender",sex==null?"UNRECOGNIZED_GENDER":null),
-                "age",fact("patient_basic_info.card_no",age==null?"NO_VALID_BIRTH_DATE":null),
-                "diseaseDurationYears",fact("COALESCE(patient_basic_info.confirm_date,patient_basic_info.confirmDate)",duration==null?"NO_VALID_CONFIRM_DATE":null),
-                "sero",object("source","LEGACY_RECORDED","sourceField","fzjc.lfsyz/fzjc.kccpkt","observations",Collections.unmodifiableList(tests),
-                    "quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason","UNKNOWN".equals(sero)?"NO_CLASSIFIABLE_DATED_TEST":null),
-                "fm",fmView==null?associationProvenance(row.getId(),"FM",raw.comorbidities,asOf):fmView.provenance(row.getId(),asOf),
-                "as",associationProvenance(row.getId(),"AS",raw.comorbidities,asOf));
-            clinical.put(row.getId(),new PatientClinical(sex,age,duration,sero,fm,as,provenance));
+            final long patientId=row.getId();
+            final List<ScoreVisit> patientVisits=visitsByPatient.getOrDefault(patientId,Collections.emptyList());
+            final List<ComorbidityRow> patientComorbidities=comorbiditiesByPatient.getOrDefault(patientId,Collections.emptyList());
+            clinical.put(patientId,new PatientClinical(sex,age,duration,sero,fm,as,()->clinicalProvenance(patientId,sex,age,duration,sero,patientVisits,patientComorbidities,asOf,fmView,rfLimit,ccpLimit)));
         }
-        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing),display,fmView==null?null:fmView.version);
+        return new SourceBatch(Collections.unmodifiableList(new ArrayList<>(raw.ids)), Collections.unmodifiableList(visits), completed, Collections.unmodifiableMap(clinical),com.wenwen.ai.qc.MissingDataPolicy.evaluate(raw.ids,visits,raw.missing),display,fmView==null?null:fmView.version,com.wenwen.ai.result.AnalysisValues.sha256((Double.toHexString(rfLimit)+"\n"+Double.toHexString(ccpLimit)).getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+    }
+    private static Map<String,Object> clinicalProvenance(long patientId,String sex,Integer age,Integer duration,String sero,List<ScoreVisit> visits,List<ComorbidityRow> comorbidities,LocalDate asOf,ConfiguredFmEvidenceSource.View fmView,double rfLimit,double ccpLimit) {
+        List<Map<String,Object>> tests=new ArrayList<>();
+        for(ScoreVisit visit:visits)if(visit.getObservedAt()!=null&&!visit.getObservedAt().isAfter(asOf)) {
+            addTest(tests,visit,"fzjc.lfsyz",SerologyUtil.classify(visit.getRf(),rfLimit));
+            addTest(tests,visit,"fzjc.kccpkt",SerologyUtil.classify(visit.getCcp(),ccpLimit));
+        }
+        return object("sex",fact("patient_basic_info.gender",sex==null?"UNRECOGNIZED_GENDER":null),
+            "age",fact("patient_basic_info.card_no",age==null?"NO_VALID_BIRTH_DATE":null),
+            "diseaseDurationYears",fact("COALESCE(patient_basic_info.confirm_date,patient_basic_info.confirmDate)",duration==null?"NO_VALID_CONFIRM_DATE":null),
+            "sero",object("source","LEGACY_RECORDED","sourceField","fzjc.lfsyz/fzjc.kccpkt","observations",tests,"quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason","UNKNOWN".equals(sero)?"NO_CLASSIFIABLE_DATED_TEST":null),
+            "fm",fmView==null?associationProvenance(patientId,"FM",comorbidities,asOf):fmView.provenance(patientId,asOf),
+            "as",associationProvenance(patientId,"AS",comorbidities,asOf));
     }
     private static Map<String,Object> fact(String field,String missing) {
         return object("source","LEGACY_RECORDED","sourceField",field,"quality",Collections.singletonList("LEGACY_UNVERIFIED"),"missingReason",missing);
@@ -121,6 +129,6 @@ public final class CohortSourceAdapter {
         final List<VisitRow> visits;
         final List<PatientRow> patients;
         final List<ComorbidityRow> comorbidities;
-        RawBatch(List<PatientRow> patients, List<Long> ids, List<VisitRow> visits, List<ComorbidityRow> comorbidities,List<Map<String,Object>> missing) { this.missing=missing; this.ids = ids; this.visits = visits; this.patients=patients; this.comorbidities=comorbidities; }
+        RawBatch(List<PatientRow> patients, List<VisitRow> visits, List<ComorbidityRow> comorbidities,List<Map<String,Object>> missing) { this.missing=missing; this.ids = new ArrayList<>();for(PatientRow row:patients)this.ids.add(row.getId()); this.visits = visits; this.patients=patients; this.comorbidities=comorbidities; }
     }
 }

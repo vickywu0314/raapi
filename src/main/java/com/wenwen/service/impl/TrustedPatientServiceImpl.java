@@ -5,24 +5,44 @@ import com.wenwen.ai.patient.PatientDetailProjection;
 import com.wenwen.ai.query.CohortException;
 import com.wenwen.ai.query.PatientDetailQuery;
 import com.wenwen.ai.scope.TrustedDoctor;
+import com.wenwen.mapper.PatientMapper;
 import com.wenwen.service.PatientService;
 import com.wenwen.util.BizException;
+import java.util.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.*;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class TrustedPatientServiceImpl {
     private final PatientService patients;
     private final com.wenwen.service.VisitService visits;
-    public TrustedPatientServiceImpl(PatientService patients,com.wenwen.service.VisitService visits){this.patients=patients;this.visits=visits;}
+    private final PatientMapper mapper;
+    private final TransactionTemplate searchSnapshot;
+    private static final com.fasterxml.jackson.databind.ObjectMapper json=new com.fasterxml.jackson.databind.ObjectMapper();
+    public TrustedPatientServiceImpl(PatientService patients,com.wenwen.service.VisitService visits,PatientMapper mapper,PlatformTransactionManager transactions){
+        this.patients=patients;this.visits=visits;this.mapper=mapper;
+        searchSnapshot=new TransactionTemplate(transactions);searchSnapshot.setReadOnly(true);
+        searchSnapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);searchSnapshot.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
     public JsonNode search(TrustedDoctor doctor,com.wenwen.ai.query.PatientSearchQuery query){
-        com.wenwen.vo.PatientsListVo list=patients.listPatients(doctor.getId(),query.getKeyword(),null,null,query.getPage(),query.getSize());
-        com.fasterxml.jackson.databind.node.ObjectNode result=new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
-        result.put("total",list.getTotal());result.put("page",query.getPage());result.put("size",query.getSize());
-        com.fasterxml.jackson.databind.node.ArrayNode items=result.putArray("items");
-        for(com.wenwen.vo.PatientItemVo patient:list.getItems()){
-            com.fasterxml.jackson.databind.node.ObjectNode item=items.addObject();item.put("patientId",String.valueOf(patient.getPatientId()));item.put("name",patient.getName());item.put("studyNo",patient.getStudyNo());
-        }
-        return result;
+        Map<String,Object> scope=new HashMap<>();scope.put("doctorId",doctor.getId());
+        String keyword=query.getKeyword().trim();
+        String literal=keyword.isEmpty()?null:keyword;String escape=PatientServiceImpl.likeEscape(literal);
+        scope.put("keyword",PatientServiceImpl.escapeLike(literal,escape));scope.put("keywordEscape",escape);
+        long offset=((long)query.getPage()-1)*query.getSize();scope.put("offset",offset);scope.put("size",query.getSize());
+        return searchSnapshot.execute(status -> {
+            int total=mapper.countSearchPatients(scope);
+            List<Map<String,Object>> rows=offset>=total?Collections.emptyList():mapper.searchPatients(scope);
+            com.fasterxml.jackson.databind.node.ObjectNode result=json.createObjectNode();
+            result.put("total",total);result.put("page",query.getPage());result.put("size",query.getSize());
+            com.fasterxml.jackson.databind.node.ArrayNode items=result.putArray("items");
+            for(Map<String,Object> patient:rows){
+                com.fasterxml.jackson.databind.node.ObjectNode item=items.addObject();item.put("patientId",String.valueOf(patient.get("patientId")));
+                item.put("name",(String)patient.get("name"));item.put("studyNo",(String)patient.get("studyNo"));
+            }
+            return result;
+        });
     }
     public JsonNode visit(TrustedDoctor doctor,com.wenwen.ai.query.VisitDetailQuery query){
         try{

@@ -52,7 +52,7 @@ class ConfiguredFmHttpTest extends DescriptiveHttpFixture {
         sixPatients();observed.failInsertSql=true;
         MvcResult r=http.perform(post("/api/ra/ai/overview").session(session()).contentType("application/json").content("{}")).andReturn();assertEquals(200,r.getResponse().getStatus());JsonNode d=json.readTree(r.getResponse().getContentAsByteArray()).path("data");
         assertEquals("synthetic-fm-v1",d.path("meta").path("policyVersions").path("fmSource").asText());assertEquals(6,d.path("studyTotal").asInt());assertEquals(3,d.path("fmN").asInt());
-        sourceReleased();assertEquals(0,observed.inserts);assertEquals(0,observed.writeCommits);assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(5,false),observed.autoCommits);
+        sourceReleased();assertEquals(0,observed.inserts);assertEquals(0,observed.writeCommits);assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(4,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(4,false),observed.autoCommits);
         try(java.sql.Connection c=raw.getConnection();java.sql.Statement st=c.createStatement();java.sql.ResultSet rows=st.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_run")){assertTrue(rows.next());assertEquals(0,rows.getInt(1));}
     }
     @Test void capturedVersionCannotDriftAtRealFirstSqlBarrier()throws Exception{

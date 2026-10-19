@@ -38,17 +38,17 @@ class MissingDataHttpTest extends MissingDataHttpFixture {
         assertEquals(1,commits.get());assertEquals(Collections.singletonList("2"),ids(current));assertEquals(2,current.path("studyTotal").asInt());
         JsonNode old=current.path("patients").path("items").get(0);
         assertTrue(old.path("das28At").isNull());assertEquals(json.readTree("[\"M_DAS28\"]"),old.path("qc").path("missingCodes"));
-        assertEquals(5,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(5);
+        assertEquals(4,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(4);
         observed.reset();JsonNode next=success("{\"filters\":{\"data\":\"missing\"}}").path("patients").path("items").get(0);
         assertEquals(2.30,next.path("das28At").asDouble());assertEquals(json.readTree("[\"M_BASELINE_LAB\",\"M_COMORBIDITY\",\"M_MEDICATION\"]"),next.path("qc").path("missingCodes"));
-        assertEquals(5,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(5);
+        assertEquals(4,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(4);
     }
     @Test void realQcSqlFailureReturns503AndReleasesBeforeRecovery() throws Exception {
         observed.failQcSql=true; org.springframework.test.web.servlet.MvcResult result=request("{\"filters\":{\"data\":\"complete\"}}");
         assertEquals(503,result.getResponse().getStatus());JsonNode envelope=json.readTree(result.getResponse().getContentAsByteArray());assertTrue(envelope.path("data").isNull());assertEquals("SERVICE_UNAVAILABLE",envelope.path("code").asText());
         assertTrue(observed.mysqlFailures>0);assertEquals("42S02",observed.lastSqlState);assertEquals(1146,observed.lastMysqlError);
-        assertEquals(5,observed.selects);assertEquals(1,observed.borrowed);snapshotQueries(5);
+        assertEquals(4,observed.selects);assertEquals(1,observed.borrowed);snapshotQueries(4);
         String body=result.getResponse().getContentAsString();for(String secret:new String[]{"SELECT","p02e_missing_qc_source","jdbc:","crpScore","synthetic"}) assertFalse(body.contains(secret));
-        observed.reset();assertEquals(2,success("{}").path("n").asInt());snapshotQueries(5);
+        observed.reset();assertEquals(2,success("{}").path("n").asInt());snapshotQueries(4);
     }
 }

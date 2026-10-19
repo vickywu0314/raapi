@@ -60,8 +60,8 @@ class VisitMatchingHttpTest extends VisitMatchingHttpFixture {
         } catch(Exception e) { throw new AssertionError(e); } };
         JsonNode first=item(success("{\"filters\":{\"at\":\"6m\"}}"),1); assertEquals(2.19,first.path("das28At").asDouble()); released();
         assertEquals(1,new java.util.HashSet<>(observed.queryConnections).size());
-        assertEquals(java.util.Collections.nCopies(5,false),observed.autoCommits);
-        assertEquals(java.util.Collections.nCopies(5,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
+        assertEquals(java.util.Collections.nCopies(4,false),observed.autoCommits);
+        assertEquals(java.util.Collections.nCopies(4,java.sql.Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);
         observed.reset(); JsonNode next=item(success("{\"filters\":{\"at\":\"6m\"}}"),1); assertEquals(2.29,next.path("das28At").asDouble()); released();
         sql("DELETE FROM patient_follow_up_history WHERE id=200"); observed.reset();
         JsonNode changed=item(success("{\"filters\":{\"at\":\"6m\"}}"),1); assertEquals("201",changed.path("selection").path("evalVisitId").asText()); assertEquals(3.90,changed.path("das28At").asDouble()); released();

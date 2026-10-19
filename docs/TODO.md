@@ -43,7 +43,7 @@
 
 ## 上线前
 
-- [ ] **接收MySQL5.7.44环境与迁移**：按[兼容与迁移](MySQL5.7兼容与迁移.md)核对64MiB packet、InnoDB/Barracuda/large_prefix/DYNAMIC、严格模式/RR/TLS/账号权限；备份并在目标副本预演全部相关DDL与研究编号回填，保原8MiB容量/全列唯一性。不得物理降级8 datadir；生产数据逻辑迁移、切换/回退与生命周期风险由DBA/运维接收。本批不执行生产操作。
+- [ ] **接收MySQL5.7.44环境与迁移**：按[兼容与迁移](MySQL5.7兼容与迁移.md)核对64MiB packet、InnoDB/Barracuda/large_prefix/DYNAMIC、严格模式/RR/TLS/账号权限；备份并在目标副本预演全部相关DDL与研究编号回填，保当前独立比较8MiB容量、规范查询128KiB存储边界及全列唯一性。不得物理降级8 datadir；生产数据逻辑迁移、切换/回退与生命周期风险由DBA/运维接收。本批不执行生产操作。
 
 - P05 chat上线前执行 `src/main/resources/sql/20261012_ai_chat_audit.sql` 新append审计DDL；确认生产typed身份、权威源、独立aggregate/clinical出站批准及真实原文处理边界。`ra.ai.chat.enabled` 与两类批准默认关闭，parse许可不足；合成DeepSeek/SQL/Node技术接收不批准真实患者或部署。保留固定源 `chat:cohort-states` / `chat:cohort-loopback` 与 `chat:patient-states` / `chat:patient-loopback` 浏览器补验；患者全程/本次技术实现不批准真实临床出站。
 
@@ -57,7 +57,7 @@
 - [ ] **接收P06b不可逆/退出边界**：申请/claim明确提交后当前caller最多一次SMTP，UNKNOWN无普通重发或后台复活。9500/10000ms仅单网络调用预算；socket主动close及真实afterExecute在≤500ms窗口退出，native DNS未退保原容量/BUSY。不保证真实TCP写永久阻塞试验、强杀native DNS或浏览器断连；邮件SENT不证明送达、审批或文件权利。
 
 - [ ] **接收P06a普通XLSX审计DDL与对外字段/日期政策**：[20261008_ai_export_audit.sql](../src/main/resources/sql/20261008_ai_export_audit.sql)只新增ra_ai_export_audit（25列/InnoDB/无旧表外键），记录PREPARING/NEED_APPLY/READY生成事实与NOT_STARTED/REJECTED/STARTED/WRITTEN/FAILED传输事实，不是下载许可或送达证明。DBA接收目标版本/权限、索引、访问/留存，再安装新表与入口；回滚先停新xlsx入口，保留已提交审计，不自动删表/事件。AQC-EXT-04保持OPEN。
-- [ ] **接收P06a真实对外发布**：业务/数据负责人确认实际默认15字段/比较12指标、ID/静态字段无日不豁免、显式日期子集、上海月首减6自然月及比较窗外affectedN=整个validN（非实际越窗人数）、metadata/精度/隐私与网络UNKNOWN边界；AQC-REL-02仍OPEN。缺省/绑定6可用，其他可绑定整数仅新接口503；坏文本保持真实bean装配失败。仅共享maxBytes容量，生产旧CSV/申请流程不因开发证据获得新权限；无本片SMTP/后台文件/下载重试。
+- [ ] **接收P06a真实对外发布**：业务/数据负责人确认实际默认15字段/比较12指标、ID/静态字段无日不豁免、显式日期子集、上海月首减6自然月及比较窗外affectedN=整个validN（非实际越窗人数）、metadata/精度/隐私与网络UNKNOWN边界；AQC-REL-02仍OPEN。缺省/绑定6可用，其他可绑定整数仅新接口503；坏文本保持真实bean装配失败。当前文件rows/cells/bytes与比较聚合容量独立配置，不再共享旧analysis maxBytes；生产旧CSV/申请流程不因开发证据获得新权限；无本片SMTP/后台文件/下载重试。
 
 - [ ] **接收规则解析专用追加审计DDL与访问/留存政策**：[20261008_ai_parse_audit.sql](../src/main/resources/sql/20261008_ai_parse_audit.sql)只新增ra_ai_parse_audit（InnoDB、无旧表外键），保存可信actor/action、白名单普通条件摘要/状态/版本/trace，禁止原问句、其hash、ids/其hash、病例或notice。部署先由DBA核目标版本/权限/留存，再安装表和两路API；缺表时parse/apply失败503、不回部分候选。回滚先停止两路入口，保留已提交事件供审计接收，不自动删表/丢事件；后续受控移除须另行批准留存方案。AQC-EXT-04保持OPEN；模型网关默认禁出站；原合成loopback协议之外，ai-analysis-real-data/P04及P05四次固定源合成DeepSeek真实服务调用已作限定技术接收，真实临床问题/字段、原文外发和部署政策仍由AQC-EXT-05接收，技术验证不关闭生产义务。
 
@@ -71,7 +71,7 @@
   - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
   - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
   - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
-  - `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果表
+  - `src/main/resources/sql/20261019_ai_analysis_query_session.sql`：当前AI分析小型查询会话表；先建表及核权限，再升级应用。旧ra_ai_analysis_run保留供回退，不再作为新分析读写前置
   - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
   - `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
   - `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`，医生手动对应过的叫法）
@@ -81,10 +81,10 @@
   - `src/main/resources/sql/20261008_ai_parse_audit.sql`：AI 问题解析审计（`ra_ai_parse_audit`）
   - `src/main/resources/sql/20261008_ai_export_audit.sql`：AI 普通 XLSX 导出审计（`ra_ai_export_audit`）
   - `src/main/resources/sql/20261008_ai_export_request.sql`：AI 导出申请（`ra_ai_export_request`）
-  - `src/main/resources/sql/20261007_ai_analysis_run.sql`：独立有期分析结果表，无旧患者外键；仅开发合成库已验证，生产执行由DBA另行接收（AQC-EXT-04仍OPEN）
-- [ ] **接收比较专表与共享保留配置**：`src/main/resources/sql/20261008_ai_compare_run.sql`新增独立`ra_ai_compare_run`，不改单队列v1/旧表或建旧外键。共享TTL/cap/key门槛、每创建稳定限清1000过期比较行、cleanup+INSERT同短事务、owner/expiry/当前完整U复验仅在隔离合成MySQL8.4.11验证。DBA/运维接收目标版本、InnoDB/短RR、保留策略和生产DDL；无后台清理，已清缺行404，commit后传输失败可留TTL孤立行。AQC-EXT-04仍OPEN；来源日期摘要未代替P06导出字段/窗口与AQC-REL-02接收
+  - 历史`src/main/resources/sql/20261007_ai_analysis_run.sql`只作旧应用回退资料；不自动DROP/清理既有表。本轮新会话DDL的生产执行仍由DBA另行接收（AQC-EXT-04保持OPEN）
+- [ ] **接收比较专表与独立容量**：ra_ai_compare_run继续保存小聚合；ra.ai.comparison.result-max-bytes默认8388608、合法1..16777215，TTL/key仍沿analysis配置。旧analysis.result-max-bytes不再作为比较/分析/导出限制。保持短事务、owner/expiry/完整U复验与原生产DDL接收；不把新query-session实时语义混入已保留比较聚合。
 - [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
-- [ ] **部署有期分析配置与保留政策**：注入`ra.ai.analysis.cursor-key-base64`（标准Base64解码至少32字节；不提交/记录生产key）、`result-ttl-seconds`默认900及`result-max-bytes`默认8388608（均为`ra.ai.analysis.`前缀）。缺/错配置仅本功能503且分析SQL前拒绝，不阻其它bean启动；key轮换会使旧cursor无效。确认目标InnoDB/短RR、当前医生映射、8MiB单结果容量及每创建限删1000过期行；无请求不保证物理整点清除，过期禁止读取。commit后传输失败可能有完整TTL孤立行。此处不关闭真实身份/生产部署/保留政策AQC-EXT-01/04
+- [ ] **部署查询会话与独立导出限制**：先执行20261019_ai_analysis_query_session.sql并核SELECT/INSERT/DELETE权限；分析仅存规范query/owner/asOf/规则指纹/TTL。保安全注入cursor-key-base64及result-ttl-seconds默认900，废止analysis.result-max-bytes的生产消费。文件独立ra.export.xlsx.max-bytes默认16777216、max-rows默认100000、max-cells默认1000000；超导出限制不影响正常分析。旧analysisId明确重新分析，跨页随源更新可漏重；原blob表不drop。当前/回退应用与新旧ID行为、目标库权限/DDL和保留政策由DBA/运维接收，不能以开发5.7合成验证替代AQC-EXT-01/04。
 - [ ] **配置导出申请接收邮箱**：`application.properties` 的 `ra.export.apply-mail-to`
 - [ ] **前端 nginx：同源反向代理 `/api/` 到后端，并放开上传大小**
   - 页面和接口必须同一个域名 / 端口（登录靠 session Cookie）：`location /api/ { proxy_pass http://127.0.0.1:8065; }`，不要改写 Cookie 的 path

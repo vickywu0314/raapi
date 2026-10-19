@@ -67,7 +67,7 @@ class ConfiguredDrugDictionaryHttpTest extends CohortHttpFixture {
         context.close();properties.put("ra.ai.api.enabled","false");buildContext(false);bodyRead.bytes=0;
         error("{",503,"SERVICE_UNAVAILABLE");assertEquals(0,bodyRead.bytes);zeroSql();
     }
-    void cohortReleased(){assertEquals(5,observed.selects);assertEquals(2,observed.borrowed);assertEquals(2,observed.returned);assertEquals(0,observed.active.get());assertEquals(1,observed.inserts);assertEquals(1,observed.writeCommits);assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(5,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(5,false),observed.autoCommits);}
+    void cohortReleased(){assertEquals(4,observed.selects);assertEquals(2,observed.borrowed);assertEquals(2,observed.returned);assertEquals(0,observed.active.get());assertEquals(1,observed.inserts);assertEquals(1,observed.writeCommits);assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(4,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(4,false),observed.autoCommits);}
     @Test void realFirstSqlBarrierChangesOnlyTheNextRequestDictionary()throws Exception{
         seed(row("synthetic-brand-A"));java.util.concurrent.atomic.AtomicInteger reached=new java.util.concurrent.atomic.AtomicInteger();
         observed.afterFirstQuery=()->{
@@ -91,28 +91,20 @@ class ConfiguredDrugDictionaryHttpTest extends CohortHttpFixture {
         assertEquals(1,d.path("targetRate").path("meta").path("numerator").asInt());assertEquals(1,d.path("targetRate").path("meta").path("denominator").asInt());assertEquals(0,d.path("targetRate").path("meta").path("unknownN").asInt());
         assertEquals(0,d.path("modHighN").asInt());assertEquals(0,d.path("fmN").asInt());assertEquals(1,d.path("missingN").asInt());
         assertEquals("synthetic-drug-v1",d.path("meta").path("policyVersions").path("drugDictionary").asText());assertEquals(r.getResponse().getHeader("X-Trace-Id"),d.path("meta").path("traceId").asText());
-        assertEquals(5,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());
-        assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(5,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(5,false),observed.autoCommits);
+        assertEquals(4,observed.selects);assertEquals(1,observed.borrowed);assertEquals(1,observed.returned);assertEquals(0,observed.active.get());
+        assertEquals(1,new HashSet<>(observed.queryConnections).size());assertEquals(Collections.nCopies(4,Connection.TRANSACTION_REPEATABLE_READ),observed.isolations);assertEquals(Collections.nCopies(4,false),observed.autoCommits);
         assertEquals(0,observed.inserts);assertEquals(0,observed.deletes);assertEquals(0,observed.writeCommits);
         try(Connection c=raw.getConnection();Statement s=c.createStatement();ResultSet rows=s.executeQuery("SELECT COUNT(*) FROM ra_ai_analysis_run")){assertTrue(rows.next());assertEquals(0,rows.getInt(1));}
         observed.reset();properties.put("ra.ai.drug-dictionary.json","");r=overview();assertEquals(503,r.getResponse().getStatus());assertEquals("SERVICE_UNAVAILABLE",json.readTree(r.getResponse().getContentAsByteArray()).path("code").asText());zeroSql();
     }
     com.wenwen.ai.result.AnalysisRun retained(JsonNode d){com.wenwen.ai.result.AnalysisRun run=context.getBean(com.wenwen.ai.result.AnalysisResultStore.class).find(d.path("analysisId").asText());assertNotNull(run);assertEquals(101,run.getOwnerDoctorId());assertEquals(0,observed.active.get());return run;}
     JsonNode decoded(com.wenwen.ai.result.AnalysisRun run){return json.valueToTree(new com.wenwen.ai.result.AnalysisResultCodec().decode(run));}
-    @Test void realRetainedPayloadKeepsOldConfiguredVersionAndDevPayloadStillDecodes()throws Exception{
-        properties.remove("ra.ai.drug-dictionary.json");seed(row("阿达木单抗"));JsonNode dev=success("{\"filters\":{\"tx\":\"TNFi\"}}");cohortReleased();
-        com.wenwen.ai.result.AnalysisRun devRun=retained(dev);byte[] devBytes=devRun.getPayload().clone();
-        properties.put("ra.ai.drug-dictionary.json",V1);
-        seed(row("synthetic-brand-A"));JsonNode first=success("{\"filters\":{\"tx\":\"TNFi\"}}");cohortReleased();
-        com.wenwen.ai.result.AnalysisRun run=retained(first);byte[] original=run.getPayload().clone();JsonNode old=decoded(run);
-        assertEquals(1,old.path("n").asInt());assertEquals("synthetic-drug-v1",old.path("meta").path("policyVersions").path("drugDictionary").asText());
-        assertEquals(json.readTree("[\"synthetic:g1\"]"),old.path("rows").get(0).path("treatment").path("genericDrugIds"));assertEquals("TNFi",old.path("rows").get(0).path("treatment").path("category").asText());
-        properties.put("ra.ai.drug-dictionary.json",V1.replace("synthetic-drug-v1","synthetic-drug-v2").replace("TNFi","JAKi"));observed.reset();
-        JsonNode second=success("{\"filters\":{\"tx\":\"JAKi\"}}");cohortReleased();assertNotEquals(first.path("analysisId"),second.path("analysisId"));
-        JsonNode next=decoded(retained(second));assertEquals("synthetic-drug-v2",next.path("meta").path("policyVersions").path("drugDictionary").asText());assertEquals("JAKi",next.path("rows").get(0).path("treatment").path("category").asText());
-        com.wenwen.ai.result.AnalysisRun reread=retained(first);assertArrayEquals(original,reread.getPayload());assertEquals(old,decoded(reread));
-        assertEquals("synthetic-drug-v1",decoded(reread).path("rows").get(0).path("treatment").path("provenance").path("dictionaryVersion").asText());
-        com.wenwen.ai.result.AnalysisRun oldDev=retained(dev);assertArrayEquals(devBytes,oldDev.getPayload());
-        JsonNode legacy=decoded(oldDev);assertEquals("dev-drug-v04",legacy.path("meta").path("policyVersions").path("drugDictionary").asText());assertEquals(json.readTree("[\"dev:阿达木单抗\"]"),legacy.path("rows").get(0).path("treatment").path("genericDrugIds"));
+    @Test void querySessionRequiresReanalysisAfterDictionaryVersionChanges()throws Exception {
+        properties.put("ra.ai.drug-dictionary.json",V1);seed(row("synthetic-brand-A"));JsonNode first=success("{\"filters\":{\"tx\":\"TNFi\"}}");cohortReleased();
+        com.wenwen.ai.result.AnalysisRun run=retained(first);assertNull(run.getPayload());assertNotNull(run.getQueryJson());assertEquals(2,run.getPayloadVersion());
+        assertEquals("synthetic-drug-v1",first.path("meta").path("policyVersions").path("drugDictionary").asText());assertEquals("TNFi",first.path("patients").path("items").get(0).path("treatment").path("category").asText());
+        properties.put("ra.ai.drug-dictionary.json",V1.replace("synthetic-drug-v1","synthetic-drug-v2").replace("TNFi","JAKi"));
+        com.wenwen.ai.query.CohortException e=assertThrows(com.wenwen.ai.query.CohortException.class,()->context.getBean(com.wenwen.ai.result.AnalysisResultStore.class).export(101,run.getId(),clock.instant(),100));assertEquals(410,e.getStatus());
+        JsonNode second=success("{\"filters\":{\"tx\":\"JAKi\"}}");assertEquals("synthetic-drug-v2",second.path("meta").path("policyVersions").path("drugDictionary").asText());assertEquals("JAKi",second.path("patients").path("items").get(0).path("treatment").path("category").asText());
     }
 }

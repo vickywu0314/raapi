@@ -242,7 +242,7 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
         java.util.concurrent.atomic.AtomicInteger commits=committedWriter(true);
         ProjectsDataVo current=project().getProjectsData();assertEquals(1,commits.get());
         assertEquals(2,current.getTotalPatients());assertEquals(1,current.getPendingQcIssues());assertEquals(1,current.getQcIssuePatients());assertEquals(new BigDecimal("50.0"),current.getDataQualityRate());
-        snapshotQueries(3);assertEquals(7,observed.selects);assertEquals(5,observed.borrowed);
+        snapshotQueries(3);assertEquals(4,observed.selects);assertEquals(2,observed.borrowed);
         observed.reset();ProjectsDataVo next=project().getProjectsData();assertEquals(1,next.getTotalPatients());assertEquals(3,next.getPendingQcIssues());assertEquals(1,next.getQcIssuePatients());assertEquals(new BigDecimal("0.0"),next.getDataQualityRate());snapshotQueries(3);
     }
     @Test void realQcSqlFailureFailsEveryLegacyPublicEntryAndReleasesBeforeRecovery() throws Exception {

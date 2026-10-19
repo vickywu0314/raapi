@@ -22,7 +22,6 @@ public class AiCohortServiceImpl implements AiCohortService {
     private final com.wenwen.ai.result.AnalysisSettings settings;
     private final com.wenwen.ai.result.AnalysisCursor cursors;
     private final com.wenwen.ai.result.AnalysisPageReader pages;
-    private final com.wenwen.ai.result.AnalysisResultCodec codec=new com.wenwen.ai.result.AnalysisResultCodec();
     public AiCohortServiceImpl(CohortSourceAdapter source, Clock clock, com.wenwen.ai.treatment.DrugDictionary dictionary,com.wenwen.ai.result.AnalysisResultStore results,com.wenwen.ai.result.AnalysisSettings settings,com.wenwen.ai.result.AnalysisCursor cursors,com.wenwen.ai.result.AnalysisPageReader pages) { this.source = source; this.clock = clock; this.dictionary=dictionary;this.results=results;this.settings=settings;this.cursors=cursors;this.pages=pages; }
     public Map<String,Object> resolveEntry(TrustedDoctor doctor,com.wenwen.ai.query.SimilarEntryQuery query,String traceId,Instant started) {
         LocalDate asOf=started.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
@@ -45,104 +44,19 @@ public class AiCohortServiceImpl implements AiCohortService {
         return object("source","SIMILAR","filters",filters,"missingBasis",missing,"status",missing.isEmpty()?"READY":"PARTIAL_BASIS","canApply",true,"reason",null,
             "meta",meta);
     }
-    public AiCohortVo analyze(TrustedDoctor doctor, CohortQuery query, String traceId) {
-        Instant started = clock.instant();
-        settings.validateAt(started.toEpochMilli());
-        LocalDate asOf = started.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
-        com.wenwen.ai.treatment.DrugDictionary.Snapshot drugView=dictionary.snapshot();
-        SourceBatch batch = source.read(doctor.getId(),asOf);
-        CohortComputation.Derivation derivation=CohortComputation.derive(batch,query.getAt(),asOf,drugView);
-        CohortComputation.Selection cohortSelection=CohortComputation.select(derivation,query);
-        Map<Long,List<ScoreVisit>> visitsByPatient=derivation.visitsByPatient;
-        Map<Long,Set<String>> observedQuality=derivation.observedQuality;
-        Map<Long,DerivedPatient> universe=derivation.universe;
-        List<DerivedPatient> cohort=new ArrayList<>();
-        String[] levels = {"remission","low","moderate","high"};
-        Map<String,Integer> counts = new LinkedHashMap<>(), baseCounts=new LinkedHashMap<>();
-        for (String level : levels) { counts.put(level,0); baseCounts.put(level,0); }
-        List<Map<String,Object>> items = new ArrayList<>();
-        int n = 0, eval = 0, baseN=0, unknownTxN=0;
-        Integer effectiveIdsN = cohortSelection.effectiveIdsN;
-        for (DerivedPatient derived : cohortSelection.members) {
-            long id=derived.id;
-            com.wenwen.ai.qc.MissingDataStatus qc=derived.qc;
-            com.wenwen.ai.clinical.PatientClinical clinical=derived.clinical;
-            List<ScoreVisit> medicationVisits=visitsByPatient.getOrDefault(id,Collections.emptyList());
-            com.wenwen.ai.treatment.TreatmentEpisode treatment=derived.treatment;
-            ScoreVisit now=derived.now,six=derived.six,baseline=derived.baseline,score=derived.evaluation;
-            String level = score == null ? null : Das28Util.activity(score.getScore());
-            n++; cohort.add(derived);
-            if("UNKNOWN".equals(treatment.state) || "CONFLICT".equals(treatment.state)) unknownTxN++;
-            if (level != null) { counts.put(level,counts.get(level)+1); eval++; }
-            if(baseline!=null) { String baseLevel=Das28Util.activity(baseline.getScore()); baseCounts.put(baseLevel,baseCounts.get(baseLevel)+1); baseN++; }
-            {
-                Map<String,Object> provenance = provenance(score,observedQuality.getOrDefault(id,Collections.emptySet()),"NO_VALID_CRP");
-                Map<String,Object> baselineProvenance=provenance(baseline,Collections.emptySet(),VisitMatcher.reliable(treatment)?"NO_VALID_BASELINE":"NO_RELIABLE_START");
-                ScoreVisit latestCrp=VisitMatcher.latest(medicationVisits,id,asOf,visit -> visit.getEvaluation().get("crp").get("value")!=null);
-                Map<String,Object> selection=object("at",query.getAt(),"episodeKey",treatment.key,
-                    "baselineVisitId",visitId(baseline),"baselineDate",visitDate(baseline),"evalVisitId",visitId(score),"evalDate",visitDate(score),
-                    "nowVisitId",visitId(now),"nowDate",visitDate(now),"target6mDate",VisitMatcher.reliable(treatment)?treatment.start.plusMonths(6).toString():null,
-                    "eligible6m",six!=null,"quality",VisitMatcher.beforeScheme(score,treatment)?Collections.singletonList("EVAL_BEFORE_SCHEME"):Collections.emptyList(),
-                    "missingReason",score==null?("6m".equals(query.getAt())?"NO_ELIGIBLE_6M":"NO_VALID_CRP"):null,
-                    "deltaMissingReason",VisitMatcher.deltaMissingReason(baseline,treatment.key,score,treatment.key,treatment));
-                PatientDisplay display=Objects.requireNonNull(batch.getDisplay().get(id));
-                items.add(object("name",display.getName(),"studyNo",display.getStudyNo(),"qc",qc.asMap(),"patientId",Long.toString(id),"das28At",score == null ? null : score.getScore(),"das28Base",baseline==null?null:baseline.getScore(),"das28Current",now==null?null:now.getScore(),
-                    "deltaDas28",VisitMatcher.delta(baseline,treatment.key,score,treatment.key,treatment),"baselineProvenance",baselineProvenance,"selection",selection,
-                    "crpAt",score==null?com.wenwen.ai.clinical.EvaluationPolicy.missingCrp("NO_EVALUATION"):score.getEvaluation().get("crp"),
-                    "crpCurrent",latestCrp==null?com.wenwen.ai.clinical.EvaluationPolicy.missingCrp("NO_VALID_CRP_LAB"):latestCrp.getEvaluation().get("crp"),"activity",level,"scoreProvenance",provenance,"clinicalProvenance",clinical.getProvenance(),"evaluation",score==null?com.wenwen.ai.clinical.EvaluationPolicy.missing():score.getEvaluation(),
-                    "treatment",treatment.summary(asOf),"clinical",object("sex",clinical.getSex(),"age",clinical.getAge(),"diseaseDurationYears",clinical.getDiseaseDurationYears(),"sero",clinical.getSero(),"fm",clinical.getFm(),"as",clinical.getAs())));
-            }
-        }
-        List<Map<String,Object>> distribution = new ArrayList<>(), baseDistribution=new ArrayList<>();
-        for (String level : levels) {
-            Map<String,Object> currentRow=new LinkedHashMap<>(DescriptiveAnalysis.bucket("level",level,counts.get(level),eval)); currentRow.put("label",Das28Util.label(level));
-            Map<String,Object> baseRow=new LinkedHashMap<>(DescriptiveAnalysis.bucket("level",level,baseCounts.get(level),baseN)); baseRow.put("label",Das28Util.label(level));
-            distribution.add(Collections.unmodifiableMap(currentRow));baseDistribution.add(Collections.unmodifiableMap(baseRow));
-        }
-        Map<String,Object> target=DescriptiveAnalysis.target(cohort);
-        Map<String,Object> age=DescriptiveAnalysis.median(cohort,true),duration=DescriptiveAnalysis.median(cohort,false);
-        Map<String,Object> share=DescriptiveAnalysis.cohortShare(n,universe.size()),female=DescriptiveAnalysis.clinicalRatio(cohort,true),sero=DescriptiveAnalysis.clinicalRatio(cohort,false);
-        Map<String,Object> completeness=DescriptiveAnalysis.completeness(cohort);
-        Map<?,?> complete=(Map<?,?>)completeness.get("ratio");
-        items.sort(com.wenwen.ai.result.AnalysisValues.ORDER);
-        Instant computed=clock.instant();long created=computed.toEpochMilli(),expires=Math.addExact(created,settings.ttlMillis());
-        String analysisId=UUID.randomUUID().toString();
-        AiCohortVo result=new AiCohortVo(analysisId,n,batch.getPatientIds().size(),query.getIds() == null ? null : query.getIds().size(),effectiveIdsN,
-            object("current",distribution,"base",baseDistribution,"baseN",baseN,"baseUnknownN",n-baseN,"evalN",eval,"unknownN",n-eval,"unknownTxN",unknownTxN),object("total",n,"items",new ArrayList<>(items.subList(0,Math.min(10,items.size()))),"returnedCount",Math.min(10,n),"nextCursor",n>10?cursors.issue(analysisId,doctor.getId(),10,expires):null,"hasMore",n>10),
-            object("at",query.getAt(),"asOfDate",asOf.toString(),"readStartedAt",started.toString(),"readCompletedAt",batch.getReadCompletedAt().toString(),
-                "computedAt",computed.toString(),"expiresAt",Instant.ofEpochMilli(expires).toString(),"patientProjection","LIVE_SOURCE_V04","policyVersions",batch.withFmSource(object("statistics",com.wenwen.ai.statistics.StatisticalPolicy.VERSION,"descriptive",DescriptiveAnalysis.VERSION,"qc",com.wenwen.ai.qc.MissingDataPolicy.VERSION,"crp","dev-crp-v04","now","dev-now-v04","clinical","dev-clinical-v04","serology","dev-ever-serology-v04","treatment","dev-timeline-v04","visitMatcher","dev-visit-match-v04","drugDictionary",drugView.version)),"traceId",traceId,
-                "supportedFilters",Arrays.asList("studyCode","at","act","ids","sex","age","sero","cm","tx","data"),"completion","P03_RESULT","statisticalDisclosure","探索性分析，未作多重比较校正；组间差异不代表疗效或因果关系"), object("targetRate",target.get("value"),"ageMedian",age.get("value"),"durationMedian",duration.get("value"),"cohortRate",share.get("value"),"femaleRate",female.get("value"),"seroRate",sero.get("value"),"completeRate",complete.get("value"),"incompleteCount",completeness.get("incompleteCount"),"qcUnknownN",completeness.get("qcUnknownN"),"evaluable",eval),object("targetRate",target.get("meta"),"ageMedian",age.get("meta"),"durationMedian",duration.get("meta"),"cohortRate",share.get("meta"),"femaleRate",female.get("meta"),"seroRate",sero.get("meta"),"completeRate",complete.get("meta")),StatisticalAnalysis.byTreatment(cohort,universe.values()),DescriptiveAnalysis.fm(cohort),DescriptiveAnalysis.lines(cohort));
-        com.wenwen.ai.result.AnalysisRun run=new com.wenwen.ai.result.AnalysisRun();
-        run.setId(analysisId);run.setOwnerDoctorId(doctor.getId());run.setScopeFingerprint(com.wenwen.ai.result.AnalysisValues.scope(doctor.getId(),batch.getPatientIds()));run.setSortKey(com.wenwen.ai.result.AnalysisValues.SORT);run.setPayloadVersion(1);run.setCreatedAtMs(created);run.setExpiresAtMs(expires);
-        byte[] payload=codec.encode(result,items,query);if(payload.length>settings.maxBytes())throw new com.wenwen.ai.query.CohortException(413,"RESULT_TOO_LARGE","分析结果超出保留容量");run.setPayload(payload);run.setPayloadSha256(com.wenwen.ai.result.AnalysisValues.sha256(payload));results.create(run);
-        return result;
+    public AiCohortVo analyze(TrustedDoctor doctor,CohortQuery query,String traceId) {
+        Instant started=clock.instant();settings.validateAt(started.toEpochMilli());
+        CohortResultComputer.Computed computed=results.compute(doctor,query,traceId,started,null,0,10,0);
+        results.create(computed.session);return computed.result;
     }
-    @SuppressWarnings("unchecked") public com.wenwen.vo.AiCohortPatientsVo page(TrustedDoctor doctor,com.wenwen.ai.query.CohortPageQuery query,String traceId,Instant requestedAt) {
-        long now=requestedAt.toEpochMilli();
+    public com.wenwen.vo.AiCohortPatientsVo page(TrustedDoctor doctor,com.wenwen.ai.query.CohortPageQuery query,String traceId,Instant requestedAt) {
         com.wenwen.ai.result.AnalysisCursor.Token cursor=cursors.verify(query.getAnalysisId(),query.getCursor());
         if(cursor.owner!=doctor.getId())throw new com.wenwen.ai.query.CohortException(404,"RESOURCE_NOT_FOUND","分析结果不存在");
-        if(now>=cursor.expires)throw new com.wenwen.ai.query.CohortException(410,"ANALYSIS_EXPIRED","分析结果已到期");
-        com.wenwen.ai.result.AnalysisRun run=results.find(cursor.id);
-        if(run==null||run.getOwnerDoctorId()!=doctor.getId())throw new com.wenwen.ai.query.CohortException(404,"RESOURCE_NOT_FOUND","分析结果不存在");
-        if(now>=run.getExpiresAtMs())throw new com.wenwen.ai.query.CohortException(410,"ANALYSIS_EXPIRED","分析结果已到期");
+        if(requestedAt.toEpochMilli()>=cursor.expires)throw com.wenwen.ai.result.AnalysisQueryCodec.expired("分析结果已到期，请重新分析");
+        com.wenwen.ai.result.AnalysisRun run=results.require(doctor.getId(),cursor.id,requestedAt);
         if(run.getExpiresAtMs()!=cursor.expires)throw com.wenwen.ai.result.AnalysisSettings.unavailable();
-        Map<String,Object> payload=codec.decode(run);List<Map<String,Object>> rows=(List<Map<String,Object>>)payload.get("rows");
-        if(cursor.offset>=rows.size())throw com.wenwen.ai.result.AnalysisCursor.invalid();
-        int end=Math.min(cursor.offset+20,rows.size());List<Long> ids=new ArrayList<>();for(Map<String,Object> row:rows.subList(cursor.offset,end))ids.add(Long.parseLong((String)row.get("patientId")));
-        Map<Long,PatientDisplayRow> displays=pages.read(doctor.getId(),run.getScopeFingerprint(),ids);
-        Instant displayCompleted=clock.instant();List<Map<String,Object>> items=new ArrayList<>();
-        for(Map<String,Object> row:rows.subList(cursor.offset,end)){Map<String,Object> item=new LinkedHashMap<>(row);PatientDisplayRow display=displays.get(Long.parseLong((String)row.get("patientId")));item.put("name",display.getName());item.put("studyNo",display.getStudyNo());items.add(Collections.unmodifiableMap(item));}
-        Map<String,Object> original=(Map<String,Object>)payload.get("meta");Map<String,Object> meta=new LinkedHashMap<>();
-        for(String k:Arrays.asList("at","asOfDate","readStartedAt","readCompletedAt","computedAt","policyVersions","expiresAt"))meta.put(k,original.get(k));
-        meta.put("traceId",traceId);meta.put("analysisTraceId",original.get("traceId"));meta.put("displayReadCompletedAt",displayCompleted.toString());meta.put("completion","P03_RESULT");meta.put("patientProjection","RETAINED_NUMERIC_V1");
-        return new com.wenwen.vo.AiCohortPatientsVo(run.getId(),object("total",rows.size(),"items",items,"returnedCount",items.size(),"nextCursor",end<rows.size()?cursors.issue(run.getId(),doctor.getId(),end,run.getExpiresAtMs()):null,"hasMore",end<rows.size()),Collections.unmodifiableMap(meta));
-    }
-    private static String visitId(ScoreVisit visit) { return visit==null?null:Long.toString(visit.getId()); }
-    private static String visitDate(ScoreVisit visit) { return visit==null?null:visit.getObservedAt().toString(); }
-    private static Map<String,Object> provenance(ScoreVisit score,Collection<String> quality,String missing) {
-        return score==null ? object("source",null,"sourceVisitId",null,"sourceField",null,"observedAt",null,"raw",null,
-            "quality",new ArrayList<>(quality),"missingReason",missing)
-            : object("source","LEGACY_STORED","sourceVisitId",visitId(score),"sourceField","bqpg.result.crpScore",
-                "observedAt",visitDate(score),"raw",score.getRaw(),"quality",score.getQuality());
+        CohortResultComputer.Computed computed=results.compute(doctor,new com.wenwen.ai.result.AnalysisQueryCodec().decode(run),traceId,requestedAt,run,cursor.offset,20,0);
+        Map<String,Object> meta=new LinkedHashMap<>(computed.result.getMeta());meta.put("displayReadCompletedAt",computed.result.getMeta().get("readCompletedAt"));
+        return new com.wenwen.vo.AiCohortPatientsVo(run.getId(),computed.result.getPatients(),Collections.unmodifiableMap(meta));
     }
 }
