@@ -65,26 +65,23 @@
 - [ ] **接收P05b部署生命周期边界**：正常/可终止socket先真实owner退出再短审计，caller中断503且保flag/无成功事件；最多2个daemon、无队列/重试。5秒是单次网关预算，不是入口/审计/写回SLA。native DNS不可强杀，未退者保真实容量和未terminated状态；不得以RULE/TIMEOUT事件或容器关闭返回误称所有平台资源已退。现成DDL仅版本列实填，无新增表；模型已外发后的审计失败不能撤回HTTP或自动重发。真实身份/目标DB/医学统计/通知与发布义务继续由对应接收owner关闭。
 
 
-- [ ] **执行建表 / 改表 SQL**（按下面顺序；目标库 MySQL 5.7，全部已在真实 MySQL 5.7.44 上从老表结构依次执行验证，2026-10-18）
-  - 执行前先确认哪些已执行过，执行过的跳过；除第 1 个给老表 `patient_basic_info` 加可为空 / 有默认值的字段外，其余都是新表
-  1. `src/main/resources/sql/20261003_patient_list.sql`：患者表加 `study_no`、`follow_cycle`；新建 `patient_comorbidity`
-  2. `src/main/resources/sql/20261018_backfill_study_no_mysql57.sql`：老患者补研究编号（MySQL 5.7 版，**必须紧接第 1 个执行**）；**不要执行** `20261003_backfill_study_no.sql`（MySQL 8 专用，5.7 上语法报错）
-  3. `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
-  4. `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
-  5. `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表
-  6. `src/main/resources/sql/20261007_ai_analysis_run.sql`：AI 队列分析结果（`ra_ai_analysis_run`）；2026-10-19 起新版本不再读写，只留作回退旧版本用，没执行过也照常执行，不要 DROP
-  7. `src/main/resources/sql/20261008_ai_compare_run.sql`：AI 两队列比较结果（`ra_ai_compare_run`）
-  8. `src/main/resources/sql/20261008_ai_export_audit.sql`：AI 普通 XLSX 导出审计（`ra_ai_export_audit`）
-  9. `src/main/resources/sql/20261008_ai_export_request.sql`：AI 导出申请（`ra_ai_export_request`，依赖第 4 个的 `export_application`）
-  10. `src/main/resources/sql/20261008_ai_parse_audit.sql`：AI 问题解析审计（`ra_ai_parse_audit`）
-  11. `src/main/resources/sql/20261008_private_cohort_definition.sql`：AI 私有条件定义（`ra_private_cohort_definition`、`ra_private_cohort_command`）
-  12. `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书
-  13. `src/main/resources/sql/20261012_ai_chat_audit.sql`：AI 问答审计（`ra_ai_chat_audit`）
-  14. `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`）
-  15. `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
-  16. `src/main/resources/sql/20261014_ocr_record.sql`：OCR 病历图片记录（`ocr_record`）；**OCR 上传依赖这张表，没建时上传直接报 503**
-  17. `src/main/resources/sql/20261019_ai_analysis_query_session.sql`：AI 分析查询会话（`ra_ai_analysis_query_session`）；**先建表、核对权限，再升级应用**（新版本 AI 分析依赖这张表）
-  - MySQL 5.7 前提：InnoDB、`innodb_large_prefix=ON`、`innodb_file_format=Barracuda`、`innodb_default_row_format=DYNAMIC`（5.7.7 起默认如此）；`ocr_lab_alias` 的唯一索引 800 字节，依赖 DYNAMIC 行格式
+- [ ] **执行建表 / 改表 SQL**（按文件名日期顺序）
+  - `src/main/resources/sql/20261003_patient_list.sql`：患者表加 `study_no`、`follow_cycle`；新建 `patient_comorbidity`
+  - `src/main/resources/sql/20261018_backfill_study_no_mysql57.sql`：MySQL5.7老患者补研究编号，替代当前入口的8窗口函数版本；不重复执行历史版本
+  - `src/main/resources/sql/20261005_patient_audit_log.sql`：修改记录表
+  - `src/main/resources/sql/20261006_export_application.sql`：数据导出申请表
+  - `src/main/resources/sql/20261006_patient_acr_eular.sql`：ACR/EULAR 2010 评估记录表（新建患者用）
+  - `src/main/resources/sql/20261019_ai_analysis_query_session.sql`：当前AI分析小型查询会话表；先建表及核权限，再升级应用。旧ra_ai_analysis_run保留供回退，不再作为新分析读写前置
+  - `src/main/resources/sql/20261011_patient_ra_extra.sql`：诊断结果告知、知情同意书（新建患者用）
+  - `src/main/resources/sql/20261012_qc_issue_resolution.sql`：数据质控「标记已处理」记录（`qc_issue_resolution`）
+  - `src/main/resources/sql/20261012_ocr_lab_alias.sql`：OCR 检验项目叫法对照（`ocr_lab_alias`，医生手动对应过的叫法）
+  - `src/main/resources/sql/20261014_ocr_record.sql`：OCR 病历图片记录（`ocr_record`，图片 ↔ 患者 / 随访、识别结果）
+  - `src/main/resources/sql/20261008_private_cohort_definition.sql`：AI 私有条件定义（`ra_private_cohort_definition`、`ra_private_cohort_command`）
+  - `src/main/resources/sql/20261008_ai_compare_run.sql`：AI 两队列比较结果（`ra_ai_compare_run`）
+  - `src/main/resources/sql/20261008_ai_parse_audit.sql`：AI 问题解析审计（`ra_ai_parse_audit`）
+  - `src/main/resources/sql/20261008_ai_export_audit.sql`：AI 普通 XLSX 导出审计（`ra_ai_export_audit`）
+  - `src/main/resources/sql/20261008_ai_export_request.sql`：AI 导出申请（`ra_ai_export_request`）
+  - 历史`src/main/resources/sql/20261007_ai_analysis_run.sql`只作旧应用回退资料；不自动DROP/清理既有表。本轮新会话DDL的生产执行仍由DBA另行接收（AQC-EXT-04保持OPEN）
 - [ ] **接收比较专表与独立容量**：ra_ai_compare_run继续保存小聚合；ra.ai.comparison.result-max-bytes默认8388608、合法1..16777215，TTL/key仍沿analysis配置。旧analysis.result-max-bytes不再作为比较/分析/导出限制。保持短事务、owner/expiry/完整U复验与原生产DDL接收；不把新query-session实时语义混入已保留比较聚合。
 - [ ] **接收私有定义生产DDL与长期留存**：`src/main/resources/sql/20261008_private_cohort_definition.sql`新增`ra_private_cohort_definition`和`ra_private_cohort_command`，无旧表写入或外键。隔离MySQL8.4.11已执行utf8mb4/二进制stored生成列活动名唯一索引及双表事务；生产目标MySQL版本/索引、InnoDB/短RR和长期定义/成功回执留存须DBA/运维确认。逻辑删释放名字，定义和成功回执仍长期保留，没有TTL或后台清理。AQC-EXT-04保持OPEN，未执行生产DDL或部署
 - [ ] **部署查询会话与独立导出限制**：先执行20261019_ai_analysis_query_session.sql并核SELECT/INSERT/DELETE权限；分析仅存规范query/owner/asOf/规则指纹/TTL。保安全注入cursor-key-base64及result-ttl-seconds默认900，废止analysis.result-max-bytes的生产消费。文件独立ra.export.xlsx.max-bytes默认16777216、max-rows默认100000、max-cells默认1000000；超导出限制不影响正常分析。旧analysisId明确重新分析，跨页随源更新可漏重；原blob表不drop。当前/回退应用与新旧ID行为、目标库权限/DDL和保留政策由DBA/运维接收，不能以开发5.7合成验证替代AQC-EXT-01/04。
