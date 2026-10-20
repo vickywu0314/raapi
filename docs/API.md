@@ -762,7 +762,18 @@ OCR 与手录使用同一保存校验。OCR 原文 `10000abc` 等无法完整解
 | `recentHighCrp[]` | 最近炎症指标偏高（5 人） | 最近一次 CRP > 20 mg/L，按随访日期倒序 |
 | `recentVisits[]` | 最近完成随访（5 条） | `label`：基线访视 / 第 N 次随访 |
 
-页面上的「智能研究队列」暂不做（已隐藏）。
+页面上的「研究数据 · 当前方案持续 ≥ 12 个月」和「智能研究队列」用下面的预览接口；「导出统计报表」按钮暂时隐藏（2026-10-21 业务要求）。
+
+### 9.1 队列预览 `POST /api/ra/dashboard/cohortPreview`
+
+| 项 | 说明 |
+|---|---|
+| 代码 | `DashboardCohortController.cohortPreview` → `AnalysisResultStore.compute`（与 `/api/ra/ai/cohort` 同一套计算） |
+| 身份 | 登录会话的医生（不收 `doctorId`）；未登录 401；AI 分析未配置（如 `ra.ai.analysis.cursor-key-base64` 为空）503 |
+| 入参 | JSON `{"filters":{...}}`，与 `/api/ra/ai/cohort` 相同；`{}` = 名下全部 RA 患者。智能研究队列先调 `/api/ra/ai/parse` 得到 `candidateFilters` 再传入 |
+| 出参 | `n` 符合条件患者；`completeRate` 资料完整度（0–1，同队列分析 `stats.completeRate`）；`scheme3` / `scheme6` / `scheme12` 当前方案（`treatment.state=ACTIVE`）持续 ≥3 / 6 / 12 个月的人数（`schemeDurationMonths`，同队列分析） |
+| 副作用 | 只读：不保存分析会话、不返回患者名单 |
+
 
 ---
 
