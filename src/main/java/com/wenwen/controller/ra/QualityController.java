@@ -26,13 +26,16 @@ public class QualityController {
 	@Autowired
 	private QualityService qualityService;
 
+	@Autowired(required = false)
+	private com.wenwen.config.ReadCache readCache = com.wenwen.config.ReadCache.DISABLED;
+
 	@ApiOperation(value = "质控问题清单", notes = "data-quality.html：按当前数据实时检查医生名下 RA 患者的缺失、异常值、逻辑冲突，附统计", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/issues")
 	public DataResult<Map<String, Object>> issues(
 			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId) {
 		DataResult<Map<String, Object>> result = new DataResult<Map<String, Object>>();
 		try {
-			ok(result, qualityService.issues(doctorId));
+			ok(result, readCache.get("quality:" + doctorId, () -> qualityService.issues(doctorId)));
 		} catch (Exception e) {
 			fail(result, e, "获取质控问题失败");
 		}

@@ -26,13 +26,16 @@ public class FollowupController {
 	@Autowired
 	private FollowupService followupService;
 
+	@Autowired(required = false)
+	private com.wenwen.config.ReadCache readCache = com.wenwen.config.ReadCache.DISABLED;
+
 	@ApiOperation(value = "随访计划", notes = "随访管理页：当前医生名下未脱落的 RA 患者，下次随访预计日期 = 最近随访 + 随访周期（没有随访取建档日期），按预计日期从早到晚；不分页", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/plans")
 	public DataResult<List<FollowupPlanVo>> plans(
 			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId) {
 		DataResult<List<FollowupPlanVo>> result = new DataResult<List<FollowupPlanVo>>();
 		try {
-			result.setData(followupService.listPlans(doctorId));
+			result.setData(readCache.get("plans:" + doctorId, () -> followupService.listPlans(doctorId)));
 			result.setCode("200");
 			result.setMessage("成功");
 			result.setSuccess(true);

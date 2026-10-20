@@ -61,6 +61,10 @@ JSON响应使用下面这个外层结构，业务数据在 `data` 里；文件�
 登录账号与密码由部署者通过仓库外受限配置 `ra.auth.accounts` 提供；文档不分发固定密码。开发只使用独立合成测试账号，配置方法见[本地开发与模型配置](本地开发与模型配置.md)。
 会话在后端内存里，后端重启后需重新登录。AI 队列分析（第七节）按会话里的医生鉴权，**不信任请求里传的 doctorId**；其他接口暂时仍按入参 `doctorId`（见 TODO）。
 
+### 统计 / 列表接口的短时缓存（2026-10-21）
+
+`projectsData`、`patientsList`、`dashboard/summary`、`dashboard/cohortPreview`、`quality/issues`、`followup/plans` 的结果按「医生 + 查询条件」缓存 `ra.read-cache.seconds` 秒（默认 60，配 0 关闭）。本平台的写接口（建档 / 改档案 / 标记脱落 / 恢复 / 新增、修改、删除随访 / 质控标记已处理 / OCR 原图关联）执行完立即清空，修改马上可见；老系统直接改库的数据最多晚 60 秒出现。代码：`ReadCache`、`ReadCacheConfiguration`；只在 controller 层包一层，service 计算口径不变。
+
 ---
 
 ## 一、项目总览页

@@ -42,6 +42,9 @@ public class PatientController {
 	@Autowired
 	private PatientService patientService;
 
+	@Autowired(required = false)
+	private com.wenwen.config.ReadCache readCache = com.wenwen.config.ReadCache.DISABLED;
+
 	@Autowired
 	private PrincipalProvider principalProvider;
 
@@ -64,7 +67,8 @@ public class PatientController {
 		DataResult<PatientsListVo> result = new DataResult<PatientsListVo>();
 		try {
 			result.setCode("200");
-			result.setData(patientService.listPatients(doctorId, keyword, followStatus, completeness, page, size));
+			result.setData(readCache.get("patients:" + doctorId + "|" + keyword + "|" + followStatus + "|" + completeness + "|" + page + "|" + size,
+					() -> patientService.listPatients(doctorId, keyword, followStatus, completeness, page, size)));
 			result.setMessage("成功");
 			result.setSuccess(true);
 		} catch (IllegalArgumentException e) {

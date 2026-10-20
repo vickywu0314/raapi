@@ -24,6 +24,9 @@ public class DashboardController {
 
 	@Autowired
 	private DashboardService dashboardService;
+	@Autowired(required = false)
+	private com.wenwen.config.ReadCache readCache = com.wenwen.config.ReadCache.DISABLED;
+
 
 	@ApiOperation(value = "数据看板", notes = "dashboard.html 全部数字和名单；只统计当前医生名下的 RA 患者", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/summary")
@@ -31,7 +34,7 @@ public class DashboardController {
 			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID", required = true) Long doctorId) {
 		DataResult<Map<String, Object>> result = new DataResult<Map<String, Object>>();
 		try {
-			result.setData(dashboardService.summary(doctorId));
+			result.setData(readCache.get("dashboard:" + doctorId, () -> dashboardService.summary(doctorId)));
 			result.setCode("200");
 			result.setMessage("成功");
 			result.setSuccess(true);

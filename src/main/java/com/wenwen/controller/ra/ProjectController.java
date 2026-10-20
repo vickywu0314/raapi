@@ -26,6 +26,9 @@ public class ProjectController {
 	@Autowired
 	private ProjectService projectService;
 
+	@Autowired(required = false)
+	private com.wenwen.config.ReadCache readCache = com.wenwen.config.ReadCache.DISABLED;
+
 	@ApiOperation(value = "项目总览数据", notes = "项目总览页顶部指标与研究执行概览", response = DataResult.class, httpMethod = "POST")
 	@PostMapping("/projectsData")
 	public DataResult<ProjectsDataVo> projectsData(
@@ -34,7 +37,7 @@ public class ProjectController {
 		DataResult<ProjectsDataVo> result = new DataResult<ProjectsDataVo>();
 		try {
 			result.setCode("200");
-			result.setData(projectService.getProjectsData());
+			result.setData(readCache.get("projects", () -> projectService.getProjectsData()));
 			result.setMessage("成功");
 			result.setSuccess(true);
 		} catch (Exception e) {
