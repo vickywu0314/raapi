@@ -29,6 +29,7 @@ import com.wenwen.vo.DataResult;
 @RestController
 @RequestMapping("/api/ra/dashboard")
 public class DashboardCohortController {
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(DashboardCohortController.class);
 	private final PrincipalProvider principal;
 	private final AiFeatureAvailability availability;
 	private final AnalysisResultStore results;
@@ -61,11 +62,15 @@ public class DashboardCohortController {
 			result.setMessage("成功");
 		} catch (CohortException e) {
 			status = e.getStatus();
+			if (status >= 500) {
+				LOG.warn("cohort preview unavailable trace={} code={}", trace, e.getCode(), e);
+			}
 			result.setSuccess(false);
 			result.setCode(e.getCode());
 			result.setMessage(e.getMessage());
 		} catch (IOException | RuntimeException e) {
 			status = 503;
+			LOG.error("cohort preview failed trace={}", trace, e);
 			result.setSuccess(false);
 			result.setCode("SERVICE_UNAVAILABLE");
 			result.setMessage("分析暂不可用");
