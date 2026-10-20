@@ -55,34 +55,6 @@
             <version>1.0.5</version>
      </dependency>
 
-	<!-- 尝试后台java截图视频的第一帧作为封面图所需要依赖的插件  开始 -->
-		<dependency>
-		    <groupId>org.bytedeco</groupId>
-		    <artifactId>javacpp</artifactId>
-		    <version>1.4.1</version>
-		</dependency>
-		<dependency>
-		    <groupId>org.bytedeco</groupId>
-		    <artifactId>javacv</artifactId>
-		    <version>1.4.1</version>
-		</dependency>
-		<dependency>
-		    <groupId>org.bytedeco.javacpp-presets</groupId>
-		    <artifactId>opencv-platform</artifactId>
-		    <version>3.4.1-1.4.1</version>
-		</dependency>
-		<dependency>
-		    <groupId>org.bytedeco.javacpp-presets</groupId>
-		    <artifactId>ffmpeg-platform</artifactId>
-		    <version>3.4.2-1.4.1</version>
-		</dependency>
-		<!-- javacv end -->
-		<dependency>
-		    <groupId>org.bytedeco.javacpp-presets</groupId>
-		    <artifactId>opencv-platform</artifactId>
-		    <version>3.4.1-1.4.1</version>
-		</dependency>
-		<!-- 尝试后台java截图视频的第一帧作为封面图所需要依赖的插件  结束 -->
 	
 	
 	   <dependency>
