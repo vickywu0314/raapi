@@ -98,4 +98,18 @@ class OcrResultParserTest {
 		// 不足 3 味不算处方
 		assertNull(OcrResultParser.prescription(java.util.Arrays.asList("葡萄糖 5.2", "体重50kg", "甲氨蝶呤10mg")));
 	}
+
+	@Test void laboratoryConcentrationsAreNotHerbDoses() {
+		for (String unit : new String[]{"g/L", "G/L", "g／L", "g / L", "克/升", "克 ／ 升"}) {
+			java.util.List<String> labs = java.util.Arrays.asList("总蛋白70 " + unit, "白蛋白40 " + unit, "球蛋白30 " + unit);
+			assertNull(OcrResultParser.prescription(labs), unit);
+			java.util.List<String> mixed = new java.util.ArrayList<>(labs);
+			mixed.add("当归15g 川芎10g 白芍15克");
+			java.util.Map<String, Object> prescription = OcrResultParser.prescription(mixed);
+			java.util.List<?> herbs = (java.util.List<?>) prescription.get("herbs");
+			assertEquals(3, herbs.size(), unit);
+			assertEquals("当归15g", ((java.util.Map<?, ?>) herbs.get(0)).get("text"), unit);
+			assertEquals("白芍15g", ((java.util.Map<?, ?>) herbs.get(2)).get("text"), unit);
+		}
+	}
 }

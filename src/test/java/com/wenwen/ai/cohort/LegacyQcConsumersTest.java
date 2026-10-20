@@ -82,6 +82,25 @@ class LegacyQcConsumersTest extends MissingDataHttpFixture {
         PatientsListVo onlyLogic=legacy().listPatients(202L,null,null,"complete",1,20);
         assertEquals(1,onlyLogic.getTotal()); assertEquals(7L,onlyLogic.getItems().get(0).getPatientId()); assertFalse(onlyLogic.getItems().get(0).isIncomplete());
     }
+    @Test void followUpMilestonesUseExistingEnrolledPatientsIncludingWithdrawnAndExcludeBaseline() throws Exception {
+        sql("DELETE FROM patient_follow_up_history");sql("DELETE FROM patient_relation_doctor");sql("DELETE FROM patient_basic_info");
+        for(int id=1;id<=5;id++)sql("INSERT INTO patient_basic_info(id,name,jws) VALUES ("+id+",'synthetic-milestone','record')");
+        // 1重复RA关系；2已脱落仍在入组分母；4只有非RA关系；99仅残留关系/记录、无患者主行。
+        sql("INSERT INTO patient_relation_doctor(doctor_id,patient_id,research_type,miss) VALUES (101,1,0,0),(202,1,1,0),(101,2,0,1),(101,3,0,0),(101,4,6,0),(101,99,0,0)");
+        int[] ids={1,2,3,4,5,99},raCounts={5,4,1,5,5,5};
+        for(int i=0;i<ids.length;i++)for(int n=1;n<=raCounts[i];n++)visit(ids[i]*10+n,ids[i],0,"{}","2024-01-0"+n,null,"record");
+        for(int n=1;n<=5;n++)visit(300+n,3,6,"{}","2024-01-0"+n,null,"record");
+        observed.reset();ProjectsDataVo value=project().getProjectsData();
+        assertEquals(3,value.getEnrolledPatients());assertEquals(3,value.getTotalPatients());
+        assertEquals(2,value.getFollowUp2Count());assertEquals(2,value.getFollowUp3Count());assertEquals(1,value.getFollowUp4Count());
+        assertEquals(new BigDecimal("66.7"),value.getFollowUp2Rate());assertEquals(new BigDecimal("66.7"),value.getFollowUp3Rate());assertEquals(new BigDecimal("33.3"),value.getFollowUp4Rate());
+        assertEquals(4,observed.selects,"新增里程碑仍复用一次统计查询");
+        sql("DELETE FROM patient_basic_info");
+        ProjectsDataVo empty=project().getProjectsData();assertEquals(0,empty.getTotalPatients());
+        assertEquals(0,empty.getFollowUp2Count());assertEquals(0,empty.getFollowUp3Count());assertEquals(0,empty.getFollowUp4Count());
+        assertEquals(new BigDecimal("0.0"),empty.getFollowUp2Rate());assertEquals(new BigDecimal("0.0"),empty.getFollowUp3Rate());assertEquals(new BigDecimal("0.0"),empty.getFollowUp4Rate());
+        assertEquals(0,observed.active.get());assertEquals(observed.borrowed,observed.returned);
+    }
     @Test void duplicateSerologyModuleCannotRecoverRfOrOtherCcpScalar() throws Exception {
         sql("UPDATE patient_follow_up_history SET fzjc='{\"lfsyz\":10,\"lfsyz\":35,\"kccpkt\":25}' WHERE id=10");
         JsonNode ai=success("{}").path("patients").path("items").get(0);

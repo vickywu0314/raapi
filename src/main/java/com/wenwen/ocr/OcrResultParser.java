@@ -230,8 +230,8 @@ public final class OcrResultParser {
 		}
 	}
 
-	/** 处方里的一味药：2～6 个汉字的药名 + 剂量（g / 克），如「墨旱莲15g」「山药 15 克」 */
-	private static final Pattern HERB = Pattern.compile("([\\u4e00-\\u9fa5]{2,6})\\s*(\\d+(?:\\.\\d+)?)\\s*(?:g|G|克)(?![A-Za-z])");
+	/** 处方里的一味药：2～6 个汉字的药名 + 剂量（g / 克）；不能截取 g/L、克/升等浓度单位。 */
+	private static final Pattern HERB = Pattern.compile("([\\u4e00-\\u9fa5]{2,6})\\s*(\\d+(?:\\.\\d+)?)\\s*(?:g|G|克)(?![A-Za-z]|\\s*[/／∕⁄])");
 	/** 药名前常带的字样（「处方黄芪30g」「中药：当归15g」），去掉 */
 	private static final Pattern HERB_PREFIX = Pattern.compile("^(?:中药处方|中药饮片|中药|处方|方药|药物|饮片|用药|组成|加减|加|减)");
 
