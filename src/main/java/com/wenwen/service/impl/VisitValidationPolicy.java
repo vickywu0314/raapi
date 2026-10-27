@@ -76,6 +76,47 @@ final class VisitValidationPolicy {
         return null;
     }
 
+    /** 已配置的参考范围 [min, max]（单侧时另一侧为 null）；没配置返回 null。访视详情只读显示用。 */
+    BigDecimal[] referenceRange(String column, VisitFieldDict.Field field) {
+        JsonNode configured = rules.get(column + "." + field.key);
+        if (configured == null || !field.laboratory) return null;
+        BigDecimal minimum = reference(configured, "referenceMin"), maximum = reference(configured, "referenceMax");
+        return minimum == null && maximum == null ? null : new BigDecimal[] {minimum, maximum};
+    }
+
+    /**
+     * 只读显示用的异常标记：high 高于上限 / low 低于下限 / null 在范围内或无法判断（非数值、阴阳性、单位不一致等）。
+     * 带比较符时只在整个可能取值都越界时才标记（如上限 10 时「&gt;10」为 high、「&lt;5」不标记）。不影响保存校验。
+     */
+    static String abnormal(BigDecimal minimum, BigDecimal maximum, String field, String value, String unit) {
+        if (value == null) return null;
+        String text = value.trim();
+        if ("lfsyz".equals(field) || "kccpkt".equals(field)) {
+            String suffix = unitSuffix(text);
+            if (suffix != null) {
+                if (!suffix.equals(unit)) return null;
+                text = text.substring(0, text.length() - suffix.length()).trim();
+            }
+        }
+        Matcher match = Pattern.compile("^(<=|>=|<|>|≤|≥|＜|＞|=)?\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)$").matcher(text);
+        if (!match.matches()) return null;
+        BigDecimal number = new BigDecimal(match.group(2));
+        String operator = match.group(1) == null ? "=" : match.group(1);
+        switch (operator) {
+            case "<": case "＜":
+                return minimum != null && number.compareTo(minimum) <= 0 ? "low" : null;
+            case "<=": case "≤":
+                return minimum != null && number.compareTo(minimum) < 0 ? "low" : null;
+            case ">": case "＞":
+                return maximum != null && number.compareTo(maximum) >= 0 ? "high" : null;
+            case ">=": case "≥":
+                return maximum != null && number.compareTo(maximum) > 0 ? "high" : null;
+            default:
+                if (minimum != null && number.compareTo(minimum) < 0) return "low";
+                return maximum != null && number.compareTo(maximum) > 0 ? "high" : null;
+        }
+    }
+
     VisitFieldValidationVo describe(String column, VisitFieldDict.Field field, String target) {
         VisitFieldValidationVo rule = new VisitFieldValidationVo();
         rule.kind = field.laboratory ? "laboratory" : field.type;

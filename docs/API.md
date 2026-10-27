@@ -507,6 +507,8 @@ auditLogService.record(patientId, visitId, "修改档案", changes, 附加说明
 | `filled` | 是否有内容；空串、`{}`、`[]`、`null` 视为未记录，页面显示「本次未记录」 |
 | `groups[]` | 按字段字典分好的组：`title` 组名（如 血常规）、`items[]` 字段；字典外的字段在最后的「其他字段」组，按原字段名显示 |
 | `groups[].items[]` | `key` 老系统字段名、`label` 中文名、`value` 显示值（多选用「、」连接）、`unit` 单位、`notChecked` 是否未查（`Wx` 标记为 true，此时 `value` 为「未查」） |
+| `groups[].items[].referenceMin` / `referenceMax` | 检验参考范围（number，可单侧）：只有辅助检查 `fzjc` 的检验项且在 `ra.visit.validation.rules` 里配置了范围时才有（与录入校验同一份配置，见 §4.7），否则为 `null`；配置不可用时全部为 `null`，不影响查看 |
+| `groups[].items[].abnormal` | 只读显示的异常标记：`high` 高于上限 / `low` 低于下限 / `null` 在范围内、没配范围、未查、阴阳性等非数值或单位与字典不一致。带比较符时只在整个可能取值都越界时才标记（上限 10 时 `>10` 为 `high`，`<5` 不标记；下限 3.5 时 `<3.5` 为 `low`，`≤3.5` 不标记）。不影响保存校验，也不改老数据 |
 | `tables[]` | 清单（西药、中成药、中药饮片、中医外治）：`title`、`columns` 列名（只保留有内容的列）、`rows` 每行的值 |
 | `images[]` | 图片：`title` 类别（化验检查报告、双手正位片、心电图、面部 / 舌面 / 舌底）、`urls` 地址 |
 | `record` / `recordDate` | 字段存的是普通文字或 `{record, date}` 时的内容和日期；结构化 JSON 时为 `null` |

@@ -85,10 +85,17 @@ public class VisitServiceImpl implements VisitService {
         vo.setBaseline(number==0);
         vo.setVisitType(com.wenwen.ai.patient.PatientFollowUpPolicy.visitType(number));
 
+		// 检验参考范围只用于显示（与录入校验同一份配置）；配置不可用时不显示范围，不影响查看
+		VisitValidationPolicy reference;
+		try {
+			reference = new VisitValidationPolicy(validationRules);
+		} catch (BizException e) {
+			reference = null;
+		}
 		List<VisitModuleVo> modules = new ArrayList<VisitModuleVo>();
 		int filled = 0;
 		for (VisitFieldDict.Module m : VisitFieldDict.MODULES) {
-			VisitModuleVo mod = toModule(m, (String) row.get(m.column));
+			VisitModuleVo mod = toModule(m, (String) row.get(m.column), reference);
 			if (mod.isFilled()) {
 				filled++;
 			}
@@ -669,6 +676,11 @@ public class VisitServiceImpl implements VisitService {
 	 * {"record": "...", "date": "..."} 或普通文字 → record
 	 */
 	private static VisitModuleVo toModule(VisitFieldDict.Module dict, String raw) {
+		return toModule(dict, raw, null);
+	}
+
+	/** reference 不为 null 时，给配置了参考范围的检验项加 referenceMin / referenceMax / abnormal（只读显示） */
+	private static VisitModuleVo toModule(VisitFieldDict.Module dict, String raw, VisitValidationPolicy reference) {
 		VisitModuleVo mod = new VisitModuleVo();
 		mod.setKey(dict.key);
 		mod.setTitle(dict.title);
@@ -687,13 +699,13 @@ public class VisitServiceImpl implements VisitService {
 			mod.setRecord(VisitJson.blankToNull(json.getString("record")));
 			mod.setRecordDate(VisitJson.blankToNull(json.getString("date")));
 		} else {
-			fillStructured(dict, json, mod);
+			fillStructured(dict, json, mod, reference);
 		}
 		mod.setFilled(mod.getRecord() != null || !mod.getGroups().isEmpty() || !mod.getTables().isEmpty() || !mod.getImages().isEmpty());
 		return mod;
 	}
 
-	private static void fillStructured(VisitFieldDict.Module dict, JSONObject json, VisitModuleVo mod) {
+	private static void fillStructured(VisitFieldDict.Module dict, JSONObject json, VisitModuleVo mod, VisitValidationPolicy reference) {
 		Set<String> used = new HashSet<String>(dict.hidden);
 		JSONObject wxMap = dict.wxMap == null ? null : json.getJSONObject(dict.wxMap);
 
@@ -707,7 +719,14 @@ public class VisitServiceImpl implements VisitService {
 				if (value == null && !notChecked) {
 					continue;
 				}
-				items.add(field(f.key, f.label, value == null ? NOT_CHECKED : value, value == null ? "" : f.unit, value == null));
+				VisitFieldVo item = field(f.key, f.label, value == null ? NOT_CHECKED : value, value == null ? "" : f.unit, value == null);
+				java.math.BigDecimal[] range = reference == null ? null : reference.referenceRange(dict.column, f);
+				if (range != null) {
+					item.setReferenceMin(range[0]);
+					item.setReferenceMax(range[1]);
+					item.setAbnormal(notChecked || value == null || "未查".equals(value) ? null : VisitValidationPolicy.abnormal(range[0], range[1], f.key, value, f.unit));
+				}
+				items.add(item);
 			}
 			if (!items.isEmpty()) {
 				mod.getGroups().add(group(g.title, items));

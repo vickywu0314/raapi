@@ -17,6 +17,19 @@ public class VisitFieldVo {
 	@ApiModelProperty("是否未查（Wx 标记为 true）")
 	private boolean notChecked;
 
+	@ApiModelProperty("参考范围下限（检验项且配置了 ra.visit.validation.rules 时才有，见 API.md §4.7）；未配置为 null")
+	private java.math.BigDecimal referenceMin;
+	@ApiModelProperty("参考范围上限；未配置为 null")
+	private java.math.BigDecimal referenceMax;
+	@ApiModelProperty("只读显示：high 高于上限 / low 低于下限 / null 在范围内、未配置或无法判断")
+	private String abnormal;
+	public java.math.BigDecimal getReferenceMin() { return referenceMin; }
+	public void setReferenceMin(java.math.BigDecimal value) { referenceMin = value; }
+	public java.math.BigDecimal getReferenceMax() { return referenceMax; }
+	public void setReferenceMax(java.math.BigDecimal value) { referenceMax = value; }
+	public String getAbnormal() { return abnormal; }
+	public void setAbnormal(String value) { abnormal = value; }
+
 	public String getKey() {
 		return key;
 	}
