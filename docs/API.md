@@ -341,7 +341,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | 项 | 值 |
 |---|---|
 | 地址 | `POST /api/ra/patient/patientDetail` |
-| 代码 | `PatientController.patientDetail` → `PatientServiceImpl.getPatientDetail` → `PatientMapper.xml`（`getPatientBasic`、`listPatients`、`listVisits`） |
+| 代码 | `PatientController.patientDetail` → `PatientServiceImpl.getPatientDetail` → `PatientMapper.xml`（`getPatientBasic`、`listPatients`、`listVisits`；`listVisits` 传 `clinical` 时另取 `bqpg` / `bsbq` / `zlfa` 原文，字段见 `VisitFieldDict`，不增加查询次数） |
 
 #### 入参
 
@@ -385,6 +385,10 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `visits[].visitType` / `baseline` | 访视类型 | 最早 `COALESCE(follow_up_date,followUpDate)` 完整时刻为基线，同完整时刻取小 ID，有日期先于无日期，全无日期取小 ID；其余按同顺序显示「第 N 次随访」 |
 | `visits[].followUpNumber` | 后续访次序号 | 基线 0，后续按上述完整顺序为 1、2…；列表仍完整时刻倒序，无日期最后，显示日期保持 yyyy-MM-dd |
 | `visits[].doctorId` / `doctorName` | 记录医生 ID / 姓名 | `doctor_id`；姓名取 `user.name`，无则 `null`（页面显示 ID） |
+| `visits[].das28Crp` | 本次 DAS28-CRP（number） | 病情评估 `bqpg.result.crpScore`，与 `latestDas28` 同一读取：原值须非负，两位 HALF_UP；缺失 / 非法 / 负值为 `null`（不用 ESR 代替） |
+| `visits[].das28Esr` | 本次 DAS28-ESR（number） | `bqpg.result.esrScore`，同样非负、两位 HALF_UP；缺失 / 非法为 `null` |
+| `visits[].regimenChanged` | 与上次相比治疗方案是否调整（Boolean） | 治疗方案 `zlfa.tz`：`是` → `true`，`否` → `false`；未填写 / 其它值（含基线，字典里该项只在第 2 次及以后随访显示）为 `null` |
+| `visits[].cause` | 加重诱因（String） | 病史病情 `bsbq.cause`（老数据多为数组，也兼容字符串），去掉「无」和空值后用「、」连接；选了「其他」且有 `extraCause` 时写成「其他：xxx」；整模块为 `{record}` 文字、没填或只有「无」时为 `null` |
 
 
 旧详情方法先验证服务端 `AuthenticatedDoctorSession`，再解析表单；`from/source`、浏览器 doctorId、header 与 principal.name 不授予权限。每次响应含 `X-Trace-Id`。失败 `success=false/data=null`：HTTP401 `UNAUTHENTICATED`、400 `INVALID_REQUEST`（缺失/坏/重复ID）、403 `FORBIDDEN`（医生提示不一致）、404 `RESOURCE_NOT_FOUND`（非本人RA/不存在/删除/撤权）、503 `SERVICE_UNAVAILABLE`（源故障）。成功仍HTTP200/code `200`，完整档案字段保留，普通详情不依赖AI feature开关。

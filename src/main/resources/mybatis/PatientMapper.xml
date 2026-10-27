@@ -196,13 +196,15 @@
 		FROM patient_ra_extra WHERE patient_id = #{patientId}
 	</select>
 
-	<!-- 随访时间线：最近的在前；无日期的排最后；记录医生姓名取 user.name -->
+	<!-- 随访时间线：最近的在前；无日期的排最后；记录医生姓名取 user.name；传 clinical 时另返回 bqpg / bsbq / zlfa 原文 -->
 	<select id="listVisits" resultType="Map" parameterType="Map">
 		SELECT f.id AS visitId,
                DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d %H:%i:%s.%f') AS visitTime,
 		       DATE_FORMAT(COALESCE(f.follow_up_date, f.followUpDate), '%Y-%m-%d') AS visitDate,
 		       f.doctor_id AS doctorId,
 		       u.name AS doctorName
+		       <!-- 详情时间线另取三个模块原文，service 解析本次 DAS28、方案是否调整、加重诱因（字段见 VisitFieldDict） -->
+		       <if test="clinical != null">, f.bqpg, f.bsbq, f.zlfa</if>
 		FROM patient_follow_up_history f
 		LEFT JOIN `user` u ON u.id = f.doctor_id
 		WHERE f.patient_basic_info_id = #{patientId}

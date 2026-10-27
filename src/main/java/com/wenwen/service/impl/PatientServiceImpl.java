@@ -517,6 +517,7 @@ public class PatientServiceImpl implements PatientService {
 
 		// 随访时间线：最近的在前；时间最早的一次为基线访视
 		List<VisitItemVo> visits = new ArrayList<VisitItemVo>();
+		map.put("clinical", Boolean.TRUE);
 		List<Map<String,Object>> visitRows=patientMapper.listVisits(map);
         Map<Long,Integer> numbers=com.wenwen.ai.patient.PatientFollowUpPolicy.numbers(visitRows);
 		for (Map<String, Object> v : visitRows) {
@@ -525,6 +526,7 @@ public class PatientServiceImpl implements PatientService {
 			vi.setVisitDate((String) v.get("visitDate"));
 			vi.setDoctorId(toLong(v.get("doctorId")));
 			vi.setDoctorName(blankToNull((String) v.get("doctorName")));
+			visitClinical(vi, v);
 			visits.add(vi);
 
 		}
@@ -536,6 +538,34 @@ public class PatientServiceImpl implements PatientService {
 		}
 		d.setVisits(visits);
 		return d;
+	}
+
+	/**
+	 * 时间线每次随访的摘要（只读）：bqpg.result.crpScore / result.esrScore、zlfa.tz、bsbq.cause + extraCause（字段见 VisitFieldDict）。
+	 * CRP 与列表 latestDas28 同一读取（ClinicalScalarReader + canonicalCrp）；ESR 同样非负、两位 HALF_UP。
+	 */
+	static void visitClinical(VisitItemVo vi, Map<String, Object> row) {
+		vi.setDas28Crp(Das28Util.canonicalCrp(com.wenwen.ai.source.ClinicalScalarReader.read(str(row.get("bqpg")), new java.util.LinkedHashSet<String>()).get("/result/crpScore")));
+		com.alibaba.fastjson.JSONObject bqpg = com.wenwen.util.VisitJson.parse(str(row.get("bqpg")));
+		Object esr = bqpg == null ? null : com.wenwen.util.VisitJson.path(bqpg, "result.esrScore");
+		vi.setDas28Esr(esr instanceof Number || esr instanceof String ? Das28Util.canonicalCrp(String.valueOf(esr)) : null);
+		com.alibaba.fastjson.JSONObject zlfa = com.wenwen.util.VisitJson.parse(str(row.get("zlfa")));
+		String tz = zlfa == null ? null : com.wenwen.util.VisitJson.text(zlfa.get("tz"));
+		vi.setRegimenChanged("是".equals(tz) ? Boolean.TRUE : "否".equals(tz) ? Boolean.FALSE : null);
+		com.alibaba.fastjson.JSONObject bsbq = com.wenwen.util.VisitJson.parse(str(row.get("bsbq")));
+		if (bsbq != null && !bsbq.containsKey("record")) {
+			Object cause = bsbq.get("cause");
+			List<String> parts = new ArrayList<String>();
+			for (Object o : cause instanceof java.util.Collection ? (java.util.Collection<?>) cause : Collections.singletonList(cause)) {
+				String t = o == null || o instanceof java.util.Map || o instanceof java.util.Collection ? null : blankToNull(String.valueOf(o));
+				if (t == null || "无".equals(t)) {
+					continue;
+				}
+				String extra = "其他".equals(t) ? com.wenwen.util.VisitJson.text(bsbq.get("extraCause")) : null;
+				parts.add(extra == null ? t : t + "：" + extra);
+			}
+			vi.setCause(parts.isEmpty() ? null : String.join("、", parts));
+		}
 	}
 
 	@Override

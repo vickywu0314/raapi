@@ -13,5 +13,5 @@ ALTER TABLE patient_basic_info
  ADD xl VARCHAR(30), ADD xy VARCHAR(30), ADD xy_h VARCHAR(30), ADD xy_l VARCHAR(30),
  ADD allergy INT, ADD gms VARCHAR(2000), ADD jzs VARCHAR(2000);
 ALTER TABLE patient_relation_doctor ADD reason VARCHAR(200), ADD other_miss_reason VARCHAR(200), ADD note VARCHAR(200);
-ALTER TABLE patient_follow_up_history ADD doctor_id BIGINT;
+ALTER TABLE patient_follow_up_history ADD doctor_id BIGINT, ADD bsbq LONGTEXT;
 CREATE TABLE `user` (id BIGINT PRIMARY KEY, name VARCHAR(100)) ENGINE=InnoDB;
