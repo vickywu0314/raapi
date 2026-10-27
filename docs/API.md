@@ -781,6 +781,7 @@ OCR 与手录使用同一保存校验。OCR 原文 `10000abc` 等无法完整解
 | `attention.highCrp` | 炎症指标升高 | 最近一次填了 CRP 的随访，CRP > 10 mg/L |
 | `attention.fm` | 合并 FM | 常见相关疾病有 FM |
 | `activity.dist` / `targetRate` | DAS28-CRP 分布 / 达标率 % | 最近一次评分；达标 = 缓解 + 低 |
+| `outcome.n` / `better` / `stable` / `worse` | 病情变化（int） | 只算截至今天有 ≥2 次有效 DAS28-CRP 的患者（`n`）；最近一次 − 首次 ≤ −0.6 → `better`，≥ +0.6 → `worse`，其余 `stable`（`n = better + stable + worse`）；与患者列表 `items[].trend` / `trend` 筛选同一计算（`Das28Util.trend`），点击可跳到列表 `trend=better/stable/worse` |
 | `quality.completeRate` / `byItem` | 资料完整率 % / 各缺失项人数 | 患者列表「待补全」同一规则 |
 | `research.validSample` | 有效研究样本 | 有随访、未脱落、没有待处理的质控问题（= 数据质控「满足研究级质量要求」） |
 | `research.totalVisits` / `visited30` / `visited90` | 累计访视 / 近 30、90 天有随访的人数 | |

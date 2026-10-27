@@ -113,6 +113,15 @@ public class DashboardServiceImpl implements DashboardService {
 		int target = dist.get(Das28Util.REMISSION) + dist.get(Das28Util.LOW);
 		out.put("activity", map("evaluable", evaluable, "targetRate", evaluable == 0 ? null : Math.round(target * 100.0 / evaluable), "dist", distList));
 
+		// 病情变化（与患者列表 trend 同一计算）：有 ≥2 次有效 DAS28-CRP 的患者，最近一次 − 首次 ≤ −0.6 改善 / ≥ +0.6 加重 / 其余稳定
+		int better = 0, stable = 0, worse = 0;
+		for (PatientItemVo p : items) {
+			better += Das28Util.BETTER.equals(p.getTrend()) ? 1 : 0;
+			stable += Das28Util.STABLE.equals(p.getTrend()) ? 1 : 0;
+			worse += Das28Util.WORSE.equals(p.getTrend()) ? 1 : 0;
+		}
+		out.put("outcome", map("n", better + stable + worse, "better", better, "stable", stable, "worse", worse));
+
 		// 最近一次 CRP（最近一次填了 C 反应蛋白的随访）
 		Map<Long, BigDecimal> crp = new HashMap<Long, BigDecimal>();
 		List<Map<String, Object>> recentHighCrp = new ArrayList<Map<String, Object>>();
