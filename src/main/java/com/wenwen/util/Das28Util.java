@@ -49,6 +49,27 @@ public final class Das28Util {
 		return score.compareTo(MODERATE_MAX) <= 0 ? MODERATE : HIGH;
 	}
 
+	/** 病情变化阈值：首次与最近一次 DAS28-CRP 相差 ≥ 0.6 才算改善 / 加重（与看板「活动度回升」同一阈值） */
+	public static final BigDecimal TREND_DELTA = new BigDecimal("0.6");
+	public static final String BETTER = "better";
+	public static final String STABLE = "stable";
+	public static final String WORSE = "worse";
+
+	/**
+	 * 病情变化：最近一次 − 首次（均为 canonical 两位）≤ −0.6 改善 better，≥ +0.6 加重 worse，其余 stable；
+	 * 任一缺失返回 null（需至少两次有效评分，由调用方保证 first 与 latest 不是同一次随访）。
+	 */
+	public static String trend(BigDecimal first, BigDecimal latest) {
+		if (first == null || latest == null) {
+			return null;
+		}
+		BigDecimal delta = latest.subtract(first);
+		if (delta.compareTo(TREND_DELTA) >= 0) {
+			return WORSE;
+		}
+		return delta.compareTo(TREND_DELTA.negate()) <= 0 ? BETTER : STABLE;
+	}
+
 	public static String label(String activity) {
 		if (REMISSION.equals(activity)) {
 			return "临床缓解";

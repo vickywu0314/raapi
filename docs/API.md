@@ -196,13 +196,24 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | 参数 | 类型 | 必填 | 中文含义 | 示例 |
 |---|---|---|---|---|
 | `doctorId` | Long | 是 | 当前登录医生 ID，只返回其名下患者 | `5065` |
-| `keyword` | String | 否 | 模糊查询：姓名 / ID号 / 研究编号，包含匹配，不区分大小写 | `林` |
+| `keyword` | String | 否 | 模糊查询：姓名 / ID号 / 研究编号 / 手机号（`mobile`，只用于匹配、不返回），包含匹配，不区分大小写；多个词用空格（含全角空格）分隔时**每个词都要命中**（AND，可分别命中不同字段） | `林 138` |
 | `followStatus` | String | 否 | 随访状态：`active` 随访中 / `soon` 近期需随访 / `overdue` 随访逾期 / `pending_first` 待首次随访 / `withdrawn` 已脱落；不传 = 全部 | `soon` |
 | `completeness` | String | 否 | 数据完整性：`complete` 数据完整 / `missing` 数据缺失；不传 = 全部 | `missing` |
+| `sort` | String | 否 | 排序（见下）：`created` 建档时间倒序（默认）/ `last` 最近随访倒序 / `das-desc`、`das-asc` 最近 DAS28-CRP 降序、升序 / `code` 研究编号升序 | `das-desc` |
+| `sex` | String | 否 | 性别：`男` / `女`（库里 `gender` 1 / 2；也接受 `M` / `F`）；其它性别编码的患者不会命中 | `女` |
+| `ageMin` / `ageMax` | int | 否 | 年龄下限 / 上限（整周岁，含边界，0~150）；年龄与 `items[].age` 同一算法（身份证生日、上海今日），**无可靠生日的患者在传了年龄条件时不命中** | `40` / `49` |
+| `ageBand` | String | 否 | 年龄段 `最小-最大`（含边界），如 `18-39` / `40-49` / `50-59` / `60-69` / `70-120`；与 `ageMin` / `ageMax` 同时传取交集 | `40-49` |
+| `activity` | String | 否 | 最近 DAS28-CRP 活动度，与 `items[].das28Activity` 同一阈值：`remission` / `low` / `moderate` / `high`；`none` = 无有效评分 | `high` |
+| `comorbidity` | String | 否 | 其他病史（与 `items[].comorbidities[]` 同源 `patient_comorbidity`）：`any` 有任一记录 / `none` 没有记录（不证明阴性）/ 病种编码 `FM`、`AS`、`SS`、`RA-ILD`、`RA-MS`（不区分大小写） | `FM` |
+| `serology` | String | 否 | 血清学分型，与 `items[].subtype` 同一推导：`pos` 血清阳性 / `neg` 血清阴性 / `unknown` 分型未提供 | `pos` |
+| `created` | String | 否 | 建档时间（`create_date`，空则 `createDate`）：`30` / `90` / `365` = 建档日期 ≥ 上海今日 − N 天；`old` = 建档日期早于上海今日 − 365 天；无建档时间的患者都不命中 | `90` |
+| `trend` | String | 否 | 病情变化，与 `items[].trend` 同一计算：`better` / `stable` / `worse`；`none` = 有效评分不足 2 次 | `worse` |
 | `page` | int | 否 | 页码，从 1 开始，默认 1 | `1` |
 | `size` | int | 否 | 每页条数，默认 20，最大 200；页面下拉 8 / 16 / 32 | `8` |
 
-排序：建档时间（create_date，空则 createDate）倒序，最后新建的在最上面；无建档时间的老数据排最后；同时间按 patientId 倒序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
+排序：默认（`sort` 不传或 `created`）建档时间（create_date，空则 createDate）倒序，最后新建的在最上面；无建档时间的老数据排最后；同时间按 patientId 倒序。`sort=last`：最近随访（完整日期时间）倒序，无随访排最后，同时间 patientId 倒序；`sort=code`：研究编号升序，无编号排最后，同编号 patientId 升序；`sort=das-desc` / `das-asc`：按 `latestDas28` 降序 / 升序，无有效评分排最后，同分保持默认顺序。keyword的LIKE转义、collation及followStatus保持原SQL语义。
+
+扩展筛选（2026-10-27）：所有条件之间是 AND，**都在 `total` 计数和分页之前生效**；`totalPatients` / `incompleteCount` 仍不受任何筛选影响。`keyword`、`sex`、`created`、`sort=last/code` 在 SQL 里做；年龄、活动度、病情变化、DAS 排序在同一次快照上按与列表展示相同的计算过滤（不另查库）；`comorbidity`、`serology` 只在传了时才对全部候选多读一次 `patient_comorbidity` / 随访辅助检查。取值不在上述范围返回 `400`。数据导出（`listPatientIds`）暂只接收 keyword / followStatus / completeness（keyword 的多词与手机号匹配同样生效），不接收这些扩展条件。性能（wenwen_perf，医生 5065，4623 患者 / 13617 随访）：不带条件约 0.45 s，各条件单独或全部组合 0.35~0.55 s。
 
 listPatients/listPatientIds/getPatientDetail 各在入口仅采样一次注入 Clock 并转 Asia/Shanghai asOf，SQL 到期筛选、详情 nextDueDays、疑似失访和既有临床计算均消费该次日期，不使用数据库/JVM 当前日期。
 
@@ -254,6 +265,10 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | `comorbidities[].sinceYear` | Integer | 起病年份（弹窗用） | `since_year` |
 | `comorbidities[].status` / `coreItems` / `treatment` | — | 弹窗：当前情况 / 核心指标 / 治疗 | 一期无数据来源，`null` |
 | `comorbidities[].linkedStudyReady` | boolean | 对应病种库是否已接入 | 一期均为 `false` |
+| `das28Prev` | number | 上一次 DAS28-CRP（页面 ↑↓ 箭头用） | 与 `latestDas28` 同一口径的有效评分，按日期 / visitId 排在最近一次之前的那次；有效评分不足 2 次为 `null` |
+| `das28First` | number | 首次 DAS28-CRP | 截至上海今日最早的一次有效评分；有效评分不足 2 次为 `null` |
+| `trend` | String | 病情变化 | `latestDas28 − das28First` ≤ −0.6 → `better`；≥ +0.6 → `worse`；其余 `stable`；有效评分不足 2 次为 `null`（与看板「活动度回升」同一 0.6 阈值） |
+| `createDate` | String | 建档日期 | `create_date`，空则 `createDate`，`yyyy-MM-dd`；都为空为 `null` |
 | `lastVisitDate` | String | 最近随访 · 日期 | 随访记录最大 `follow_up_date`，`yyyy-MM-dd`；无则 `null`（显示「暂无访视」） |
 | `nextDueDate` | String | 下次应随访日期 | `lastVisitDate` + `followCycle` 个月；已脱落或无随访为 `null` |
 | `followStatus` | String | 随访状态编码 | 按优先级命中即止：① 已脱落（当前医生同 RA 关系 `miss=1`）→ `withdrawn`；② 无随访 → `pending_first`；③ `nextDueDate` 早于同次上海 asOf → `overdue`；④ 14 天内到期 → `soon`；⑤ 其余 → `active` |
@@ -311,6 +326,7 @@ curl -X POST "http://localhost:8065/api/ra/patient/patientsList" \
 | 场景 | `code` | `message` |
 |---|---|---|
 | `followStatus` / `completeness` 取值不对 | `400` | 随访状态不正确：xxx / 数据完整性不正确：xxx |
+| `sort` / `sex` / 年龄 / `activity` / `comorbidity` / `serology` / `created` / `trend` 取值不对 | `400` | 排序方式不正确：xxx / 性别不正确：xxx / 年龄段不正确：xxx …… |
 | `page` < 1 或 `size` 不在 1~200 | `400` | 页码从 1 开始 / 每页条数应为 1~200 |
 | 数据库查询出错 | `500` | 获取患者列表失败（详细错误看后台日志） |
 

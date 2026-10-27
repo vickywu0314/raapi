@@ -49,6 +49,23 @@ public class PatientItemVo {
 	private String das28Activity;
 	@ApiModelProperty("疾病活动度中文：临床缓解 / 低疾病活动度 / 中疾病活动度 / 高疾病活动度")
 	private String das28ActivityLabel;
+	@ApiModelProperty("上一次有效 DAS28-CRP：截至本次日期、按日期 / ID 排在最近一次之前的那次；有效评分不足 2 次为 null")
+	private BigDecimal das28Prev;
+	@ApiModelProperty("首次有效 DAS28-CRP：截至本次日期最早的一次；有效评分不足 2 次为 null")
+	private BigDecimal das28First;
+	@ApiModelProperty("病情变化（最近 − 首次 DAS28-CRP）：better ≤ −0.6 / worse ≥ +0.6 / stable 其余；有效评分不足 2 次为 null")
+	private String trend;
+	@ApiModelProperty("建档日期 yyyy-MM-dd（create_date，空则 createDate）；都为空则 null")
+	private String createDate;
+	public BigDecimal getDas28Prev() { return das28Prev; }
+	public void setDas28Prev(BigDecimal value) { das28Prev = value; }
+	public BigDecimal getDas28First() { return das28First; }
+	public void setDas28First(BigDecimal value) { das28First = value; }
+	public String getTrend() { return trend; }
+	public void setTrend(String value) { trend = value; }
+	public String getCreateDate() { return createDate; }
+	public void setCreateDate(String value) { createDate = value; }
+
 	@ApiModelProperty("最近随访日期 yyyy-MM-dd；无随访则 null（页面显示「暂无访视」）")
 	private String lastVisitDate;
 	@ApiModelProperty("下次应随访日期 yyyy-MM-dd = 最近随访 + 随访周期；已脱落或无随访则 null")

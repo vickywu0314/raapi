@@ -58,17 +58,38 @@ public class PatientController {
 	@PostMapping("/patientsList")
 	public DataResult<PatientsListVo> patientsList(
 			@RequestParam(value = "doctorId", required = true) @ApiParam(value = "医生ID，只返回该医生名下患者", required = true) Long doctorId,
-			@RequestParam(value = "keyword", required = false) @ApiParam(value = "模糊查询：姓名 / ID号 / 研究编号，包含匹配") String keyword,
+			@RequestParam(value = "keyword", required = false) @ApiParam(value = "模糊查询：姓名 / ID号 / 研究编号 / 手机号，包含匹配；多个词用空格分隔，须全部命中") String keyword,
 			@RequestParam(value = "followStatus", required = false) @ApiParam(value = "随访状态：active 随访中 / soon 近期需随访 / overdue 随访逾期 / pending_first 待首次随访 / withdrawn 已脱落；不传=全部") String followStatus,
 			@RequestParam(value = "completeness", required = false) @ApiParam(value = "数据完整性：complete 数据完整 / missing 数据缺失；不传=全部") String completeness,
+			@RequestParam(value = "sort", required = false) @ApiParam(value = "排序：created 建档时间倒序（默认）/ last 最近随访倒序 / das-desc、das-asc 最近 DAS28-CRP / code 研究编号升序") String sort,
+			@RequestParam(value = "sex", required = false) @ApiParam(value = "性别：男 / 女") String sex,
+			@RequestParam(value = "ageMin", required = false) @ApiParam(value = "年龄下限（含）") Integer ageMin,
+			@RequestParam(value = "ageMax", required = false) @ApiParam(value = "年龄上限（含）") Integer ageMax,
+			@RequestParam(value = "ageBand", required = false) @ApiParam(value = "年龄段，如 18-39 / 40-49 / 70-120（含边界）") String ageBand,
+			@RequestParam(value = "activity", required = false) @ApiParam(value = "最近 DAS28-CRP 活动度：remission / low / moderate / high / none") String activity,
+			@RequestParam(value = "comorbidity", required = false) @ApiParam(value = "其他病史：any / none / FM / AS / SS / RA-ILD / RA-MS") String comorbidity,
+			@RequestParam(value = "serology", required = false) @ApiParam(value = "血清学分型：pos / neg / unknown") String serology,
+			@RequestParam(value = "created", required = false) @ApiParam(value = "建档时间：30 / 90 / 365（最近 N 天内）/ old（超过 365 天）") String created,
+			@RequestParam(value = "trend", required = false) @ApiParam(value = "病情变化（首次 vs 最近 DAS28-CRP，±0.6）：better / stable / worse / none") String trend,
 			@RequestParam(value = "page", required = false, defaultValue = "1") @ApiParam(value = "页码，从 1 开始，默认 1") int page,
 			@RequestParam(value = "size", required = false, defaultValue = "20") @ApiParam(value = "每页条数，默认 20，最大 200") int size,
 			HttpServletRequest request) {
 		DataResult<PatientsListVo> result = new DataResult<PatientsListVo>();
 		try {
+			com.wenwen.vo.PatientListFilter filter = new com.wenwen.vo.PatientListFilter();
+			filter.setSort(sort);
+			filter.setSex(sex);
+			filter.setAgeMin(ageMin);
+			filter.setAgeMax(ageMax);
+			filter.setAgeBand(ageBand);
+			filter.setActivity(activity);
+			filter.setComorbidity(comorbidity);
+			filter.setSerology(serology);
+			filter.setCreated(created);
+			filter.setTrend(trend);
 			result.setCode("200");
-			result.setData(readCache.get("patients:" + doctorId + "|" + keyword + "|" + followStatus + "|" + completeness + "|" + page + "|" + size,
-					() -> patientService.listPatients(doctorId, keyword, followStatus, completeness, page, size)));
+			result.setData(readCache.get("patients:" + doctorId + "|" + keyword + "|" + followStatus + "|" + completeness + "|" + filter.cacheKey() + "|" + page + "|" + size,
+					() -> patientService.listPatients(doctorId, keyword, followStatus, completeness, filter, page, size)));
 			result.setMessage("成功");
 			result.setSuccess(true);
 		} catch (IllegalArgumentException e) {

@@ -42,6 +42,8 @@
 		       p.gender,
 		       p.age,
 		       p.card_no AS cardNo,
+		       <!-- 手机号只用于关键词匹配（老表原有字段），不返回给列表；没有关键词时不读 -->
+		       <if test="keywords != null">p.mobile,</if>
 		       YEAR(COALESCE(p.create_date, p.createDate)) AS createYear,
 		       COALESCE(p.create_date, p.createDate) AS createTime,
 		       p.follow_cycle AS followCycle,
@@ -71,21 +73,41 @@
 		<if test="patientId != null">WHERE p.id = #{patientId}</if>
 	</sql>
 
-	<!-- 筛选：keyword 姓名 / ID号 / 研究编号包含匹配（不区分大小写）；followStatus；completeness由共享四M政策过滤 -->
+	<!--
+		筛选：keywords 按空格拆开的多个词，每个词都要命中（AND）姓名 / ID号 / 研究编号 / 手机号之一，包含匹配（不区分大小写）；
+		followStatus；gender 性别编码；createdFrom / createdBefore 建档时间区间（[from, before)，无建档时间的不命中）。
+		completeness 及年龄、DAS28、病史、分型、病情变化在 service 里用同一快照过滤（与列表展示同一套计算）。
+	-->
 	<sql id="filters">
 		<where>
-			<if test="keyword != null and keyword != ''">
-				AND (x.name LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
-				     OR CAST(x.patientId AS CHAR) LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape}
-				     OR x.studyNo LIKE CONCAT('%', #{keyword}, '%') ESCAPE #{keywordEscape})
+			<if test="keywords != null">
+				<foreach collection="keywords" item="word">
+				AND (x.name LIKE CONCAT('%', #{word}, '%') ESCAPE #{keywordEscape}
+				     OR CAST(x.patientId AS CHAR) LIKE CONCAT('%', #{word}, '%') ESCAPE #{keywordEscape}
+				     OR x.studyNo LIKE CONCAT('%', #{word}, '%') ESCAPE #{keywordEscape}
+				     OR x.mobile LIKE CONCAT('%', #{word}, '%') ESCAPE #{keywordEscape})
+				</foreach>
 			</if>
 			<if test="followStatus != null and followStatus != ''">
 				AND x.followStatus = #{followStatus}
 			</if>
+			<if test="gender != null">
+				AND x.gender = #{gender}
+			</if>
+			<if test="createdFrom != null">
+				AND x.createTime &gt;= CAST(#{createdFrom} AS DATE)
+			</if>
+			<if test="createdBefore != null">
+				AND x.createTime &lt; CAST(#{createdBefore} AS DATE)
+			</if>
 		</where>
 	</sql>
 
-	<!-- 默认排序：建档时间倒序（最后新建的在最上面），无建档时间的老数据排最后，同时间按患者 ID 倒序 -->
+	<!--
+		默认排序（sort 不传 / created）：建档时间倒序（最后新建的在最上面），无建档时间的老数据排最后，同时间按患者 ID 倒序；
+		sort=last：最近随访时间倒序，无随访排最后；sort=code：研究编号升序，无编号排最后。
+		das-desc / das-asc 在 service 里按最近 DAS28-CRP 稳定排序（同分保持这里的默认顺序）。
+	-->
 	<select id="listPatients" resultType="Map" parameterType="Map">
 		SELECT x.patientId, x.studyNo, x.name, x.gender, x.age, x.cardNo, x.createYear, x.followCycle, x.visitCount,
 		       DATE_FORMAT(x.createTime, '%Y-%m-%d') AS createDate,
@@ -95,7 +117,11 @@
 		       x.followStatus
 		FROM (<include refid="patientRows"/>) x
 		<include refid="filters"/>
-		ORDER BY x.createTime IS NULL, x.createTime DESC, x.patientId DESC
+		<choose>
+			<when test='"last".equals(sort)'>ORDER BY x.lastVisit IS NULL, x.lastVisit DESC, x.patientId DESC</when>
+			<when test='"code".equals(sort)'>ORDER BY x.studyNo IS NULL, x.studyNo ASC, x.patientId ASC</when>
+			<otherwise>ORDER BY x.createTime IS NULL, x.createTime DESC, x.patientId DESC</otherwise>
+		</choose>
 	</select>
 
 	<!--

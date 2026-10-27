@@ -25,6 +25,12 @@ public interface PatientService {
 	 */
 	PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, int page, int size);
 
+	/**
+	 * 患者列表 + 扩展筛选 / 排序（排序、性别、年龄、活动度、病史、分型、建档时间、病情变化）；filter 为 null 同上。
+	 * 所有条件都在计数和分页之前生效。keyword 可含多个空格分隔的词（都要命中），另匹配手机号。
+	 */
+	PatientsListVo listPatients(Long doctorId, String keyword, String followStatus, String completeness, com.wenwen.vo.PatientListFilter filter, int page, int size);
+
 	/** 看板用：该医生名下全部患者（与患者列表同一套计算），以及每人上一次有效 DAS28-CRP（判断活动度回升） */
 	final class AllPatients {
 		public final List<com.wenwen.vo.PatientItemVo> items;
