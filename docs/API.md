@@ -121,6 +121,12 @@ curl -X POST "http://localhost:8065/api/ra/project/projectsData?doctorId=5065"
 | `qcIssuePatients` | int | 有待处理质控问题的患者数 | 至少命中一条规则的患者，去重 |
 | `researchUsableRecords` | int | 研究级可用记录 | 随访日期、病情评估、辅助检查、治疗方案四项都不为空的随访记录条数 |
 
+**按月入组（2026-10-27）**
+
+| 字段 | 类型 | 页面位置 / 中文含义 | 计算口径 |
+|---|---|---|---|
+| `enrollByMonth` | Array | 最近 12 个月入组趋势 | 含本月共 12 项 `[{"month": "2025-11", "count": 3}, …]`，`month` 为 `yyyy-MM`（上海日期），按月份升序，没有人的月份 `count` 为 0。范围同 `enrolledPatients`（全局 RA 患者，含已脱落，不按 doctorId），按建档日期 `COALESCE(create_date, createDate)` 落在哪个月计数；无建档日期或在这 12 个月之外的不计，所以各月之和一般小于 `enrolledPatients`。并入 `countProjectMetrics` 同一条 SQL，查询条数不变（仍为 4 条 SELECT）；wenwen_perf 上接口耗时与改动前持平（约 0.38 s） |
+
 **质控规则（一期）**
 
 | 规则编码 | 类型 | 中文含义 |

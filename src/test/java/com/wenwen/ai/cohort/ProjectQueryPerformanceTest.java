@@ -49,6 +49,34 @@ class ProjectQueryPerformanceTest extends MissingDataHttpFixture {
         assertEquals(2,result.getTotalPatients());assertEquals(2,result.getTrackingPatients());assertEquals(1,result.getPendingQcIssues());
         assertEquals(4,observed.selects);assertEquals(2,observed.borrowed);snapshotQueries(3);
     }
+    @Test void enrollByMonthUsesOverviewRaScopeLastTwelveMonthsWithinSameStatement() throws Exception {
+        sql("DELETE FROM patient_follow_up_history");sql("DELETE FROM patient_relation_doctor");sql("DELETE FROM patient_basic_info");
+        String[][] patients={{"1","2026-10-05 08:00:00",null},{"2","2025-11-01 00:00:00",null},{"3","2025-10-31 23:59:59",null},{"4",null,"2026-03-15"},
+            {"5","2026-05-01",null},{"6","2026-05-02",null},{"7","2026-11-01",null},{"8","2026-06-01",null},{"9",null,null},{"10","2026-10-31 23:00:00",null}};
+        for(String[] p:patients)sql("INSERT INTO patient_basic_info(id,name,jws,create_date,createDate) VALUES ("+p[0]+",'synthetic','record',"+(p[1]==null?"NULL":"'"+p[1]+"'")+","+(p[2]==null?"NULL":"'"+p[2]+"'")+")");
+        // 5 只有 AS(6) 关系、8 没有任何关系 → 不算；6 已脱落仍算（同 enrolledPatients 含已脱落）；同一患者两条 RA 关系只算一次
+        sql("INSERT INTO patient_relation_doctor(doctor_id,patient_id,research_type,miss) VALUES (101,1,0,0),(202,1,7,0),(101,2,1,0),(101,3,0,0),(101,4,7,0),(101,5,6,0),(101,6,0,1),(101,7,0,0),(101,9,0,0),(101,10,4,0)");
+        ProjectServiceImpl service=service();
+        ReflectionTestUtils.setField(service,"clock",java.time.Clock.fixed(java.time.Instant.parse("2026-10-19T04:00:00Z"),java.time.ZoneOffset.UTC));
+        observed.reset();
+        ProjectsDataVo result=service.getProjectsData();
+        assertEquals(4,observed.selects,"按月入组并入同一条统计 SQL，不增加查询");
+        List<Map<String,Object>> months=result.getEnrollByMonth();
+        assertEquals(12,months.size());
+        assertEquals("2025-11",months.get(0).get("month"));assertEquals("2026-10",months.get(11).get("month"));
+        Map<String,Integer> counts=new LinkedHashMap<>();int sum=0;
+        for(Map<String,Object> m:months){counts.put((String)m.get("month"),(Integer)m.get("count"));sum+=(Integer)m.get("count");}
+        assertEquals(1,counts.get("2025-11").intValue());assertEquals(1,counts.get("2026-03").intValue());
+        assertEquals(1,counts.get("2026-05").intValue());assertEquals(2,counts.get("2026-10").intValue());
+        assertEquals(0,counts.get("2026-06").intValue());assertEquals(5,sum);
+        assertEquals(8,result.getEnrolledPatients(),"总数范围同一 RA 口径（含无建档日期、范围外月份）");
+    }
+    @Test void enrollByMonthFillsMissingMonthsWithZero() {
+        List<Map<String,Object>> months=ProjectServiceImpl.enrollByMonth(java.time.YearMonth.of(2025,12),null);
+        assertEquals(12,months.size());assertEquals("2026-11",months.get(11).get("month"));
+        for(Map<String,Object> m:months)assertEquals(0,m.get("count"));
+        assertEquals(3,ProjectServiceImpl.enrollByMonth(java.time.YearMonth.of(2025,12),"2026-01=3").get(1).get("count"));
+    }
     @Test void consolidatedMetricsMatchIndependentBoundaryTableAndAllOriginalQueries() throws Exception {
         sql("DELETE FROM patient_follow_up_history");sql("DELETE FROM patient_relation_doctor");sql("DELETE FROM patient_basic_info");
         for(int i=1;i<=12;i++)sql("INSERT INTO patient_basic_info(id,name,jws,create_date) VALUES ("+i+",'synthetic','record','2026-01-01')");

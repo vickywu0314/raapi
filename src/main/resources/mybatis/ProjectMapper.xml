@@ -88,7 +88,7 @@
 		<include refid="missingIssues"/> UNION ALL <include refid="logicIssues"/>
 	</select>
 
-	<!-- 保留原统计条件；合并患者扫描与数据库往返，NOW在同一语句内固定。 -->
+	<!-- 保留原统计条件；合并患者扫描与数据库往返，NOW在同一语句内固定。入参 cycleDays，及按月入组的 enrollFrom / enrollTo（yyyy-MM-dd）。 -->
 	<select id="countProjectMetrics" resultType="Map" parameterType="Map">
 		SELECT COUNT(*) AS activeCount,
 		       IFNULL(SUM(CASE WHEN COALESCE(p.create_date, p.createDate) &lt; DATE_SUB(NOW(), INTERVAL #{cycleDays} DAY)
@@ -115,7 +115,16 @@
 		              INNER JOIN patient_basic_info enrolled ON enrolled.id = f.patient_basic_info_id
 		              WHERE f.research_type IN (<include refid="raResearchTypes"/>)
 		                AND f.patient_basic_info_id IN (SELECT rr.patient_id FROM patient_relation_doctor rr WHERE rr.research_type IN (<include refid="raResearchTypes"/>))
-		              GROUP BY f.patient_basic_info_id) t) AS followUpTimes
+		              GROUP BY f.patient_basic_info_id) t) AS followUpTimes,
+		       <!-- 按月入组：范围同「已入组患者」（全部 RA 患者，含已脱落），按建档日期 COALESCE(create_date, createDate) 落在 [enrollFrom, enrollTo) 的月份计数；
+		            返回「yyyy-MM=人数,…」，没有人的月份不出现（service 补 0）；无参数时为 NULL -->
+		       (SELECT GROUP_CONCAT(CONCAT(m.ym, '=', m.n) ORDER BY m.ym SEPARATOR ',')
+		        FROM (SELECT DATE_FORMAT(COALESCE(e.create_date, e.createDate), '%Y-%m') AS ym, COUNT(*) AS n
+		              FROM patient_basic_info e
+		              WHERE e.id IN (SELECT rr.patient_id FROM patient_relation_doctor rr WHERE rr.research_type IN (<include refid="raResearchTypes"/>))
+		                AND COALESCE(e.create_date, e.createDate) &gt;= CAST(#{enrollFrom} AS DATE)
+		                AND COALESCE(e.create_date, e.createDate) &lt; CAST(#{enrollTo} AS DATE)
+		              GROUP BY DATE_FORMAT(COALESCE(e.create_date, e.createDate), '%Y-%m')) m) AS enrollByMonth
 		FROM patient_basic_info p
 		WHERE <include refid="activePatientCond"/>
 	</select>

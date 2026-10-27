@@ -12,7 +12,7 @@ public interface ProjectMapper {
     java.util.List<Long> qcPatientIds(Map<String,Object> scope);
     java.util.List<Map<String,Object>> remainingQcIssues(Map<String,Object> scope);
 
-    /** 同一次往返返回activeCount/dueCount/doneCount/pendingCount/usableCount；项目级口径。 */
+    /** 同一次往返返回activeCount/dueCount/doneCount/pendingCount/usableCount/followUpTimes/enrollByMonth（「yyyy-MM=人数,…」，入参 enrollFrom/enrollTo）；项目级口径。 */
     Map<String,Object> countProjectMetrics(Map<String,Object> map);
 
 	/** 有效（未脱落）患者数 */

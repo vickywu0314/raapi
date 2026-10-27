@@ -123,6 +123,11 @@ public class ProjectsDataVo {
 	@ApiModelProperty("随访完成 ≥2 / ≥3 / ≥4 次的患者数")
 	private int followUp2Count, followUp3Count, followUp4Count;
 
+	@ApiModelProperty("最近 12 个月（含本月）按月入组人数 [{month: yyyy-MM, count}]，月份升序、没有人的月份为 0；范围同 enrolledPatients，按建档日期")
+	private java.util.List<java.util.Map<String, Object>> enrollByMonth;
+	public java.util.List<java.util.Map<String, Object>> getEnrollByMonth() { return enrollByMonth; }
+	public void setEnrollByMonth(java.util.List<java.util.Map<String, Object>> v) { enrollByMonth = v; }
+
 	public BigDecimal getFollowUp2Rate() { return followUp2Rate; }
 	public void setFollowUp2Rate(BigDecimal v) { followUp2Rate = v; }
 	public BigDecimal getFollowUp3Rate() { return followUp3Rate; }
